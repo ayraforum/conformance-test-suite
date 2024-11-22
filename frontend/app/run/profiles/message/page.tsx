@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { v4 as uuidv4 } from 'uuid';
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -27,6 +28,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { getBackendAddress } from "@/lib/backend";
 
 const formSchema = z.object({
   systemName: z.string().min(2).max(50),
@@ -34,7 +36,7 @@ const formSchema = z.object({
   systemVersion: z.string().min(2).max(255),
 })
 
-export function ProfileForm() {
+export function ProfileForm({ onStartTest }: { onStartTest: (values: z.infer<typeof formSchema>) => Promise<void> }) {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -44,11 +46,8 @@ export function ProfileForm() {
     },
   })
 
-  // 2. Define a submit handler.
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // Do something with the form values.
-    // ✅ This will be type-safe and validated.
-    console.log(values)
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    await onStartTest(values);
   }
 
   return (
@@ -99,7 +98,7 @@ export function ProfileForm() {
               <FormItem>
                 <FormLabel>System Version</FormLabel>
                 <FormControl>
-                  <Input placeholder="shadcn" {...field} />
+                  <Input placeholder="0.1.0" {...field} />
                 </FormControl>
                 <FormDescription>
                   Please enter the version of the system.
@@ -113,7 +112,7 @@ export function ProfileForm() {
       </Form>
       </CardContent>
       <CardFooter>
-        <p>Card Footer</p>
+        <p>Upon pressing enter, the system will be started and the test will begin.</p>
       </CardFooter>
     </Card>
   )
@@ -125,12 +124,13 @@ export default function ConfigurePage() {
   const [testStarted, setTestStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [runId] = useState(() => uuidv4());
 
-  const startTest = async () => {
+  const startTest = async (formValues: z.infer<typeof formSchema>) => {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/start-container', {
+      const response = await fetch(`${getBackendAddress()}/start-container`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,9 +138,10 @@ export default function ConfigurePage() {
         },
         body: JSON.stringify({
           profile: 'profile1',
-          systemName: 'Test System',
-          endpointUrl: 'http://localhost:3000',
-          runId: 'test-run-123',
+          systemName: formValues.systemName,
+          endpointUrl: formValues.systemEndpoint,
+          runId: runId,
+          containerId: "nginx:latest",
         }),
       });
 
@@ -157,7 +158,7 @@ export default function ConfigurePage() {
 
       socketInstance.on('connect', () => {
         console.log('Connected to WebSocket');
-        socketInstance.emit('subscribeToRun', 'test-run-123');
+        socketInstance.emit('subscribeToRun', runId);
       });
 
       socketInstance.on('log', (log) => {
@@ -201,16 +202,8 @@ export default function ConfigurePage() {
       </p>
       <Separator className="mb-8" />
       <div className="w-full max-w-2xl px-4">
-        <ProfileForm />
-        {!testStarted ? (
-          <button
-            onClick={startTest}
-            className={`p-4 bg-blue-500 text-white rounded ${loading && 'opacity-50 cursor-not-allowed'}`}
-            disabled={loading}
-          >
-            {loading ? 'Starting...' : 'Start Test'}
-          </button>
-        ) : (
+        <ProfileForm onStartTest={startTest} />
+        {testStarted && (
           <div className="w-full max-w-lg bg-gray-100 p-4 rounded">
             <h2 className="text-lg font-bold mb-2">Test Logs</h2>
             <div className="h-64 overflow-y-auto bg-black text-white p-2 rounded">
