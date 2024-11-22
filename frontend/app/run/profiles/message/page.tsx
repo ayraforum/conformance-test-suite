@@ -29,7 +29,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { getBackendAddress } from "@/lib/backend";
-
+import { LazyLog } from "@melloware/react-logviewer";
 
 const formSchema = z.object({
   systemName: z.string().min(2).max(50),
@@ -122,6 +122,7 @@ export function ProfileForm({ onStartTest }: { onStartTest: (values: z.infer<typ
 
 export default function ConfigurePage() {
   const [logs, setLogs] = useState<{type: string, message: string}[]>([]);
+  const [logStream, setLogStream] = useState<string>("");
   const [testStarted, setTestStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -162,6 +163,11 @@ export default function ConfigurePage() {
 
       socketInstance.on('log', (log) => {
         setLogs((prevLogs) => [...prevLogs, log]);
+        setLogStream((prevLogStream) => {
+          const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
+          const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
+          return prevLogStream + formattedMessage;
+        });
       });
 
       socketInstance.on("log-complete", () => {
@@ -211,11 +217,26 @@ export default function ConfigurePage() {
         {testStarted && (
           <div className="w-full max-w-lg bg-gray-100 p-4 rounded">
             <h2 className="text-lg font-bold mb-2">Test Logs</h2>
-            <div className="h-64 overflow-y-auto bg-black text-white p-2 rounded">
-              {logs.map((log, index) => (
-                <div key={index}>{log.message}</div>
-              ))}
-            </div>
+            {logStream && logStream.length > 0 ? (
+              <div style={{ height: '400px' }}>
+                <LazyLog
+                  text={logStream}
+                  stream={true}
+                  follow={true}
+                  selectableLines={true}
+                  enableSearch={true}
+                  height={400}
+                  style={{
+                    fontSize: "14px",
+                    lineHeight: "1.5",
+                    color: "#0f0",
+                    backgroundColor: "#000",
+                  }}
+                />
+              </div>
+            ) : (
+              <p>Waiting for logs...</p>
+            )}
           </div>
         )}
       </div>
