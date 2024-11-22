@@ -24,33 +24,33 @@ export default function SelectProfilePage() {
       <h1 className="text-2xl font-bold text-primary mb-8">Select a Profile to Test</h1>
       <div className="flex space-x-4">
         {/* Profile Option 1 */}
-        <Card className="w-64 cursor-pointer hover:shadow-lg" onClick={() => handleSelect('profile1')}>
+        <Card className="w-64 cursor-pointer hover:shadow-lg" onClick={() => handleSelect('api')}>
           <CardHeader>
-            <CardTitle>Profile 1</CardTitle>
-            <CardDescription>A brief description of Profile 1.</CardDescription>
+            <CardTitle>API Profile</CardTitle>
+            <CardDescription>OpenID4VCI/VP</CardDescription>
           </CardHeader>
           <CardContent>
-            <p>This profile is optimized for X use cases and supports Y standards.</p>
+            <p>This profile checks conformance to the OpenID4VCI/VP standards.</p>
           </CardContent>
           <CardFooter>
-            <Button variant="primary" onClick={() => handleSelect('profile1')}>
-              Select Profile 1
+            <Button variant="default" onClick={() => handleSelect('api')}>
+              Select OpenID4VCI/VP Profile
             </Button>
           </CardFooter>
         </Card>
 
         {/* Profile Option 2 */}
-        <Card className="w-64 cursor-pointer hover:shadow-lg" onClick={() => handleSelect('profile2')}>
+        <Card className="w-64 cursor-pointer hover:shadow-lg" onClick={() => handleSelect('message')}>
           <CardHeader>
-            <CardTitle>Profile 2</CardTitle>
-            <CardDescription>A brief description of Profile 2.</CardDescription>
+            <CardTitle>Message Profile</CardTitle>
+            <CardDescription>DIDComm v1</CardDescription>
           </CardHeader>
           <CardContent>
-            <p>This profile is tailored for Z use cases and supports advanced scenarios.</p>
+            <p>This profile checks conformance to the DIDComm v1 standards.</p>
           </CardContent>
           <CardFooter>
-            <Button variant="primary" onClick={() => handleSelect('profile2')}>
-              Select Profile 2
+            <Button variant="default" onClick={() => handleSelect('message')}>
+              Select DIDComm v1 Profile
             </Button>
           </CardFooter>
         </Card>

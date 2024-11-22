@@ -1,52 +1,86 @@
-import Fastify from "fastify";
-import {
-  listContainers,
-  startContainer,
-  stopContainer,
-  createAndRunContainer,
-} from "./docker.service";
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import Docker from "dockerode";
+import { Request, Response } from 'express';
+import cors from "cors";
 
-const fastify = Fastify();
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer);
 
-// List all Docker containers
-fastify.get("/containers", async (request, reply) => {
-  const containers = await listContainers();
-  return { containers };
-});
+// Initialize Docker client
+const docker = new Docker();
 
-// Start a Docker container by ID
-fastify.post<{ Body: { id: string } }>("/containers/start", async (request, reply) => {
-  const { id } = request.body;
-  const result = await startContainer(id);
-  return { result };
-});
+// Middleware for parsing JSON
+app.use(cors());
+app.use(express.json());
 
-// Stop a Docker container by ID
-fastify.post<{ Body: { id: string } }>("/containers/stop", async (request, reply) => {
-  const { id } = request.body;
-  const result = await stopContainer(id);
-  return { result };
-});
+// API Route: Start a Docker container by ID or name
+app.post("/start-container", async (req: Request, res: Response): Promise<void> => {
+  const { containerId } = req.body;
 
-// Create and run a new container
-fastify.post<{ Body: { image: string; name?: string } }>(
-  "/containers/create",
-  async (request, reply) => {
-    const { image, name } = request.body;
-    const result = await createAndRunContainer(image, name);
-    return { result };
+  if (!containerId) {
+    res.status(400).json({ error: "Container ID is required" });
+    return;
   }
-);
+
+  try {
+    const container = docker.getContainer(containerId);
+    await container.start();
+
+    res.json({ message: `Container ${containerId} started` });
+
+    // Stream logs to WebSocket room
+    const logStream = await container.logs({
+      follow: true,
+      stdout: true,
+      stderr: true,
+    });
+
+    const room = `logs-${containerId}`;
+    logStream.on("data", (chunk) => {
+      io.to(room).emit("log", chunk.toString());
+    });
+
+    logStream.on("end", () => {
+      io.to(room).emit("log", `Logs streaming for container ${containerId} ended.`);
+    });
+
+  } catch (error) {
+    console.error(error);
+    const errorMessage = error instanceof Error
+      ? error.message
+      : 'Unknown error';
+    res.status(500).json({
+      error: `Failed to start container: ${errorMessage}`
+    });
+  }
+});
+
+// WebSocket: Join a room to listen for logs
+io.on("connection", (socket) => {
+  console.log("WebSocket client connected");
+
+  // Handle joining a room
+  socket.on("join-room", (room) => {
+    console.log(`Client joined room: ${room}`);
+    socket.join(room);
+  });
+
+  // Handle leaving a room
+  socket.on("leave-room", (room) => {
+    console.log(`Client left room: ${room}`);
+    socket.leave(room);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("WebSocket client disconnected");
+  });
+});
 
 // Start the server
-const start = async () => {
-  try {
-    await fastify.listen({ port: 5000 });
-    console.log("Backend running on http://localhost:5000");
-  } catch (err) {
-    fastify.log.error(err);
-    process.exit(1);
-  }
-};
-
-start();
+const PORT = 5000;
+httpServer.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
