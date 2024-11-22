@@ -13,7 +13,19 @@ app.use(express.json());
 
 const aathPath = process.env.AATH_PATH ? process.env.AATH_PATH : "/home/davidpoltorak-io/Projects/gan-aath/";
 const command = `${aathPath}/manage`;
-const args: string[] = ["run", "-d", "acapy"];
+const args: string[] = [
+  "run",
+  "-d",
+  "acapy",
+  "-t", "@RFC0023,@RFC0453,@RFC0454,@CredFormat_JSON-LD,@DidMethod_key,@ProofType_Ed25519Signature2018",
+  "-t", "~@Anoncreds",
+  "-t", "@critical",
+  "-t", "~@RFC0793",
+  "-t", "~@RFC0434",
+  "-t", "~@DidMethod_orb",
+  "-t", "~@DidMethod_sov",
+  "-t", "~@ProofType_BbsBls12381G2PubKey"
+];
 
 // Add this interface near the top of the file
 interface ExecuteProfile {
@@ -33,29 +45,30 @@ function runCommandWithLogs(command: string, args: string[], id: string): void {
   const room = `logs-${id}`;
   const fullCommand = `bash ${command} ${args.join(" ")}`;
   console.log(`Running command: ${fullCommand}`);
-  const process = exec(fullCommand, {
-    cwd: aathPath
+  const childProcess = exec(fullCommand, {
+    cwd: aathPath,
+    env: { ...process.env, NO_TTY: '1' }
   });
 
-  if (!process.stdout || !process.stderr) {
+  if (!childProcess.stdout || !childProcess.stderr) {
     throw new Error('Failed to start process streams');
   }
 
   // Store the process in the global map
-  processes[id] = { process, room };
+  processes[id] = { process: childProcess, room };
 
   // Stream stdout logs
-  process.stdout.on("data", (data) => {
+  childProcess.stdout.on("data", (data) => {
     io.to(room).emit("log", { type: "stdout", message: data.toString() });
   });
 
   // Stream stderr logs
-  process.stderr.on("data", (data) => {
+  childProcess.stderr.on("data", (data) => {
     io.to(room).emit("log", { type: "stderr", message: data.toString() });
   });
 
   // Handle process completion
-  process.on("close", (code) => {
+  childProcess.on("close", (code) => {
     const statusMessage = `Process exited with code ${code}`;
     io.to(room).emit("log", { type: "status", message: statusMessage });
     io.to(room).emit("log-complete");
@@ -63,7 +76,7 @@ function runCommandWithLogs(command: string, args: string[], id: string): void {
   });
 
   // Handle errors
-  process.on("error", (error) => {
+  childProcess.on("error", (error) => {
     io.to(room).emit("log", { type: "error", message: error.message });
     delete processes[id]; // Remove process from map on error
   });
