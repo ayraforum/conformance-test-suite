@@ -583,6 +583,24 @@
   dependencies:
     "@radix-ui/react-compose-refs" "1.1.0"
 
+"@radix-ui/react-toast@^1.2.2":
+  version "1.2.2"
+  resolved "https://registry.npmjs.org/@radix-ui/react-toast/-/react-toast-1.2.2.tgz"
+  integrity sha512-Z6pqSzmAP/bFJoqMAston4eSNa+ud44NSZTiZUmUen+IOZ5nBY8kzuU5WDBVyFXPtcW6yUalOHsxM/BP6Sv8ww==
+  dependencies:
+    "@radix-ui/primitive" "1.1.0"
+    "@radix-ui/react-collection" "1.1.0"
+    "@radix-ui/react-compose-refs" "1.1.0"
+    "@radix-ui/react-context" "1.1.1"
+    "@radix-ui/react-dismissable-layer" "1.1.1"
+    "@radix-ui/react-portal" "1.1.2"
+    "@radix-ui/react-presence" "1.1.1"
+    "@radix-ui/react-primitive" "2.0.0"
+    "@radix-ui/react-use-callback-ref" "1.1.0"
+    "@radix-ui/react-use-controllable-state" "1.1.0"
+    "@radix-ui/react-use-layout-effect" "1.1.0"
+    "@radix-ui/react-visually-hidden" "1.1.0"
+
 "@radix-ui/react-tooltip@^1.1.4":
   version "1.1.4"
   resolved "https://registry.npmjs.org/@radix-ui/react-tooltip/-/react-tooltip-1.1.4.tgz"
@@ -2588,7 +2606,9 @@ fresh@0.5.2:
   resolved "file:frontend"
   dependencies:
     "@hookform/resolvers" "^3.9.1"
+    "@melloware/react-logviewer" "^6.0.3"
     "@prisma/client" "^5.22.0"
+    "@radix-ui/react-accordion" "^1.2.1"
     "@radix-ui/react-dialog" "^1.1.2"
     "@radix-ui/react-dropdown-menu" "^2.1.2"
     "@radix-ui/react-label" "^2.1.0"
@@ -2597,6 +2617,7 @@ fresh@0.5.2:
     "@radix-ui/react-tooltip" "^1.1.4"
     "@types/node" "^22.9.1"
     "@types/socket.io" "^3.0.2"
+    "@types/uuid" "^10.0.0"
     class-variance-authority "^0.7.0"
     clsx "^2.1.1"
     dockerode "^4.0.2"
@@ -2607,6 +2628,7 @@ fresh@0.5.2:
     react "19.0.0-rc-66855b96-20241106"
     react-dom "19.0.0-rc-66855b96-20241106"
     react-hook-form "^7.53.2"
+    react-xterm "^2.0.4"
     shared "1.0.0"
     socket.io "^4.8.1"
     socket.io-client "^4.8.1"
@@ -2614,7 +2636,9 @@ fresh@0.5.2:
     tailwind-merge "^2.5.4"
     tailwindcss-animate "^1.0.7"
     ts-node "^10.9.2"
+    uuid "^11.0.3"
     ws "^8.18.0"
+    xterm "^5.3.0"
     zod "^3.23.8"
 
 fs-constants@^1.0.0:
