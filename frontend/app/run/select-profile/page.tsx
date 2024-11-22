@@ -17,9 +17,9 @@ export default function SelectProfilePage() {
   // Handles selection and moves to the next step
   const handleSelect = (profile: string) => {
     if(profile === 'api') {
-      router.push(`/run/profiles/api`);
+      router.push(`/run/profiles/api/setup`);
     } else if (profile === 'message') {
-      router.push(`/run/profiles/message`);
+      router.push(`/run/profiles/message/setup`);
     }
   };
 

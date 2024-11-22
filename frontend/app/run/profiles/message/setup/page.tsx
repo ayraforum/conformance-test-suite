@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
+import { useRouter } from 'next/navigation';
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -121,11 +122,8 @@ export function ProfileForm({ onStartTest }: { onStartTest: (values: z.infer<typ
 }
 
 export default function ConfigurePage() {
-  const [logs, setLogs] = useState<{type: string, message: string}[]>([]);
-  const [logStream, setLogStream] = useState<string>("");
-  const [testStarted, setTestStarted] = useState(false);
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [runId] = useState(() => uuidv4());
 
   const startTest = async (formValues: z.infer<typeof formSchema>) => {
@@ -150,58 +148,16 @@ export default function ConfigurePage() {
         throw new Error(`Error: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      await response.json();
 
-      const socketInstance = io(getBackendAddress(), {
-        transports: ['websocket']
-      });
-
-      socketInstance.on('connect', () => {
-        console.log('Connected to WebSocket');
-        socketInstance.emit('join-room', `logs-${runId}`);
-      });
-
-      socketInstance.on('log', (log) => {
-        setLogs((prevLogs) => [...prevLogs, log]);
-        setLogStream((prevLogStream) => {
-          const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
-          const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
-          return prevLogStream + formattedMessage;
-        });
-      });
-
-      socketInstance.on("log-complete", () => {
-        console.log("Log streaming complete.");
-        socketInstance.emit('leave-room', `logs-${runId}`);
-        socketInstance.disconnect();
-      });
-
-      socketInstance.on('disconnect', () => {
-        console.log('Disconnected from WebSocket');
-
-      });
-
-      socketInstance.on('connect_error', (err) => {
-        console.error('Connection error:', err);
-      });
-
-      setSocket(socketInstance);
-      setTestStarted(true);
+      // Navigate to the logs page with the runId
+      router.push(`/run/profiles/message/monitor/${runId}`);
     } catch (error) {
       console.error('Error starting test:', error);
     } finally {
       setLoading(false);
     }
   };
-
-  // Cleanup the socket connection when the component unmounts
-  useEffect(() => {
-    return () => {
-      if (socket) {
-        socket.disconnect();
-      }
-    };
-  }, [socket]);
 
   return (
     <div className="min-h-screen flex flex-col items-center p-4">
@@ -214,31 +170,6 @@ export default function ConfigurePage() {
       <Separator className="mb-8" />
       <div className="w-full max-w-2xl px-4">
         <ProfileForm onStartTest={startTest} />
-        {testStarted && (
-          <div className="w-full max-w-lg bg-gray-100 p-4 rounded">
-            <h2 className="text-lg font-bold mb-2">Test Logs</h2>
-            {logStream && logStream.length > 0 ? (
-              <div style={{ height: '400px' }}>
-                <LazyLog
-                  text={logStream}
-                  stream={true}
-                  follow={true}
-                  selectableLines={true}
-                  enableSearch={true}
-                  height={400}
-                  style={{
-                    fontSize: "14px",
-                    lineHeight: "1.5",
-                    color: "#0f0",
-                    backgroundColor: "#000",
-                  }}
-                />
-              </div>
-            ) : (
-              <p>Waiting for logs...</p>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
