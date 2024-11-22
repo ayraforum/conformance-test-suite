@@ -16,7 +16,11 @@ export default function SelectProfilePage() {
 
   // Handles selection and moves to the next step
   const handleSelect = (profile: string) => {
-    router.push(`/run/configure-profile?profile=${profile}`);
+    if(profile === 'api') {
+      router.push(`/run/profiles/api`);
+    } else if (profile === 'message') {
+      router.push(`/run/profiles/message`);
+    }
   };
 
   return (
@@ -58,3 +62,4 @@ export default function SelectProfilePage() {
     </div>
   );
 }
+``
