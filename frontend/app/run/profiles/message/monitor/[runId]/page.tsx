@@ -78,7 +78,7 @@ export default function LogsPage({ params }: { params: { runId: string } }) {
                 <LazyLog
                   text={logStream}
                   stream={true}
-                  follow={true}
+                  follow={!isComplete}
                   selectableLines={true}
                   enableSearch={true}
                   height={600}
