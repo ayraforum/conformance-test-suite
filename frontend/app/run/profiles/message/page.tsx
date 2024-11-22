@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/card"
 import { getBackendAddress } from "@/lib/backend";
 
+
 const formSchema = z.object({
   systemName: z.string().min(2).max(50),
   systemEndpoint: z.string().min(2).max(255),
@@ -120,7 +121,7 @@ export function ProfileForm({ onStartTest }: { onStartTest: (values: z.infer<typ
 }
 
 export default function ConfigurePage() {
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<{type: string, message: string}[]>([]);
   const [testStarted, setTestStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -130,18 +131,17 @@ export default function ConfigurePage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${getBackendAddress()}/start-container`, {
+      const response = await fetch(`${getBackendAddress()}/execute-profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer YOUR_API_TOKEN',
         },
         body: JSON.stringify({
-          profile: 'profile1',
           systemName: formValues.systemName,
-          endpointUrl: formValues.systemEndpoint,
-          runId: runId,
-          containerId: "nginx:latest",
+          systemVersion: formValues.systemVersion,
+          systemEndpoint: formValues.systemEndpoint,
+          runId: runId
         }),
       });
 
@@ -149,24 +149,30 @@ export default function ConfigurePage() {
         throw new Error(`Error: ${response.statusText}`);
       }
 
-      const { containerId } = await response.json();
+      const data = await response.json();
 
-      const socketInstance = io('https://external-backend.example.com', {
-        transports: ['websocket'],
-        auth: { token: 'YOUR_API_TOKEN' },
+      const socketInstance = io(getBackendAddress(), {
+        transports: ['websocket']
       });
 
       socketInstance.on('connect', () => {
         console.log('Connected to WebSocket');
-        socketInstance.emit('subscribeToRun', runId);
+        socketInstance.emit('join-room', `logs-${runId}`);
       });
 
       socketInstance.on('log', (log) => {
         setLogs((prevLogs) => [...prevLogs, log]);
       });
 
+      socketInstance.on("log-complete", () => {
+        console.log("Log streaming complete.");
+        socketInstance.emit('leave-room', `logs-${runId}`);
+        socketInstance.disconnect();
+      });
+
       socketInstance.on('disconnect', () => {
         console.log('Disconnected from WebSocket');
+
       });
 
       socketInstance.on('connect_error', (err) => {
@@ -181,7 +187,6 @@ export default function ConfigurePage() {
       setLoading(false);
     }
   };
-
 
   // Cleanup the socket connection when the component unmounts
   useEffect(() => {
@@ -208,7 +213,7 @@ export default function ConfigurePage() {
             <h2 className="text-lg font-bold mb-2">Test Logs</h2>
             <div className="h-64 overflow-y-auto bg-black text-white p-2 rounded">
               {logs.map((log, index) => (
-                <div key={index}>{log}</div>
+                <div key={index}>{log.message}</div>
               ))}
             </div>
           </div>
