@@ -3,6 +3,8 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { exec } from "child_process";
 import cors from "cors";
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const httpServer = createServer(app);
@@ -35,6 +37,25 @@ interface ExecuteProfile {
   runId: string;
 }
 
+// Add these interfaces
+interface TestResult {
+  profile: string;
+  feature_name: string;
+  scenario_name: string;
+  status: string;
+  tags: string[];
+}
+
+interface ConformanceResult {
+  profileResults: {
+    profileName: string;
+    passedTests: TestResult[];
+    failedTests: TestResult[];
+  }[];
+  conformantProfiles: string[];
+  isConformant: boolean;
+}
+
 // Store running processes by ID
 const processes: Record<string, { process: any; room: string }> = {};
 
@@ -47,7 +68,7 @@ function runCommandWithLogs(command: string, args: string[], id: string): void {
   console.log(`Running command: ${fullCommand}`);
   const childProcess = exec(fullCommand, {
     cwd: aathPath,
-    env: { ...process.env, NO_TTY: '1' }
+    env: { ...process.env, NO_TTY: '1', BEHAVE_REPORT_FILENAME: `${id}.json` }
   });
 
   if (!childProcess.stdout || !childProcess.stderr) {
@@ -80,6 +101,28 @@ function runCommandWithLogs(command: string, args: string[], id: string): void {
     io.to(room).emit("log", { type: "error", message: error.message });
     delete processes[id]; // Remove process from map on error
   });
+}
+
+// Add this function to check test results
+function checkTests(data: any[], profileName: string): TestResult[] {
+  const testResults: TestResult[] = [];
+
+  for (const feature of data) {
+    const featureName = feature.name || 'Unknown Feature';
+    for (const element of feature.elements || []) {
+      if (element.type === 'scenario') {
+        testResults.push({
+          profile: profileName,
+          feature_name: featureName,
+          scenario_name: element.name,
+          status: element.status,
+          tags: element.tags || []
+        });
+      }
+    }
+  }
+
+  return testResults;
 }
 
 // API Route: Start a command
@@ -128,6 +171,44 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("WebSocket client disconnected");
   });
+});
+
+// Add new endpoint to process test results
+app.get("/check-conformance/:runId", (req, res) => {
+  const { runId } = req.params;
+  const jsonOutputPath = path.join(aathPath, '.logs', `${runId}.json`);
+
+  try {
+    // Check if the file exists
+    if (!fs.existsSync(jsonOutputPath)) {
+      res.status(404).json({ error: "Test results file not found" });
+      return;
+    }
+
+    // Read and parse the JSON file
+    const data = JSON.parse(fs.readFileSync(jsonOutputPath, 'utf-8'));
+
+    // Process the results
+    const testResults = checkTests(data, "default-profile"); // You might want to make profile name configurable
+
+    const passedTests = testResults.filter(test => test.status === 'passed');
+    const failedTests = testResults.filter(test => test.status !== 'passed');
+
+    const conformanceResult: ConformanceResult = {
+      profileResults: [{
+        profileName: "default-profile",
+        passedTests,
+        failedTests
+      }],
+      conformantProfiles: failedTests.length === 0 ? ["default-profile"] : [],
+      isConformant: failedTests.length === 0
+    };
+
+    res.status(200).json(conformanceResult);
+  } catch (error) {
+    console.error("Error processing test results:", error);
+    res.status(500).json({ error: "Failed to process test results" });
+  }
 });
 
 // Start the server
