@@ -5,7 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import { LazyLog } from "@melloware/react-logviewer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getBackendAddress } from "@/lib/backend";
-import { useRouter } from "next/navigation";
+import { toast, useToast } from "@/hooks/use-toast"
 
 // Add these interfaces
 interface TestResult {
@@ -81,6 +81,10 @@ export default function LogsPage({ params }: { params: { runId: string } }) {
       fetchConformanceResults();
       setConformanceVisible(true);
       setLogsVisible(false);
+      toast({
+        title: "Test Run Completed",
+        description: "Conformance results are now available.",
+      })
     });
 
     socketInstance.on('disconnect', () => {
