@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import { useRouter } from 'next/navigation';
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
+import { initClient } from "@ts-rest/core";
+import { testContract } from "@conformance-test-suite/shared/src/testContract";
 
 import { Button } from "@/components/ui/button"
 import {
@@ -30,7 +31,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { getBackendAddress } from "@/lib/backend";
-import { LazyLog } from "@melloware/react-logviewer";
+import { toast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
   systemName: z.string().min(2).max(50),
@@ -121,6 +122,10 @@ export function ProfileForm({ onStartTest }: { onStartTest: (values: z.infer<typ
 
 }
 
+export const apiClient = initClient(testContract, {
+  baseUrl: getBackendAddress(),
+});
+
 export default function ConfigurePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -130,28 +135,26 @@ export default function ConfigurePage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${getBackendAddress()}/execute-profile`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer YOUR_API_TOKEN',
-        },
-        body: JSON.stringify({
+      const response = await apiClient.executeProfile({
+        body: {
           systemName: formValues.systemName,
           systemVersion: formValues.systemVersion,
           systemEndpoint: formValues.systemEndpoint,
           runId: runId
-        }),
+        },
       });
 
-      if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
+      if (response.status === 200) {
+        // Navigate to the logs page with the runId
+        router.push(`/run/profiles/message/monitor/${runId}`);
+      } else if (response.status === 404) {
+        toast({
+          title: 'Error starting test',
+          description: response.body.error,
+          variant: 'destructive',
+        });
+        throw new Error(`Error starting test: ${response.body.error}`);
       }
-
-      await response.json();
-
-      // Navigate to the logs page with the runId
-      router.push(`/run/profiles/message/monitor/${runId}`);
     } catch (error) {
       console.error('Error starting test:', error);
     } finally {

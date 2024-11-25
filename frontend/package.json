@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "@conformance-test-suite/frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@conformance-test-suite/shared": "workspace:*",
     "@hookform/resolvers": "^3.9.1",
     "@melloware/react-logviewer": "^6.0.3",
     "@prisma/client": "^5.22.0",
@@ -20,6 +21,8 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-toast": "^1.2.2",
     "@radix-ui/react-tooltip": "^1.1.4",
+    "@ts-rest/core": "^3.51.0",
+    "@ts-rest/next": "^3.51.0",
     "@types/node": "^22.9.1",
     "@types/socket.io": "^3.0.2",
     "@types/uuid": "^10.0.0",
@@ -34,7 +37,6 @@
     "react-dom": "19.0.0-rc-66855b96-20241106",
     "react-hook-form": "^7.53.2",
     "react-xterm": "^2.0.4",
-    "shared": "1.0.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "styled-components": "^6.1.13",
