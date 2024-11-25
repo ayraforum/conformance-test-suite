@@ -14,8 +14,42 @@ datasource db {
 }
 
 model TestRun {
+  id             String           @id @default(uuid())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt()
+  profileId      String
+  profile        Profile          @relation(fields: [profileId], references: [id])
+  systemId       String
+  system         System           @relation(fields: [systemId], references: [id])
+  TestRunHistory TestRunHistory[]
+}
+
+model TestRunHistory {
   id         String   @id @default(uuid())
-  timestamp  DateTime @default(now())
-  result     String
-  logs       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt()
+  testRunId  String
+  testRun    TestRun  @relation(fields: [testRunId], references: [id])
+  logs       String[]
+  jsonReport Json?
+  state      String   @default("pending")
+}
+
+model System {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt()
+  name        String
+  description String
+  version     String
+  TestRun     TestRun[]
+}
+
+model Profile {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt()
+  name        String
+  description String
+  TestRun     TestRun[]
 }
