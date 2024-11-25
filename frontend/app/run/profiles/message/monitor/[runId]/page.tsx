@@ -6,6 +6,12 @@ import { LazyLog } from "@melloware/react-logviewer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getBackendAddress } from "@/lib/backend";
 import { toast, useToast } from "@/hooks/use-toast"
+import { initClient } from "@ts-rest/core";
+import { testContract } from "@conformance-test-suite/shared/src/testContract";
+
+export const apiClient = initClient(testContract, {
+  baseUrl: getBackendAddress(),
+});
 
 // Add these interfaces
 interface TestResult {
@@ -42,13 +48,18 @@ export default function LogsPage({ params }: { params: { runId: string } }) {
   // Add function to fetch conformance results
   const fetchConformanceResults = async () => {
     try {
-      const response = await fetch(`${getBackendAddress()}/check-conformance/${runId}`);
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to fetch conformance results');
+      const response = await apiClient.checkConformance({
+        params: {
+          runId: runId
+        }
+      });
+
+      if (response.status === 200) {
+        setConformanceResults(response.body);
+      } else if (response.status === 404) {
+        throw new Error(`Error fetching conformance results: ${response.body.error}`);
       }
-      const data = await response.json();
-      setConformanceResults(data);
+
     } catch (error) {
       setConformanceError(error instanceof Error ? error.message : 'Unknown error occurred');
     }

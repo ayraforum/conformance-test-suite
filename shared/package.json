@@ -1,5 +1,5 @@
 {
-  "name": "shared",
+  "name": "@conformance-test-suite/shared",
   "version": "1.0.0",
   "main": "./utils.js",
   "private": true,

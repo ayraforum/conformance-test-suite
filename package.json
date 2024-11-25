@@ -1,8 +1,5 @@
 {
+  "name": "cts",
   "private": true,
-  "workspaces": [
-    "frontend",
-    "backend",
-    "shared"
-  ]
+  "packageManager": "pnpm@9.1.0"
 }
