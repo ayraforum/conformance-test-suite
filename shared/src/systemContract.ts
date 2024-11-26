@@ -2,21 +2,16 @@ import { initContract } from "@ts-rest/core";
 import { z } from "zod";
 import { extendZodWithOpenApi } from '@anatine/zod-openapi';
 import { ErrorResponseSchema } from './errorSchema';
-import { PaginationRequestSchema,CollectionResponseSchema } from './paginationSchema';
+import { PaginationRequestSchema, CollectionResponseSchema } from './paginationSchema';
+import { ResourceResponseMetadataSchema } from './commonSchema';
 
 extendZodWithOpenApi(z);
 
 // Initialize the contract
 const c = initContract();
 
-// Add a base schema for common metadata properties
-const ResourceMetadataSchema = z.object({
-    kind: z.string().openapi({ description: "The type of resource", example: "System" }),
-    self: z.string().url().openapi({ description: "The URL identifying this resource", example: "/systems/123e4567-e89b-12d3-a456-426614174000" }),
-});
-
 // Modify SystemSchema to extend the base metadata
-export const SystemSchema = ResourceMetadataSchema.extend({
+export const SystemSchema = z.object({
     id: z.string().uuid().openapi({ description: "The unique identifier for the system", example: "123e4567-e89b-12d3-a456-426614174000" }),
     name: z.string().max(255).openapi({ description: "The name of the system", example: "Example System" }),
     description: z.string().max(255).openapi({ description: "The description of the system", example: "Example System Description" }),
@@ -30,6 +25,11 @@ export const SystemCollectionSchema = CollectionResponseSchema.extend({
 
 export const CreateSystemSchema = SystemSchema.omit({ id: true });
 export const UpdateSystemSchema = SystemSchema.partial();
+
+export const SystemResponseSchema = z.object({
+    ...ResourceResponseMetadataSchema.shape,
+    ...SystemSchema.shape,
+});
 
 export const IdParamSchema = z.object({
   id: z.string().uuid().openapi({ description: "The unique ID of the system." }),
@@ -65,7 +65,7 @@ export const systemContract = c.router({
     description: "Retrieve a single system by ID.",
     pathParams: IdParamSchema,
     responses: {
-      200: SystemSchema,
+      200: SystemResponseSchema,
       404: ErrorResponseSchema
     },
   },
@@ -76,7 +76,7 @@ export const systemContract = c.router({
     description: "Create a new system with the provided data.",
     body: CreateSystemSchema,
     responses: {
-      201: SystemSchema,
+      201: SystemResponseSchema,
       400: ErrorResponseSchema,
     },
   },
@@ -88,21 +88,21 @@ export const systemContract = c.router({
     pathParams: IdParamSchema,
     body: UpdateSystemSchema,
     responses: {
-      200: SystemSchema,
+      200: SystemResponseSchema,
       400: ErrorResponseSchema,
       404: ErrorResponseSchema,
     },
   },
-  // deleteSystem: {
-  //   method: "DELETE",
-  //   path: "/systems/:id",
-  //   summary: "Delete a system.",
-  //   description: "Delete a system by ID.",
-  //   pathParams: IdParamSchema,
-  //   body: DeleteResourceResponseSchema
-  //   responses: {
-  //     204: DeleteResourceResponseSchema,
-  //     404: ErrorResponseSchema,
-  //   },
-  // },
+  deleteSystem: {
+    method: "DELETE",
+    path: "/systems/:id",
+    summary: "Delete a system.",
+    description: "Delete a system by ID.",
+    pathParams: IdParamSchema,
+    body: DeleteResourceResponseSchema,
+    responses: {
+      204: DeleteResourceResponseSchema,
+      404: ErrorResponseSchema,
+    },
+  },
 });

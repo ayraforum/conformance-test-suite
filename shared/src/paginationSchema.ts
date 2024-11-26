@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { extendZodWithOpenApi } from '@anatine/zod-openapi';
+import { ResourceResponseMetadataSchema } from "./commonSchema";
 
 extendZodWithOpenApi(z);
 
@@ -24,11 +25,7 @@ export const PaginationRequestSchema = z.object({
 
 // Define a base schema for collection responses
 const PaginationMetadataSchema = z.object({
-  kind: z.string().openapi({ description: "The type of resource being returned in the response." }),
-  self: z
-    .string()
-    .url()
-    .openapi({ description: "The URL identifying the resource being returned in the response." }),
+  ...ResourceResponseMetadataSchema.shape,
   pageOf: z
     .string()
     .openapi({ description: "A string field indicating the type of resource that the contents field contains." }),
