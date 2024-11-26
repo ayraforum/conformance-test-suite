@@ -9,7 +9,14 @@ extendZodWithOpenApi(z);
 // Initialize the contract
 const c = initContract();
 
-export const SystemSchema = z.object({
+// Add a base schema for common metadata properties
+const ResourceMetadataSchema = z.object({
+    kind: z.string().openapi({ description: "The type of resource", example: "System" }),
+    self: z.string().url().openapi({ description: "The URL identifying this resource", example: "/systems/123e4567-e89b-12d3-a456-426614174000" }),
+});
+
+// Modify SystemSchema to extend the base metadata
+export const SystemSchema = ResourceMetadataSchema.extend({
     id: z.string().uuid().openapi({ description: "The unique identifier for the system", example: "123e4567-e89b-12d3-a456-426614174000" }),
     name: z.string().max(255).openapi({ description: "The name of the system", example: "Example System" }),
     description: z.string().max(255).openapi({ description: "The description of the system", example: "Example System Description" }),

@@ -1,4 +1,4 @@
-import { CreateSystemSchema, IdParamSchema, systemContract, UpdateSystemSchema } from "@conformance-test-suite/shared/src/systemContract";
+import { CreateSystemSchema, IdParamSchema, System, systemContract, UpdateSystemSchema } from "@conformance-test-suite/shared/src/systemContract";
 import { initServer } from "@ts-rest/express";
 import { ServerInferRequest, ServerInferResponses } from "@ts-rest/core";
 import {
@@ -28,8 +28,16 @@ export const systemController = s.router(systemContract, {
       const limit = query.limit ?? 10;
       const systems = await getSystems(offset, limit);
       const baseUrl = "https://api.conformance-test-suite.org";
+
+      // Add kind and self to each system
+      const enrichedSystems = systems.map((system: System) => ({
+        ...system,
+        kind: "System",
+        self: `${baseUrl}/systems/${system.id}`
+      }));
+
       const paginatedResponse = {
-        contents: systems,
+        contents: enrichedSystems,
         kind: "SystemsPage",
         self: `${baseUrl}/systems?${new URLSearchParams({ offset: offset.toString(), limit: limit.toString() }).toString()}`,
         pageOf: "systems",
@@ -70,7 +78,15 @@ export const systemController = s.router(systemContract, {
           },
         };
       }
-      return { status: 200, body: system };
+      const baseUrl = "https://api.conformance-test-suite.org";
+      return {
+        status: 200,
+        body: {
+          ...system,
+          kind: "System",
+          self: `${baseUrl}/systems/${params.id}`
+        }
+      };
     } catch (error) {
       return {
         status: 500,
@@ -88,7 +104,15 @@ export const systemController = s.router(systemContract, {
   createSystem: async ({ body }: CreateSystemRequest): Promise<SystemResponses['createSystem']> => {
     try {
       const newSystem = await createSystem(body);
-      return { status: 201, body: newSystem };
+      const baseUrl = "https://api.conformance-test-suite.org";
+      return {
+        status: 201,
+        body: {
+          ...newSystem,
+          kind: "System",
+          self: `${baseUrl}/systems/${newSystem.id}`
+        }
+      };
     } catch (error) {
       return {
         status: 400,
@@ -118,7 +142,15 @@ export const systemController = s.router(systemContract, {
           },
         };
       }
-      return { status: 200, body: updatedSystem };
+      const baseUrl = "https://api.conformance-test-suite.org";
+      return {
+        status: 200,
+        body: {
+          ...updatedSystem,
+          kind: "System",
+          self: `${baseUrl}/systems/${params.id}`
+        }
+      };
     } catch (error) {
       return {
         status: 400,
