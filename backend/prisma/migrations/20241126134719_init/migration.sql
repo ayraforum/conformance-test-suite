@@ -1,16 +1,16 @@
 -- CreateTable
-CREATE TABLE "TestRun" (
+CREATE TABLE "TestRuns" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "profileId" TEXT NOT NULL,
     "systemId" TEXT NOT NULL,
 
-    CONSTRAINT "TestRun_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "TestRuns_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "TestRunHistory" (
+CREATE TABLE "TestRunHistories" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -19,37 +19,38 @@ CREATE TABLE "TestRunHistory" (
     "jsonReport" JSONB,
     "state" TEXT NOT NULL DEFAULT 'pending',
 
-    CONSTRAINT "TestRunHistory_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "TestRunHistories_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "System" (
+CREATE TABLE "Systems" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
+    "endpoint" TEXT NOT NULL,
     "version" TEXT NOT NULL,
 
-    CONSTRAINT "System_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Systems_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "Profile" (
+CREATE TABLE "Profiles" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
 
-    CONSTRAINT "Profile_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Profiles_pkey" PRIMARY KEY ("id")
 );
 
 -- AddForeignKey
-ALTER TABLE "TestRun" ADD CONSTRAINT "TestRun_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "Profile"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TestRuns" ADD CONSTRAINT "TestRuns_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "Profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "TestRun" ADD CONSTRAINT "TestRun_systemId_fkey" FOREIGN KEY ("systemId") REFERENCES "System"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TestRuns" ADD CONSTRAINT "TestRuns_systemId_fkey" FOREIGN KEY ("systemId") REFERENCES "Systems"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "TestRunHistory" ADD CONSTRAINT "TestRunHistory_testRunId_fkey" FOREIGN KEY ("testRunId") REFERENCES "TestRun"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TestRunHistories" ADD CONSTRAINT "TestRunHistories_testRunId_fkey" FOREIGN KEY ("testRunId") REFERENCES "TestRuns"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

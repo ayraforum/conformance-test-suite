@@ -15,6 +15,4 @@ app.use(express.json());
 app.use(errorHandler);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
-
-
 export default app;
