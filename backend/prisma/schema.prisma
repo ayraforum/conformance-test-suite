@@ -13,43 +13,44 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model TestRun {
+model TestRuns {
   id             String           @id @default(uuid())
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt()
   profileId      String
-  profile        Profile          @relation(fields: [profileId], references: [id])
+  profile        Profiles          @relation(fields: [profileId], references: [id])
   systemId       String
-  system         System           @relation(fields: [systemId], references: [id])
-  TestRunHistory TestRunHistory[]
+  system         Systems           @relation(fields: [systemId], references: [id])
+  TestRunHistories TestRunHistories[]
 }
 
-model TestRunHistory {
+model TestRunHistories {
   id         String   @id @default(uuid())
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt()
   testRunId  String
-  testRun    TestRun  @relation(fields: [testRunId], references: [id])
+  testRun    TestRuns  @relation(fields: [testRunId], references: [id])
   logs       String[]
   jsonReport Json?
   state      String   @default("pending")
 }
 
-model System {
+model Systems {
   id          String    @id @default(uuid())
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt()
   name        String
   description String
+  endpoint    String
   version     String
-  TestRun     TestRun[]
+  TestRuns     TestRuns[]
 }
 
-model Profile {
+model Profiles {
   id          String    @id @default(uuid())
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt()
   name        String
   description String
-  TestRun     TestRun[]
+  TestRuns     TestRuns[]
 }
