@@ -5,7 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import { LazyLog } from "@melloware/react-logviewer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getBackendAddress } from "@/lib/backend";
-import { toast, useToast } from "@/hooks/use-toast"
+import { toast } from "@/hooks/use-toast"
 import { initClient } from "@ts-rest/core";
 import { testContract } from "@conformance-test-suite/shared/src/testContract";
 

@@ -33,11 +33,21 @@ import {
 import { getBackendAddress } from "@/lib/backend";
 import { toast } from '@/hooks/use-toast';
 
+import { client } from '@/lib/api';
+import { useQuery, useMutation } from '@tanstack/react-query';
+
 const formSchema = z.object({
   systemName: z.string().min(2).max(50),
   systemEndpoint: z.string().min(2).max(255),
   systemVersion: z.string().min(2).max(255),
 })
+
+// Example mutation
+export function useExecuteProfile() {
+  return useMutation({
+    ...client.executeProfile.useMutation()
+  });
+}
 
 export function ProfileForm({ onStartTest }: { onStartTest: (values: z.infer<typeof formSchema>) => Promise<void> }) {
   const form = useForm<z.infer<typeof formSchema>>({

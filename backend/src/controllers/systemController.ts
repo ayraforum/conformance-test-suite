@@ -1,4 +1,4 @@
-import { CreateSystemSchema, IdParamSchema, System, systemContract, UpdateSystemSchema } from "@conformance-test-suite/shared/src/systemContract";
+import { System, systemContract } from "@conformance-test-suite/shared/src/systemContract";
 import { initServer } from "@ts-rest/express";
 import { ServerInferRequest, ServerInferResponses } from "@ts-rest/core";
 import {
@@ -8,8 +8,6 @@ import {
   updateSystem,
   deleteSystem
 } from "../services/systemService";
-import { ErrorResponseSchema } from "@conformance-test-suite/shared/src/errorSchema";
-import { PaginationRequestSchema } from "@conformance-test-suite/shared/src/paginationSchema";
 
 export const s = initServer();
 
@@ -19,7 +17,7 @@ type GetSystemsRequest = ServerInferRequest<typeof systemContract.getSystems>;
 type GetSystemRequest = ServerInferRequest<typeof systemContract.getSystem>;
 type CreateSystemRequest = ServerInferRequest<typeof systemContract.createSystem>;
 type UpdateSystemRequest = ServerInferRequest<typeof systemContract.updateSystem>;
-// type DeleteSystemRequest = ServerInferRequest<typeof systemContract.deleteSystem>;
+type DeleteSystemRequest = ServerInferRequest<typeof systemContract.deleteSystem>;
 
 export const systemController = s.router(systemContract, {
   getSystems: async ({ query }: GetSystemsRequest): Promise<SystemResponses['getSystems']> => {
@@ -165,21 +163,21 @@ export const systemController = s.router(systemContract, {
     }
   },
 
-  // deleteSystem: async ({ params }: DeleteSystemRequest): Promise<SystemResponses['deleteSystem']> => {
-  //   try {
-  //     await deleteSystem(params.id);
-  //     return { status: 204, body: {id: params.id }};
-  //   } catch (error) {
-  //     return {
-  //       status: 404,
-  //       body: {
-  //         status: 404,
-  //         type: "https://api.conformance-test-suite.org/errors/not-found",
-  //         title: "System Not Found",
-  //         detail: error instanceof Error ? error.message : "Failed to delete system",
-  //         instance: `/systems/${params.id}`,
-  //       },
-  //     };
-  //   }
-  // }
+  deleteSystem: async ({ params }: DeleteSystemRequest): Promise<SystemResponses['deleteSystem']> => {
+    try {
+      await deleteSystem(params.id);
+      return { status: 204, body: {id: params.id }};
+    } catch (error) {
+      return {
+        status: 404,
+        body: {
+          status: 404,
+          type: "https://api.conformance-test-suite.org/errors/not-found",
+          title: "System Not Found",
+          detail: error instanceof Error ? error.message : "Failed to delete system",
+          instance: `/systems/${params.id}`,
+        },
+      };
+    }
+  }
 });
