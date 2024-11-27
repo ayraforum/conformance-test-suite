@@ -32,13 +32,6 @@ export async function getTestRunById(systemId: string, profileConfigurationId: s
                 id: profileConfigurationId,
                 systemId: systemId
             }
-        },
-        include: {
-            results: {
-                include: {
-                    profileResults: true
-                }
-            }
         }
     });
 
@@ -57,34 +50,22 @@ export async function getTestRunById(systemId: string, profileConfigurationId: s
             const passedTests = testResults.filter((test) => test.status === "passed");
             const failedTests = testResults.filter((test) => test.status !== "passed");
 
-            // Create the TestRunResults record with associated ProfileResult
-            const results = await prisma.testRunResults.create({
-                data: {
-                    conformantProfiles: failedTests.length === 0 ? ["default-profile"] : [],
-                    isConformant: failedTests.length === 0,
-                    profileResults: {
-                        create: [{
-                            profileName: "default-profile",
-                            passedTests: passedTests,
-                            failedTests: failedTests
-                        }]
-                    },
-                    testRun: {
-                        connect: {
-                            id: testRun.id
-                        }
-                    }
-                },
-                include: {
-                    profileResults: true
-                }
-            });
+            // Create results object directly on the TestRun
+            const results = {
+                conformantProfiles: failedTests.length === 0 ? ["default-profile"] : [],
+                isConformant: failedTests.length === 0,
+                profileResults: [{
+                    profileName: "default-profile",
+                    passedTests: passedTests,
+                    failedTests: failedTests
+                }]
+            };
 
-            // Update the testRun with the results
+            // Update the testRun with the results JSON
             await prisma.testRuns.update({
                 where: { id: testRun.id },
                 data: {
-                    resultsId: results.id
+                    results: results
                 }
             });
 
@@ -116,7 +97,7 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
             ...parsedData,
             profileConfigurationId,
             state: 'running',
-            startedAt: new Date()
+            createdAt: new Date()
         }
     });
 
@@ -128,8 +109,7 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
             prisma.testRuns.update({
                 where: { id: testRun.id },
                 data: {
-                    state: 'failed',
-                    completedAt: new Date()
+                    state: 'failed'
                 }
             });
         });

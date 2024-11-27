@@ -13,23 +13,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model TestRunResults {
-  id                 String         @id @default(uuid())
-  profileResults     ProfileResult[]
-  conformantProfiles String[]
-  isConformant       Boolean
-  testRun           TestRuns?
-}
-
-model ProfileResult {
-  id            String         @id @default(uuid())
-  profileName   String
-  passedTests   Json          // Array of any
-  failedTests   Json          // Array of any
-  testResults   TestRunResults @relation(fields: [testResultsId], references: [id])
-  testResultsId String
-}
-
 model TestRuns {
   id                     String                @id @default(uuid())
   createdAt              DateTime              @default(now())
@@ -38,9 +21,8 @@ model TestRuns {
   profileConfiguration   ProfileConfigurations @relation(fields: [profileConfigurationId], references: [id])
   logs                   String[]
   jsonReport             Json?
-  state                  String                @default("pending")
-  results               TestRunResults?       @relation(fields: [resultsId], references: [id])
-  resultsId              String?               @unique
+  state                  String?                @default("pending")
+  results                Json?
 }
 
 model Systems {

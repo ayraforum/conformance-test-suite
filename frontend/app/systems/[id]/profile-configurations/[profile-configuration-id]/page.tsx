@@ -13,7 +13,8 @@ import { useSystem } from '@/hooks/use-system';
 import { client } from '@/lib/api';
 import { useProfileConfiguration } from '@/hooks/use-profile-configuration';
 import { ProfileConfigurationInfoPanel } from '@/components/profile-configuration-info-panel';
-
+import { StartTestRunButton } from '@/components/start-test-run-button';
+import { useTestRuns } from '@/hooks/use-test-runs';
 export default function ProfileOverviewPage() {
     const params = useParams();
     const systemId = params.id as string;
@@ -28,46 +29,7 @@ export default function ProfileOverviewPage() {
 
     const { system, isLoading, error, isNotFound } = useSystem(systemId);
     const { profileConfiguration, isLoading: profileConfigurationLoading, error: profileConfigurationError, isNotFound: profileConfigurationNotFound } = useProfileConfiguration(systemId, profileConfigurationId);
-
-    // Add mutation hook for creating and executing test runs
-    const { mutate: startTestRun, isPending } = client.executeTestRun.useMutation({
-        onSuccess: (response) => {
-            // Invalidate and refetch test runs
-            queryClient.invalidateQueries({
-                queryKey: ['test-runs', profileConfigurationId]
-            });
-
-            toast({
-                title: "Test Run Started",
-                description: `Test run ${response.body.id} has been initiated successfully.`,
-            });
-        },
-        onError: (error) => {
-            console.error('Failed to start test run:', error);
-            toast({
-                title: "Error Starting Test Run",
-                description: "There was a problem starting the test run. Please try again.",
-                variant: "destructive",
-            });
-        },
-        onSettled: () => {
-            // Additional cleanup if needed
-            queryClient.invalidateQueries({
-                queryKey: ['test-runs', profileConfigurationId]
-            });
-        }
-    });
-
-    // Add this query to fetch all test runs
-    const { data: testRuns } = client.getTestRuns.useQuery({
-        queryKey: ['test-runs', profileConfigurationId],
-        queryData: {
-            params: {
-                systemId,
-                profileConfigurationId
-            }
-        }
-    });
+    const { testRuns, isLoading: testRunsLoading, error: testRunsError, isNotFound: testRunsNotFound } = useTestRuns(systemId, profileConfigurationId);
 
         // Socket.io setup for real-time logs
       //   useEffect(() => {
@@ -152,20 +114,15 @@ export default function ProfileOverviewPage() {
             <h1 className="text-2xl font-bold mb-4">Test Runs</h1>
             {/* Buttons to start a new test run */}
             <div className="mb-4">
-            <button
-                className={`bg-blue-500 text-white px-4 py-2 rounded mr-2 ${
-                    isPending ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                onClick={handleStartNewTestRun}
-                disabled={isPending}
-            >
-                {isPending ? 'Starting Test Run...' : 'Start New Test Run'}
-            </button>
+                <StartTestRunButton
+                    systemId={systemId}
+                    profileConfigurationId={profileConfigurationId}
+              />
             </div>
 
             <div className="w-full max-w-6xl space-y-4">
-                {testRuns?.body.length > 0 ? (
-                    testRuns.body.map((run) => (
+                {testRuns?.contents.length > 0 ? (
+                    testRuns.contents.map((run) => (
                         <Card key={run.id} className="w-full">
                             <CardHeader>
                                 <div className="flex justify-between items-center">

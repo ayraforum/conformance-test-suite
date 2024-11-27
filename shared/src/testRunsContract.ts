@@ -19,22 +19,14 @@ export const TestRunSchema = z.object({
     // state: z.enum(['pending', 'running', 'completed', 'failed']).openapi({ description: "The current state of the test run" }),
     createdAt: z.date().openapi({ description: "When the test run was created" }),
     updatedAt: z.date().openapi({ description: "When the test run was last updated" }),
-    results: z.object({
-        profileResults: z.array(z.object({
-            profileName: z.string(),
-            passedTests: z.array(z.any()),
-            failedTests: z.array(z.any()),
-        })),
-        conformantProfiles: z.array(z.string()),
-        isConformant: z.boolean(),
-    }).optional().openapi({ description: "Test run results" })
+    results: z.any().nullable().optional().openapi({ description: "Test run results" })
 });
 
 export const TestRunCollectionSchema = CollectionResponseSchema.extend({
     contents: z.array(TestRunSchema),
 });
 
-export const CreateTestRunSchema = TestRunSchema.omit({ id: true });
+export const CreateTestRunSchema = TestRunSchema.omit({ id: true, results: true, logs: true, jsonReport: true, state: true, createdAt: true, updatedAt: true });
 export const UpdateTestRunSchema = TestRunSchema.partial();
 
 export const TestRunResponseSchema = z.object({
@@ -105,7 +97,7 @@ export const testRunContract = c.router({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" })
         }),
-        body: CreateTestRunSchema.omit({ profileConfigurationId: true }),
+        body: CreateTestRunSchema,
         responses: {
             201: TestRunResponseSchema,
             400: ErrorResponseSchema,
