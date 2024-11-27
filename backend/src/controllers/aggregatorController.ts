@@ -5,6 +5,7 @@ import { testController } from './testController';
 import { systemController } from './systemController';
 import { profileConfigurationController } from './profileConfigurationController';
 import { generateOpenApi } from '@ts-rest/open-api';
+import { testRunController } from './testRunController';
 
 const s = initServer();
 
@@ -12,6 +13,7 @@ export const controllerAggregator = s.router(contract, {
     ...testController,
     ...systemController,
     ...profileConfigurationController,
+    ...testRunController
 });
 
 export const openApiDocument = generateOpenApi(contract, {
