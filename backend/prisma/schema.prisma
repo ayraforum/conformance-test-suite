@@ -14,43 +14,35 @@ datasource db {
 }
 
 model TestRuns {
-  id             String           @id @default(uuid())
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt()
-  profileId      String
-  profile        Profiles          @relation(fields: [profileId], references: [id])
-  systemId       String
-  system         Systems           @relation(fields: [systemId], references: [id])
-  TestRunHistories TestRunHistories[]
-}
-
-model TestRunHistories {
-  id         String   @id @default(uuid())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt()
-  testRunId  String
-  testRun    TestRuns  @relation(fields: [testRunId], references: [id])
-  logs       String[]
-  jsonReport Json?
-  state      String   @default("pending")
+  id                     String                @id @default(uuid())
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt()
+  profileConfigurationId String
+  profileConfiguration   ProfileConfigurations @relation(fields: [profileConfigurationId], references: [id])
+  logs                   String[]
+  jsonReport             Json?
+  state                  String                @default("pending")
 }
 
 model Systems {
-  id          String    @id @default(uuid())
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt()
-  name        String
-  description String
-  endpoint    String
-  version     String
-  TestRuns     TestRuns[]
+  id                    String                  @id @default(uuid())
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt()
+  name                  String
+  description           String
+  endpoint              String
+  version               String
+  ProfileConfigurations ProfileConfigurations[]
 }
 
-model Profiles {
-  id          String    @id @default(uuid())
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt()
-  name        String
-  description String
-  TestRuns     TestRuns[]
+model ProfileConfigurations {
+  id            String     @id @default(uuid())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt()
+  name          String
+  description   String
+  systemId      String
+  system        Systems    @relation(fields: [systemId], references: [id])
+  configuration Json?
+  testRuns      TestRuns[]
 }

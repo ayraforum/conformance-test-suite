@@ -4,6 +4,7 @@ import { extendZodWithOpenApi } from '@anatine/zod-openapi';
 import { ErrorResponseSchema } from './errorSchema';
 import { PaginationRequestSchema, CollectionResponseSchema } from './paginationSchema';
 import { ResourceResponseMetadataSchema } from './commonSchema';
+import { IdParamSchema, DeleteResourceResponseSchema } from './commonSchema';
 
 extendZodWithOpenApi(z);
 
@@ -30,14 +31,6 @@ export const SystemResponseSchema = z.object({
     ...ResourceResponseMetadataSchema.shape,
     ...SystemSchema.shape,
 });
-
-export const IdParamSchema = z.object({
-  id: z.string().uuid().openapi({ description: "The unique ID of the system." }),
-});
-
-export const DeleteResourceResponseSchema = z.object({
-  id: z.string().uuid().openapi({ description: "System successfully deleted, the ID of the deleted system is returned." })
-})
 
 export type System = z.infer<typeof SystemSchema>;
 export type SystemCollection = z.infer<typeof SystemCollectionSchema>;
