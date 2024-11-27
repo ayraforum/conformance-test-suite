@@ -10,5 +10,4 @@ export const tsr = initTsrReactQuery(contract, {
     'x-app-source': 'ts-rest',
   },
 });
-
 export const client = tsr;
