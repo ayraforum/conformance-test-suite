@@ -41,14 +41,6 @@ const Header = () => {
         <Link href="/systems" className="text-lg font-semibold text-primary hover:text-accentBlue">
           Systems
         </Link>
-        <div className="border-l border-gray-300 h-6"></div>
-        <Link href="/run/select-profile" className="text-lg font-semibold text-primary hover:text-accentBlue">
-          Run Profile Test
-        </Link>
-        <div className="border-l border-gray-300 h-6"></div>
-        <Link href="/history" className="text-lg font-semibold text-primary hover:text-accentBlue">
-          Test History
-        </Link>
       </nav>
 
       {/* User Dropdown */}

@@ -25,15 +25,74 @@ export async function getTestRuns(systemId: string, profileConfigurationId: stri
 }
 
 export async function getTestRunById(systemId: string, profileConfigurationId: string, id: string) {
-    return prisma.testRuns.findFirst({
+    const testRun = await prisma.testRuns.findFirst({
         where: {
             id,
             profileConfiguration: {
                 id: profileConfigurationId,
                 systemId: systemId
             }
+        },
+        include: {
+            results: {
+                include: {
+                    profileResults: true
+                }
+            }
         }
     });
+
+    if (!testRun) {
+        return null;
+    }
+
+    // If the test run is completed and doesn't have results yet, process them
+    if (testRun.state === 'completed' && !testRun.results) {
+        const jsonOutputPath = path.join(AATH_PATH, ".logs", `${testRun.id}.json`);
+
+        if (fs.existsSync(jsonOutputPath)) {
+            const data = JSON.parse(fs.readFileSync(jsonOutputPath, "utf-8"));
+            const testResults = checkTests(data, "default-profile");
+
+            const passedTests = testResults.filter((test) => test.status === "passed");
+            const failedTests = testResults.filter((test) => test.status !== "passed");
+
+            // Create the TestRunResults record with associated ProfileResult
+            const results = await prisma.testRunResults.create({
+                data: {
+                    conformantProfiles: failedTests.length === 0 ? ["default-profile"] : [],
+                    isConformant: failedTests.length === 0,
+                    profileResults: {
+                        create: [{
+                            profileName: "default-profile",
+                            passedTests: passedTests,
+                            failedTests: failedTests
+                        }]
+                    },
+                    testRun: {
+                        connect: {
+                            id: testRun.id
+                        }
+                    }
+                },
+                include: {
+                    profileResults: true
+                }
+            });
+
+            // Update the testRun with the results
+            await prisma.testRuns.update({
+                where: { id: testRun.id },
+                data: {
+                    resultsId: results.id
+                }
+            });
+
+            testRun.results = results;
+        }
+    }
+
+    return testRun;
 }
 
 export async function createTestRun(systemId: string, profileConfigurationId: string, data: unknown) {
@@ -51,12 +110,63 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
         throw new Error("Profile configuration not found or does not belong to the specified system");
     }
 
-    return prisma.testRuns.create({
+    // Create the test run
+    const testRun = await prisma.testRuns.create({
         data: {
             ...parsedData,
-            profileConfigurationId
+            profileConfigurationId,
+            state: 'running',
+            startedAt: new Date()
         }
     });
+
+    // Start the execution process asynchronously
+    executeTestRunProcess(systemId, profileConfigurationId, testRun.id)
+        .catch(error => {
+            console.error('Error executing test run:', error);
+            // Update test run state to failed
+            prisma.testRuns.update({
+                where: { id: testRun.id },
+                data: {
+                    state: 'failed',
+                    completedAt: new Date()
+                }
+            });
+        });
+
+    return testRun;
+}
+
+async function executeTestRunProcess(systemId: string, profileConfigurationId: string, testRunId: string) {
+    // Move the execution logic from the old executeTestRun function here
+    const room = `logs-${testRunId}`;
+    const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
+
+    const childProcess = exec(fullCommand, {
+        cwd: AATH_PATH,
+        env: {
+            ...process.env,
+            NO_TTY: "1",
+            BEHAVE_REPORT_FILENAME: `${testRunId}.json`
+        },
+    });
+
+    if (!childProcess.stdout || !childProcess.stderr) {
+        throw new Error("Failed to start process streams");
+    }
+
+    childProcess.on('exit', async (code) => {
+        const state = code === 0 ? 'completed' : 'failed';
+        await prisma.testRuns.update({
+            where: { id: testRunId },
+            data: {
+                state,
+                updatedAt: new Date()
+            }
+        });
+    });
+
+    streamLogs(childProcess, room, testRunId);
 }
 
 export async function updateTestRun(systemId: string, profileConfigurationId: string, id: string, data: unknown) {
@@ -83,99 +193,6 @@ export async function deleteTestRun(systemId: string, profileConfigurationId: st
             }
         }
     });
-}
-
-export async function executeTestRun(systemId: string, profileConfigurationId: string, testRunId: string): Promise<void> {
-    // Verify the test run exists and get its data
-    const testRun = await prisma.testRuns.findFirst({
-        where: {
-            id: testRunId,
-            profileConfiguration: {
-                id: profileConfigurationId,
-                systemId: systemId
-            }
-        },
-        include: {
-            profileConfiguration: {
-                include: {
-                    system: true
-                }
-            }
-        }
-    });
-
-    if (!testRun) {
-        throw new Error("Test run not found");
-    }
-
-    if (processes[testRunId]) {
-        throw new Error(`A process with ID ${testRunId} is already running.`);
-    }
-
-    const room = `logs-${testRunId}`;
-    const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
-
-    const childProcess = exec(fullCommand, {
-        cwd: AATH_PATH,
-        env: {
-            ...process.env,
-            NO_TTY: "1",
-            BEHAVE_REPORT_FILENAME: `${testRunId}.json`
-        },
-    });
-
-    if (!childProcess.stdout || !childProcess.stderr) {
-        throw new Error("Failed to start process streams");
-    }
-
-    streamLogs(childProcess, room, testRunId);
-
-    // Update test run state to "running"
-    await prisma.testRuns.update({
-        where: { id: testRunId },
-        data: { state: "running" }
-    });
-}
-
-export async function getTestRunResults(systemId: string, profileConfigurationId: string, testRunId: string) {
-    // Verify the test run exists
-    const testRun = await prisma.testRuns.findFirst({
-        where: {
-            id: testRunId,
-            profileConfiguration: {
-                id: profileConfigurationId,
-                systemId: systemId
-            }
-        }
-    });
-
-    if (!testRun) {
-        throw new Error("Test run not found");
-    }
-
-    const jsonOutputPath = path.join(AATH_PATH, ".logs", `${testRunId}.json`);
-
-    if (!fs.existsSync(jsonOutputPath)) {
-        throw new Error("Test results file not found");
-    }
-
-    const data = JSON.parse(fs.readFileSync(jsonOutputPath, "utf-8"));
-    const testResults = checkTests(data, "default-profile");
-
-    const passedTests = testResults.filter((test) => test.status === "passed");
-    const failedTests = testResults.filter((test) => test.status !== "passed");
-
-    return {
-        profileResults: [
-            {
-                profileName: "default-profile",
-                passedTests,
-                failedTests,
-            },
-        ],
-        conformantProfiles: failedTests.length === 0 ? ["default-profile"] : [],
-        isConformant: failedTests.length === 0,
-    };
 }
 
 function checkTests(data: any[], profileName: string) {

@@ -11,11 +11,23 @@ extendZodWithOpenApi(z);
 const c = initContract();
 
 export const TestRunSchema = z.object({
-    id: z.string().uuid().openapi({ description: "The unique identifier for the test run", example: "123e4567-e89b-12d3-a456-426614174000" }),
-    profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the associated profile configuration", example: "123e4567-e89b-12d3-a456-426614174000" }),
+    id: z.string().uuid().openapi({ description: "The unique identifier for the test run" }),
+    profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the associated profile configuration" }),
     logs: z.array(z.string()).openapi({ description: "Array of log entries for the test run" }),
     jsonReport: z.any().optional().openapi({ description: "The JSON report data from the test run" }),
-    state: z.string().openapi({ description: "The current state of the test run", example: "pending" }),
+    state: z.string().openapi({ description: "The current state of the test run" }),
+    // state: z.enum(['pending', 'running', 'completed', 'failed']).openapi({ description: "The current state of the test run" }),
+    createdAt: z.date().openapi({ description: "When the test run was created" }),
+    updatedAt: z.date().openapi({ description: "When the test run was last updated" }),
+    results: z.object({
+        profileResults: z.array(z.object({
+            profileName: z.string(),
+            passedTests: z.array(z.any()),
+            failedTests: z.array(z.any()),
+        })),
+        conformantProfiles: z.array(z.string()),
+        isConformant: z.boolean(),
+    }).optional().openapi({ description: "Test run results" })
 });
 
 export const TestRunCollectionSchema = CollectionResponseSchema.extend({
@@ -87,8 +99,8 @@ export const testRunContract = c.router({
     createTestRun: {
         method: "POST",
         path: "/systems/:systemId/profile-configurations/:profileConfigurationId/test-runs",
-        summary: "Create a new test run",
-        description: "Create a new test run for a specific profile configuration within a system",
+        summary: "Create and execute a new test run",
+        description: "Create a new test run for a specific profile configuration within a system and start its execution",
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" })
@@ -132,37 +144,5 @@ export const testRunContract = c.router({
             204: DeleteResourceResponseSchema,
             404: ErrorResponseSchema,
         },
-    },
-    executeTestRun: {
-        method: "POST",
-        path: "/systems/:systemId/profile-configurations/:profileConfigurationId/test-runs/:id/execute",
-        summary: "Execute a test run",
-        description: "Start the execution of a test run for a specific profile configuration within a system",
-        body: z.object({}),
-        pathParams: z.object({
-            systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
-            profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.string().uuid().openapi({ description: "The ID of the test run" })
-        }),
-        responses: {
-            200: TestRunExecutionResponseSchema,
-            500: ErrorResponseSchema,
-        },
-    },
-    checkTestRunResults: {
-        method: "GET",
-        path: "/systems/:systemId/profile-configurations/:profileConfigurationId/test-runs/:id/results",
-        summary: "Check test run results",
-        description: "Retrieve the results of a test run for a specific profile configuration within a system",
-        pathParams: z.object({
-            systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
-            profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.string().uuid().openapi({ description: "The ID of the test run" })
-        }),
-        responses: {
-            200: TestRunResultsSchema,
-            404: ErrorResponseSchema,
-            500: ErrorResponseSchema,
-        },
-    },
+    }
 });

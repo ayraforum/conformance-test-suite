@@ -11,6 +11,8 @@ import { useParams } from 'next/navigation';
 import { SystemLoadingState } from '@/components/system-loading-state';
 import { useSystem } from '@/hooks/use-system';
 import { client } from '@/lib/api';
+import { useProfileConfiguration } from '@/hooks/use-profile-configuration';
+import { ProfileConfigurationInfoPanel } from '@/components/profile-configuration-info-panel';
 
 export default function ProfileOverviewPage() {
     const params = useParams();
@@ -25,60 +27,101 @@ export default function ProfileOverviewPage() {
     const [logsVisible, setLogsVisible] = useState(true);
 
     const { system, isLoading, error, isNotFound } = useSystem(systemId);
+    const { profileConfiguration, isLoading: profileConfigurationLoading, error: profileConfigurationError, isNotFound: profileConfigurationNotFound } = useProfileConfiguration(systemId, profileConfigurationId);
 
-        // Socket.io setup for real-time logs
-        useEffect(() => {
-          const socketInstance = io(getBackendAddress(), {
-              transports: ['websocket']
-          });
+    // Add mutation hook for creating and executing test runs
+    const { mutate: startTestRun, isPending } = client.executeTestRun.useMutation({
+        onSuccess: (response) => {
+            // Invalidate and refetch test runs
+            queryClient.invalidateQueries({
+                queryKey: ['test-runs', profileConfigurationId]
+            });
 
-          socketInstance.on('connect', () => {
-              console.log('Connected to WebSocket');
-              socketInstance.emit('join-room', `logs-${profileConfigurationId}`);
-          });
-
-          socketInstance.on('log', (log) => {
-              setLogs((prevLogs) => [...prevLogs, log]);
-              setLogStream((prevLogStream) => {
-                  const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
-                  const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
-                  return prevLogStream + formattedMessage;
-              });
-          });
-
-          socketInstance.on("log-complete", () => {
-              console.log("Log streaming complete.");
-              setIsComplete(true);
-              socketInstance.emit('leave-room', `logs-${profileConfigurationId}`);
-              socketInstance.disconnect();
-              setConformanceVisible(true);
-              setLogsVisible(false);
-              toast({
-                  title: "Test Run Completed",
-                  description: "Conformance results are now available.",
-              });
-          });
-
-          setSocket(socketInstance);
-
-          return () => {
-              if (socketInstance) {
-                  socketInstance.disconnect();
-              }
-          };
-      }, [profileConfigurationId]);
-
-    // Use ts-rest query for conformance results
-    const { data: conformanceResults, error: conformanceError } = client.checkTestRunResults.useQuery({
-        queryKey: ['conformance-results', profileConfigurationId, { enabled: isComplete }],
-        queryData: {
-          params: {
-            systemId,
-            profileConfigurationId,
-            id: profileConfigurationId
-          }
+            toast({
+                title: "Test Run Started",
+                description: `Test run ${response.body.id} has been initiated successfully.`,
+            });
+        },
+        onError: (error) => {
+            console.error('Failed to start test run:', error);
+            toast({
+                title: "Error Starting Test Run",
+                description: "There was a problem starting the test run. Please try again.",
+                variant: "destructive",
+            });
+        },
+        onSettled: () => {
+            // Additional cleanup if needed
+            queryClient.invalidateQueries({
+                queryKey: ['test-runs', profileConfigurationId]
+            });
         }
     });
+
+    // Add this query to fetch all test runs
+    const { data: testRuns } = client.getTestRuns.useQuery({
+        queryKey: ['test-runs', profileConfigurationId],
+        queryData: {
+            params: {
+                systemId,
+                profileConfigurationId
+            }
+        }
+    });
+
+        // Socket.io setup for real-time logs
+      //   useEffect(() => {
+      //     const socketInstance = io(getBackendAddress(), {
+      //         transports: ['websocket']
+      //     });
+
+      //     socketInstance.on('connect', () => {
+      //         console.log('Connected to WebSocket');
+      //         socketInstance.emit('join-room', `logs-${profileConfigurationId}`);
+      //     });
+
+      //     socketInstance.on('log', (log) => {
+      //         setLogs((prevLogs) => [...prevLogs, log]);
+      //         setLogStream((prevLogStream) => {
+      //             const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
+      //             const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
+      //             return prevLogStream + formattedMessage;
+      //         });
+      //     });
+
+      //     socketInstance.on("log-complete", () => {
+      //         console.log("Log streaming complete.");
+      //         setIsComplete(true);
+      //         socketInstance.emit('leave-room', `logs-${profileConfigurationId}`);
+      //         socketInstance.disconnect();
+      //         setConformanceVisible(true);
+      //         setLogsVisible(false);
+      //         toast({
+      //             title: "Test Run Completed",
+      //             description: "Conformance results are now available.",
+      //         });
+      //     });
+
+      //     setSocket(socketInstance);
+
+      //     return () => {
+      //         if (socketInstance) {
+      //             socketInstance.disconnect();
+      //         }
+      //     };
+      // }, [profileConfigurationId]);
+
+    // Use ts-rest query for conformance results
+    // const { data: conformanceResults, error: conformanceError } = client.checkTestRunResults.useQuery({
+    //     queryKey: ['conformance-results', profileConfigurationId, { enabled: isComplete }],
+    //     queryData: {
+    //       params: {
+    //         systemId,
+    //         profileConfigurationId,
+    //         id: profileConfigurationId
+    //       }
+    //     }
+    // });
 
     const loadingState = (
         <SystemLoadingState
@@ -92,119 +135,92 @@ export default function ProfileOverviewPage() {
         return loadingState;
     }
 
+    const handleStartNewTestRun = () => {
+        startTestRun({
+            body: {
+                profileConfigurationId,
+                systemId,
+            }
+        });
+    };
 
     // Rest of your render code remains largely the same, but using the new data sources
     return (
-        <div className="min-h-screen flex flex-col items-center p-4">
+      <div className="container mx-auto py-10 space-y-6">
             <SystemInfoPanel system={system} />
+            <ProfileConfigurationInfoPanel profileConfiguration={profileConfiguration} />
+            <h1 className="text-2xl font-bold mb-4">Test Runs</h1>
+            {/* Buttons to start a new test run */}
+            <div className="mb-4">
+            <button
+                className={`bg-blue-500 text-white px-4 py-2 rounded mr-2 ${
+                    isPending ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                onClick={handleStartNewTestRun}
+                disabled={isPending}
+            >
+                {isPending ? 'Starting Test Run...' : 'Start New Test Run'}
+            </button>
+            </div>
 
-            <h1 className="text-2xl font-bold mb-4">Test Execution Results</h1>
-            <div className="w-full max-w-4xl space-y-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>System Under Test</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-2">
-                            <div><strong>Run ID:</strong> {profileConfigurationId}</div>
-                            <div><strong>Status:</strong> {isComplete ? "Complete" : "Running"}</div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="cursor-pointer" onClick={() => setConformanceVisible(!conformanceVisible)}>
-                        <div className="flex justify-between items-center">
-                            <CardTitle>Conformance Results</CardTitle>
-                            <span>{conformanceVisible ? '▼' : '▶'}</span>
-                        </div>
-                    </CardHeader>
-                    {conformanceVisible && (
-                        <CardContent>
-                            {conformanceError ? (
-                                <div className="text-red-500">Error: {conformanceError}</div>
-                            ) : conformanceResults ? (
+            <div className="w-full max-w-6xl space-y-4">
+                {testRuns?.body.length > 0 ? (
+                    testRuns.body.map((run) => (
+                        <Card key={run.id} className="w-full">
+                            <CardHeader>
+                                <div className="flex justify-between items-center">
+                                    <CardTitle>Test Run {run.id}</CardTitle>
+                                    <span className={`px-3 py-1 rounded-full ${
+                                        run.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                        run.status === 'RUNNING' ? 'bg-blue-100 text-blue-800' :
+                                        'bg-gray-100 text-gray-800'
+                                    }`}>
+                                        {run.status}
+                                    </span>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
                                 <div className="space-y-4">
-                                    <div className="flex items-center space-x-2">
-                                        <span className="font-bold">Overall Status:</span>
-                                        <span className={conformanceResults.body.isConformant ? "text-green-500" : "text-red-500"}>
-                                            {conformanceResults.body.isConformant ? "Conformant" : "Non-Conformant"}
-                                        </span>
+                                    <div className="flex justify-between">
+                                        <div>
+                                            <div className="text-sm text-gray-500">Started at</div>
+                                            <div>{new Date(run.startedAt).toLocaleString()}</div>
+                                        </div>
+                                        {run.completedAt && (
+                                            <div>
+                                                <div className="text-sm text-gray-500">Completed at</div>
+                                                <div>{new Date(run.completedAt).toLocaleString()}</div>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {conformanceResults.body.profileResults.map((profile, index) => (
-                                        <div key={index} className="border rounded-lg p-4">
-                                            <h3 className="font-bold mb-2">{profile.profileName}</h3>
-
-                                            <div className="mb-4">
-                                                <h4 className="font-semibold text-green-500">
-                                                    Passed Tests ({profile.passedTests.length})
-                                                </h4>
-                                                <ul className="list-disc pl-5">
-                                                    {profile.passedTests.map((test, i) => (
-                                                        <li key={i}>
-                                                            [{test.feature_name}] {test.scenario_name}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-
-                                            {profile.failedTests.length > 0 && (
-                                                <div>
-                                                    <h4 className="font-semibold text-red-500">
-                                                        Failed Tests ({profile.failedTests.length})
-                                                    </h4>
-                                                    <ul className="list-disc pl-5">
-                                                        {profile.failedTests.map((test, i) => (
-                                                            <li key={i}>
-                                                                [{test.feature_name}] {test.scenario_name}
-                                                            </li>
-                                                        ))}
-                                                    </ul>
+                                    {run.results && (
+                                        <div>
+                                            <div className="text-sm font-medium mb-2">Results Summary</div>
+                                            <div className="flex space-x-4">
+                                                <div className="text-green-600">
+                                                    <span className="font-bold">{run.results.passedTests?.length || 0}</span> Passed
                                                 </div>
-                                            )}
+                                                <div className="text-red-600">
+                                                    <span className="font-bold">{run.results.failedTests?.length || 0}</span> Failed
+                                                </div>
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
-                            ) : (
-                                <p className="text-center py-4">Loading conformance results...</p>
-                            )}
-                        </CardContent>
-                    )}
-                </Card>
-
-                <Card>
-                    <CardHeader className="cursor-pointer" onClick={() => setLogsVisible(!logsVisible)}>
-                        <div className="flex justify-between items-center">
-                            <CardTitle>Execution Logs</CardTitle>
-                            <span>{logsVisible ? '▼' : '▶'}</span>
-                        </div>
-                    </CardHeader>
-                    {logsVisible && (
+                            </CardContent>
+                        </Card>
+                    ))
+                ) : (
+                    <Card className="w-full">
+                        <CardHeader>
+                            <CardTitle>No Test Runs Available</CardTitle>
+                        </CardHeader>
                         <CardContent>
-                            {logStream && logStream.length > 0 ? (
-                                <div style={{ height: '600px' }}>
-                                    <LazyLog
-                                        text={logStream}
-                                        stream={true}
-                                        follow={!isComplete}
-                                        selectableLines={true}
-                                        enableSearch={true}
-                                        height={600}
-                                        style={{
-                                            fontSize: "14px",
-                                            lineHeight: "1.5",
-                                            color: "#0f0",
-                                            backgroundColor: "#000",
-                                        }}
-                                    />
-                                </div>
-                            ) : (
-                                <p className="text-center py-4">Waiting for logs...</p>
-                            )}
+                            <p className="text-gray-500">There are currently no test runs. Click the button above to start a new test run.</p>
                         </CardContent>
-                    )}
-                </Card>
+                    </Card>
+                )}
             </div>
         </div>
     );
