@@ -3,12 +3,12 @@
 import { useParams } from 'next/navigation';
 import { client } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProfileConfigurationsTable } from '@/components/profile-configurations-table';
 
 export default function SystemDetailPage() {
   const params = useParams();
   const systemId = params.id as string;
 
-  // Use the ts-rest query hook
   const { data: response, isLoading, error } = client.getSystem.useQuery({
     queryKey: ['system', systemId],
     queryData: { params: { id: systemId } }
@@ -58,7 +58,7 @@ export default function SystemDetailPage() {
   }
 
   return (
-    <div className="container mx-auto py-10">
+    <div className="container mx-auto py-10 space-y-6">
       <Card className="w-full">
         <CardHeader>
           <CardTitle>{system.name}</CardTitle>
@@ -85,6 +85,8 @@ export default function SystemDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ProfileConfigurationsTable systemId={systemId} />
     </div>
   );
 }
