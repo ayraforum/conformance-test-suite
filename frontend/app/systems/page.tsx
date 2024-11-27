@@ -121,7 +121,7 @@ export default function SystemsPage() {
         isLoading={isLoading}
         pagination={pagination}
         onPaginationChange={onPaginationChange}
-        onRowClick={(row) => router.push(`/systems/detail/${row.original.id}`)}
+        onRowClick={(row) => router.push(`/systems/${row.original.id}`)}
       />
     </div>
   );
