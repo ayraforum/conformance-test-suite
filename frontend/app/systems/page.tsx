@@ -92,9 +92,6 @@ const columns: ColumnDef<System>[] = [
             >
               Copy system name
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>View system details</DropdownMenuItem>
-            {/* Add more actions as needed */}
           </DropdownMenuContent>
         </DropdownMenu>
       );
@@ -124,6 +121,7 @@ export default function SystemsPage() {
         isLoading={isLoading}
         pagination={pagination}
         onPaginationChange={onPaginationChange}
+        onRowClick={(row) => router.push(`/systems/detail/${row.original.id}`)}
       />
     </div>
   );

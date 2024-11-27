@@ -42,6 +42,7 @@ export interface DataTableProps<TData> {
     limit: number;
   };
   onPaginationChange: (pagination: { offset: number; limit: number }) => void;
+  onRowClick?: (row: any) => void;
 }
 
 export function DataTable<TData>({
@@ -50,6 +51,7 @@ export function DataTable<TData>({
   isLoading = false,
   pagination,
   onPaginationChange,
+  onRowClick,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -157,6 +159,8 @@ export function DataTable<TData>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  onClick={() => onRowClick?.(row)}
+                  className={onRowClick ? "cursor-pointer hover:bg-muted" : ""}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
