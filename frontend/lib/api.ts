@@ -1,10 +1,12 @@
-import { initQueryClient } from '@ts-rest/react-query';
+"use client"; // Ensure this file is client-only
+
+import { initTsrReactQuery } from '@ts-rest/react-query/v5';
 import { contract } from '@conformance-test-suite/shared/src/contractAggregator';
 import { getBackendAddress } from './backend';
 
-export const client = initQueryClient(contract, {
+export const tsr = initTsrReactQuery(contract, {
   baseUrl: getBackendAddress(),
   baseHeaders: {
-    'Content-Type': 'application/json',
+    'x-app-source': 'ts-rest',
   },
 });
