@@ -3,9 +3,12 @@ import { useTableQuery } from "@/hooks/use-table-query";
 
 export function useProfileConfigurations(systemId: string) {
   return useTableQuery(
-    (args) => client.getProfileConfigurations.useQuery({
-      ...args,
-      queryData: { params: { systemId } }
+    ({ queryKey, queryData }) => client.getProfileConfigurations.useQuery({
+      queryKey,
+      queryData: {
+        ...queryData,
+        params: { systemId }
+      }
     }),
     ['profileConfigurations', systemId]
   );
