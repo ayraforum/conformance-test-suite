@@ -1,91 +1,31 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { client } from '@/lib/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSystem } from '@/hooks/use-system';
+import { SystemLoadingState } from '@/components/system-loading-state';
 import { ProfileConfigurationsTable } from '@/components/profile-configurations-table';
+import { SystemInfoPanel } from '@/components/system-info-panel';
 
 export default function SystemDetailPage() {
   const params = useParams();
   const systemId = params.id as string;
+  const { system, isLoading, error, isNotFound } = useSystem(systemId);
 
-  const { data: response, isLoading, error } = client.getSystem.useQuery({
-    queryKey: ['system', systemId],
-    queryData: { params: { id: systemId } }
-  });
+  const loadingState = (
+    <SystemLoadingState
+      isLoading={isLoading}
+      error={error}
+      isNotFound={isNotFound}
+    />
+  );
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto py-10">
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle>Loading...</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto py-10">
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle>Error</CardTitle>
-            <CardDescription>Failed to load system details</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-red-500">{error.message}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const system = response?.body;
-
-  if (!system) {
-    return (
-      <div className="container mx-auto py-10">
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle>Not Found</CardTitle>
-            <CardDescription>System not found</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
+  if (isLoading || error || isNotFound) {
+    return loadingState;
   }
 
   return (
     <div className="container mx-auto py-10 space-y-6">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>{system.name}</CardTitle>
-          <CardDescription>System Details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h3 className="font-semibold">ID</h3>
-              <p className="text-sm text-muted-foreground">{system.id}</p>
-            </div>
-            <div>
-              <h3 className="font-semibold">Version</h3>
-              <p className="text-sm text-muted-foreground">{system.version}</p>
-            </div>
-            <div>
-              <h3 className="font-semibold">Endpoint</h3>
-              <p className="text-sm text-muted-foreground">{system.endpoint}</p>
-            </div>
-            <div>
-              <h3 className="font-semibold">Description</h3>
-              <p className="text-sm text-muted-foreground">{system.description}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
+      <SystemInfoPanel system={system} />
       <ProfileConfigurationsTable systemId={systemId} />
     </div>
   );
