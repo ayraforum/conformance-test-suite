@@ -30,10 +30,26 @@ export const TestRunResponseSchema = z.object({
     ...TestRunSchema.shape,
 });
 
+export const TestRunExecutionResponseSchema = z.object({
+    message: z.string().openapi({ description: "Confirmation message" })
+});
+
+export const TestRunResultsSchema = z.object({
+    profileResults: z.array(z.object({
+        profileName: z.string(),
+        passedTests: z.array(z.any()),
+        failedTests: z.array(z.any()),
+    })),
+    conformantProfiles: z.array(z.string()),
+    isConformant: z.boolean(),
+});
+
 export type TestRun = z.infer<typeof TestRunSchema>;
 export type TestRunCollection = z.infer<typeof TestRunCollectionSchema>;
 export type CreateTestRun = z.infer<typeof CreateTestRunSchema>;
 export type UpdateTestRun = z.infer<typeof UpdateTestRunSchema>;
+export type TestRunExecutionResponse = z.infer<typeof TestRunExecutionResponseSchema>;
+export type TestRunResults = z.infer<typeof TestRunResultsSchema>;
 
 export const testRunContract = c.router({
     getTestRuns: {
@@ -115,6 +131,38 @@ export const testRunContract = c.router({
         responses: {
             204: DeleteResourceResponseSchema,
             404: ErrorResponseSchema,
+        },
+    },
+    executeTestRun: {
+        method: "POST",
+        path: "/systems/:systemId/profile-configurations/:profileConfigurationId/test-runs/:id/execute",
+        summary: "Execute a test run",
+        description: "Start the execution of a test run for a specific profile configuration within a system",
+        body: z.object({}),
+        pathParams: z.object({
+            systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
+            profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
+            id: z.string().uuid().openapi({ description: "The ID of the test run" })
+        }),
+        responses: {
+            200: TestRunExecutionResponseSchema,
+            500: ErrorResponseSchema,
+        },
+    },
+    checkTestRunResults: {
+        method: "GET",
+        path: "/systems/:systemId/profile-configurations/:profileConfigurationId/test-runs/:id/results",
+        summary: "Check test run results",
+        description: "Retrieve the results of a test run for a specific profile configuration within a system",
+        pathParams: z.object({
+            systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
+            profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
+            id: z.string().uuid().openapi({ description: "The ID of the test run" })
+        }),
+        responses: {
+            200: TestRunResultsSchema,
+            404: ErrorResponseSchema,
+            500: ErrorResponseSchema,
         },
     },
 });

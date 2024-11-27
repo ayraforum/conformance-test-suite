@@ -6,7 +6,9 @@ import {
     getTestRunById,
     createTestRun,
     updateTestRun,
-    deleteTestRun
+    deleteTestRun,
+    executeTestRun,
+    getTestRunResults
 } from "../services/testRunService";
 
 export const s = initServer();
@@ -17,6 +19,8 @@ type GetTestRunRequest = ServerInferRequest<typeof testRunContract.getTestRun>;
 type CreateTestRunRequest = ServerInferRequest<typeof testRunContract.createTestRun>;
 type UpdateTestRunRequest = ServerInferRequest<typeof testRunContract.updateTestRun>;
 type DeleteTestRunRequest = ServerInferRequest<typeof testRunContract.deleteTestRun>;
+type ExecuteTestRunRequest = ServerInferRequest<typeof testRunContract.executeTestRun>;
+type CheckTestRunResultsRequest = ServerInferRequest<typeof testRunContract.checkTestRunResults>;
 
 export const testRunController = s.router(testRunContract, {
     getTestRuns: async ({ query, params }: GetTestRunsRequest): Promise<TestRunResponses['getTestRuns']> => {
@@ -165,5 +169,61 @@ export const testRunController = s.router(testRunContract, {
                 },
             };
         }
-    }
+    },
+
+    executeTestRun: async ({ params }): Promise<TestRunResponses['executeTestRun']> => {
+        try {
+            await executeTestRun(params.systemId, params.profileConfigurationId, params.id);
+            return {
+                status: 200,
+                body: {
+                    message: "Test run execution started successfully"
+                }
+            };
+        } catch (error) {
+            return {
+                status: 500,
+                body: {
+                    status: 500,
+                    type: "https://api.conformance-test-suite.org/errors/internal-server-error",
+                    title: "Internal Server Error",
+                    detail: error instanceof Error ? error.message : "Failed to execute test run",
+                    instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}/execute`,
+                },
+            };
+        }
+    },
+
+    checkTestRunResults: async ({ params }): Promise<TestRunResponses['checkTestRunResults']> => {
+        try {
+            const results = await getTestRunResults(params.systemId, params.profileConfigurationId, params.id);
+            return {
+                status: 200,
+                body: results
+            };
+        } catch (error) {
+            if (error instanceof Error && error.message.includes("not found")) {
+                return {
+                    status: 404,
+                    body: {
+                        status: 404,
+                        type: "https://api.conformance-test-suite.org/errors/not-found",
+                        title: "Not Found",
+                        detail: error.message,
+                        instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}/results`,
+                    },
+                };
+            }
+            return {
+                status: 500,
+                body: {
+                    status: 500,
+                    type: "https://api.conformance-test-suite.org/errors/internal-server-error",
+                    title: "Internal Server Error",
+                    detail: error instanceof Error ? error.message : "Failed to get test run results",
+                    instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}/results`,
+                },
+            };
+        }
+    },
 });
