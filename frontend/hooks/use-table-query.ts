@@ -1,6 +1,5 @@
 import { client } from '@/lib/api';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 
 export function useTableQuery<T>(
   queryFn: typeof client.getSystems,
@@ -11,23 +10,20 @@ export function useTableQuery<T>(
     limit: 10,
   });
 
-  const { data, isLoading } = useQuery({
-    ...queryFn.useQuery({
-      query: {
-        offset: pagination.offset.toString(),
-        limit: pagination.limit.toString(),
-      },
-      queryKey: [baseQueryKey, pagination.offset, pagination.limit],
-    }),
-  });
+  const queryKey = [...baseQueryKey, { offset: pagination.offset.toString(),
+    limit: pagination.limit.toString(), }];
+
+  const query = queryFn.useQuery(
+    { queryKey: queryKey},
+  );
 
   const handlePaginationChange = (newPagination: { offset: number; limit: number }) => {
     setPagination(newPagination);
   };
 
   return {
-    data: data?.body.contents ?? [],
-    isLoading,
+    data: query.data?.body.contents ?? [],
+    isLoading: query.isLoading,
     pagination,
     onPaginationChange: handlePaginationChange,
   };
