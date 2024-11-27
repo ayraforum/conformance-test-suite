@@ -13,10 +13,10 @@ const c = initContract();
 // Modify SystemSchema to extend the base metadata
 export const SystemSchema = z.object({
     id: z.string().uuid().openapi({ description: "The unique identifier for the system", example: "123e4567-e89b-12d3-a456-426614174000" }),
-    name: z.string().max(255).openapi({ description: "The name of the system", example: "Example System" }),
-    description: z.string().max(255).openapi({ description: "The description of the system", example: "Example System Description" }),
-    version: z.string().max(255).openapi({ description: "The version of the system", example: "1.0.0" }),
-    endpoint: z.string().max(255).url().openapi({ description: "The endpoint of the system", example: "https://example.com/api" }),
+    name: z.string().min(2).max(255).openapi({ description: "The name of the system", example: "Example System" }),
+    description: z.string().min(2).max(255).openapi({ description: "The description of the system", example: "Example System Description" }),
+    version: z.string().min(2).max(255).openapi({ description: "The version of the system", example: "1.0.0" }),
+    endpoint: z.string().min(2).max(255).url().openapi({ description: "The endpoint of the system", example: "https://example.com/api" }),
 });
 
 export const SystemCollectionSchema = CollectionResponseSchema.extend({

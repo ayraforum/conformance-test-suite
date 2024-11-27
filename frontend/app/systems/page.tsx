@@ -6,10 +6,11 @@ import { client } from "@/lib/api";
 import { System } from "@conformance-test-suite/shared/src/systemContract";
 import { ColumnDef } from "@tanstack/react-table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowUpDown } from "lucide-react";
+import { ArrowUpDown, Router } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const columns: ColumnDef<System>[] = [
   {
@@ -46,11 +47,29 @@ const columns: ColumnDef<System>[] = [
   },
   {
     accessorKey: "version",
-    header: "Version",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Name
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    enableSorting: true,
   },
   {
     accessorKey: "endpoint",
-    header: "Endpoint",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Name
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    enableSorting: true,
   },
   {
     id: "actions",
@@ -91,8 +110,14 @@ export default function SystemsPage() {
     onPaginationChange
   } = useTableQuery(client.getSystems, ['systems']);
 
+  const router = useRouter();
+
   return (
     <div className="container mx-auto py-10">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Systems</h1>
+        <Button onClick={() => router.push('/systems/new')}>Create System</Button>
+      </div>
       <DataTable
         data={data}
         columns={columns}
