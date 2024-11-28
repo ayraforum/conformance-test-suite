@@ -77,7 +77,7 @@ export async function getTestRunById(systemId: string, profileConfigurationId: s
 }
 
 export async function createTestRun(systemId: string, profileConfigurationId: string, data: unknown) {
-    const parsedData = CreateTestRunSchema.omit({ profileConfigurationId: true }).parse(data);
+    const parsedData = CreateTestRunSchema.parse(data);
 
     // Verify the profile configuration exists and belongs to the system
     const profileConfig = await prisma.profileConfigurations.findFirst({
@@ -95,7 +95,6 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
     const testRun = await prisma.testRuns.create({
         data: {
             ...parsedData,
-            profileConfigurationId,
             state: 'running',
             createdAt: new Date()
         }
@@ -118,35 +117,69 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
 }
 
 async function executeTestRunProcess(systemId: string, profileConfigurationId: string, testRunId: number) {
-    // Move the execution logic from the old executeTestRun function here
-    const room = `logs-${profileConfigurationId}${testRunId}`;
+    const room = `logs-${profileConfigurationId}-${testRunId}`;
     const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
 
-    const childProcess = exec(fullCommand, {
-        cwd: AATH_PATH,
-        env: {
-            ...process.env,
-            NO_TTY: "1",
-            BEHAVE_REPORT_FILENAME: `${testRunId}.json`
-        },
-    });
+    try {
+        // First verify the command path exists
+        if (!fs.existsSync(COMMAND)) {
+            throw new Error(`Command path does not exist: ${COMMAND}`);
+        }
 
-    if (!childProcess.stdout || !childProcess.stderr) {
-        throw new Error("Failed to start process streams");
-    }
+        const childProcess = exec(fullCommand, {
+            cwd: AATH_PATH,
+            env: {
+                ...process.env,
+                NO_TTY: "1",
+                BEHAVE_REPORT_FILENAME: `${testRunId}.json`
+            },
+        });
 
-    childProcess.on('exit', async (code) => {
-        const state = code === 0 ? 'completed' : 'failed';
+        if (!childProcess.stdout || !childProcess.stderr) {
+            throw new Error("Failed to start process streams");
+        }
+
+        // Store any error output
+        let errorOutput = '';
+        childProcess.stderr?.on('data', (data) => {
+            errorOutput += data.toString();
+        });
+
+        childProcess.on('error', async (error) => {
+            await prisma.testRuns.update({
+                where: { id: testRunId },
+                data: {
+                    state: 'failed',
+                    error: `Execution error: ${error.message}`,
+                    updatedAt: new Date()
+                }
+            });
+        });
+
+        childProcess.on('exit', async (code) => {
+            const state = code === 0 ? 'completed' : 'failed';
+            await prisma.testRuns.update({
+                where: { id: testRunId },
+                data: {
+                    state,
+                    error: state === 'failed' ? errorOutput || `Process exited with code ${code}` : null,
+                    updatedAt: new Date()
+                }
+            });
+        });
+
+        streamLogs(childProcess, room, `${profileConfigurationId}${testRunId}`);
+    } catch (error) {
+        // Handle any synchronous errors during setup
         await prisma.testRuns.update({
             where: { id: testRunId },
             data: {
-                state,
+                state: 'failed',
+                error: `Setup error: ${error instanceof Error ? error.message : 'Unknown error'}`,
                 updatedAt: new Date()
             }
         });
-    });
-
-    streamLogs(childProcess, room, `${profileConfigurationId}${testRunId}`);
+    }
 }
 
 export async function updateTestRun(systemId: string, profileConfigurationId: string, id: number, data: unknown) {

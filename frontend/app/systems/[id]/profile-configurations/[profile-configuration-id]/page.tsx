@@ -127,6 +127,13 @@ export default function ProfileOverviewPage() {
                                         )}
                                     </div>
 
+                                    {run.error && (
+                                        <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                                            <div className="text-sm font-medium text-red-800 mb-1">Error Detected</div>
+                                            <div className="text-red-600">{run.error}</div>
+                                        </div>
+                                    )}
+
                                     <div>
                                         <div className="text-sm font-medium mb-2">Results Summary</div>
                                         {run.results ? (
@@ -144,8 +151,6 @@ export default function ProfileOverviewPage() {
                                             </div>
                                         )}
                                     </div>
-
-
                                 </div>
                             </CardContent>
                         </Card>
