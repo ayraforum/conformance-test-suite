@@ -3,7 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useState } from 'react'
-
+import { client } from '@/lib/api'
 export default function QueryProvider({
   children,
 }: {
@@ -23,6 +23,7 @@ export default function QueryProvider({
   return (
     <QueryClientProvider client={queryClient}>
       {children}
+      <client.ReactQueryProvider>{children}</client.ReactQueryProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )
