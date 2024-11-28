@@ -117,7 +117,7 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
 }
 
 async function executeTestRunProcess(systemId: string, profileConfigurationId: string, testRunId: number) {
-    const room = `logs-${profileConfigurationId}-${testRunId}`;
+    const room = `logs-${profileConfigurationId}`;
     const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
 
     try {
@@ -168,7 +168,7 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
             });
         });
 
-        streamLogs(childProcess, room, `${profileConfigurationId}${testRunId}`);
+        streamLogs(childProcess, room, `${profileConfigurationId}-${testRunId}`);
     } catch (error) {
         // Handle any synchronous errors during setup
         await prisma.testRuns.update({
