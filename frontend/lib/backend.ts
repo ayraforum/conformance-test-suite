@@ -1,6 +1,6 @@
 export function getBackendAddress(): string {
     if (process.env.NODE_ENV === "development") {
-      return process.env.BACKEND_ADDRESS || "http://localhost:5000";
+      return process.env.BACKEND_ADDRESS || "http://localhost:5001";
     }
 
     const scheme = window.location.protocol === "https:" ? "https" : "http";

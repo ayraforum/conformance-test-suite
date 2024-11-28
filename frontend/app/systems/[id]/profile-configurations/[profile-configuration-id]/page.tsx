@@ -16,6 +16,8 @@ import { ProfileConfigurationInfoPanel } from '@/components/profile-configuratio
 import { StartTestRunButton } from '@/components/start-test-run-button';
 import { useTestRuns } from '@/hooks/use-test-runs';
 import { useTestRunMonitors } from '@/hooks/use-test-run-monitors';
+import { TestRunLogViewer } from '@/components/test-run-log-viewer';
+
 export default function ProfileOverviewPage() {
     const params = useParams();
     const systemId = params.id as string;
@@ -153,6 +155,16 @@ export default function ProfileOverviewPage() {
                                     </div>
                                 </div>
                             </CardContent>
+                            {run.state === 'running' && testRunMonitors.getMonitor(run.id) && (
+                                <div className="mt-4">
+                                    <TestRunLogViewer
+                                        profileConfigurationId={profileConfigurationId}
+                                        testRunId={run.id}
+                                        logStream={testRunMonitors.getMonitor(run.id)?.logStream || ''}
+                                        isComplete={testRunMonitors.isComplete(run.id)}
+                                    />
+                                </div>
+                            )}
                         </Card>
                     ))
                 ) : (
