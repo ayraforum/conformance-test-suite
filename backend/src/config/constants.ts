@@ -11,4 +11,5 @@ export const DEFAULT_ARGS = [
   "-t", "~@DidMethod_orb",
   "-t", "~@DidMethod_sov",
   "-t", "~@ProofType_BbsBls12381G2PubKey",
+  "logs"
 ];

@@ -98,7 +98,7 @@ export default function ProfileOverviewPage() {
               />
             </div>
 
-            <div className="w-full max-w-6xl space-y-4">
+            <div className="w-full mx-auto space-y-4">
                 {testRuns?.contents.length > 0 ? (
                     testRuns.contents.map((run) => (
                         <Card key={run.id} className="w-full">
@@ -135,7 +135,18 @@ export default function ProfileOverviewPage() {
                                             <div className="text-red-600">{run.error}</div>
                                         </div>
                                     )}
-
+                                    {run.logPath && (
+                                        <div className="flex items-center space-x-2">
+                                            <div className="text-sm font-medium">Logs:</div>
+                                            <a
+                                                href={run.logPath}
+                                                download
+                                                className="text-blue-600 hover:text-blue-800 underline text-sm"
+                                            >
+                                                Download Log File
+                                            </a>
+                                        </div>
+                                    )}
                                     <div>
                                         <div className="text-sm font-medium mb-2">Results Summary</div>
                                         {run.results ? (

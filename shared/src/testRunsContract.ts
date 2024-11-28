@@ -20,7 +20,8 @@ export const TestRunSchema = z.object({
     createdAt: z.date().openapi({ description: "When the test run was created" }),
     updatedAt: z.date().openapi({ description: "When the test run was last updated" }),
     results: z.any().nullable().optional().openapi({ description: "Test run results" }),
-    error: z.string().nullable().optional().openapi({ description: "Any errors reported while executing"})
+    error: z.string().nullable().optional().openapi({ description: "Any errors reported while executing" }),
+    logPath: z.string().nullable().optional().openapi({ description: "The path to the log file for the test run" }),
 });
 
 export const TestRunCollectionSchema = CollectionResponseSchema.extend({
