@@ -14,14 +14,14 @@ datasource db {
 }
 
 model TestRuns {
-  id                     String                @id @default(uuid())
+  id                     Int                   @id @default(autoincrement())
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt()
   profileConfigurationId String
   profileConfiguration   ProfileConfigurations @relation(fields: [profileConfigurationId], references: [id])
   logs                   String[]
   jsonReport             Json?
-  state                  String?                @default("pending")
+  state                  String                @default("pending")
   results                Json?
 }
 

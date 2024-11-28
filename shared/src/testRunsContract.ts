@@ -11,7 +11,7 @@ extendZodWithOpenApi(z);
 const c = initContract();
 
 export const TestRunSchema = z.object({
-    id: z.string().uuid().openapi({ description: "The unique identifier for the test run" }),
+    id: z.number().int().positive().openapi({ description: "The auto-incrementing unique identifier for the test run" }),
     profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the associated profile configuration" }),
     logs: z.array(z.string()).openapi({ description: "Array of log entries for the test run" }),
     jsonReport: z.any().optional().openapi({ description: "The JSON report data from the test run" }),

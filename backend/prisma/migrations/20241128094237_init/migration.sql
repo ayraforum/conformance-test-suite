@@ -1,12 +1,13 @@
 -- CreateTable
 CREATE TABLE "TestRuns" (
-    "id" TEXT NOT NULL,
+    "id" SERIAL NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "profileConfigurationId" TEXT NOT NULL,
     "logs" TEXT[],
     "jsonReport" JSONB,
     "state" TEXT NOT NULL DEFAULT 'pending',
+    "results" JSONB,
 
     CONSTRAINT "TestRuns_pkey" PRIMARY KEY ("id")
 );
@@ -32,7 +33,7 @@ CREATE TABLE "ProfileConfigurations" (
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "systemId" TEXT NOT NULL,
-    "configuration" JSONB NOT NULL,
+    "configuration" JSONB,
 
     CONSTRAINT "ProfileConfigurations_pkey" PRIMARY KEY ("id")
 );
