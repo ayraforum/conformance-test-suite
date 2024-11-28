@@ -23,8 +23,9 @@ interface StartTestRunButtonProps {
 
 export function StartTestRunButton({ systemId, profileConfigurationId }: StartTestRunButtonProps) {
   const [open, setOpen] = useState(false)
+  const queryClient = client.useQueryClient()
 
-  const mutation = client.createTestRun.useMutation({
+  const { mutate, isPending } = client.createTestRun.useMutation({
     onSuccess: (response) => {
       if (response.status === 201) {
         toast({
@@ -32,9 +33,9 @@ export function StartTestRunButton({ systemId, profileConfigurationId }: StartTe
           description: "A new test run has been initiated.",
         })
         // Invalidate the test runs query to trigger a refetch
-        // tsrQueryClient.invalidateQueries({
-        //   queryKey: ['test-runs', profileConfigurationId]
-        // })
+        queryClient.invalidateQueries({
+          queryKey: ['test-runs', systemId, profileConfigurationId]
+        })
         setOpen(false)
       }
     },
@@ -49,7 +50,7 @@ export function StartTestRunButton({ systemId, profileConfigurationId }: StartTe
   })
 
   const handleStartTestRun = () => {
-    mutation.mutate({
+    mutate({
       params: {
         systemId,
         profileConfigurationId
@@ -77,9 +78,9 @@ export function StartTestRunButton({ systemId, profileConfigurationId }: StartTe
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleStartTestRun}
-            disabled={mutation.isPending}
+            disabled={isPending}
           >
-            {mutation.isPending ? "Starting..." : "Start Test Run"}
+            {isPending ? "Starting..." : "Start Test Run"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

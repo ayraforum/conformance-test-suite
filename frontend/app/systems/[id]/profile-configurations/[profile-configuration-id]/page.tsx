@@ -15,17 +15,11 @@ import { useProfileConfiguration } from '@/hooks/use-profile-configuration';
 import { ProfileConfigurationInfoPanel } from '@/components/profile-configuration-info-panel';
 import { StartTestRunButton } from '@/components/start-test-run-button';
 import { useTestRuns } from '@/hooks/use-test-runs';
+import { useTestRunMonitors } from '@/hooks/use-test-run-monitors';
 export default function ProfileOverviewPage() {
     const params = useParams();
     const systemId = params.id as string;
     const profileConfigurationId = params['profile-configuration-id'] as string;
-
-    const [logs, setLogs] = useState<{type: string, message: string}[]>([]);
-    const [logStream, setLogStream] = useState<string>("");
-    const [socket, setSocket] = useState<Socket | null>(null);
-    const [isComplete, setIsComplete] = useState(false);
-    const [conformanceVisible, setConformanceVisible] = useState(false);
-    const [logsVisible, setLogsVisible] = useState(true);
 
     const { system, isLoading, error, isNotFound } = useSystem(systemId);
     const {
@@ -40,6 +34,28 @@ export default function ProfileOverviewPage() {
         error: testRunsError,
         isNotFound: testRunsNotFound
     } = useTestRuns(systemId, profileConfigurationId);
+
+    const runningTestRuns = testRuns?.contents.filter(run => run.state === 'running') || [];
+
+    const testRunMonitors = useTestRunMonitors(
+        runningTestRuns.map(run => ({
+            systemId,
+            profileConfigurationId,
+            testRunId: run.id
+        }))
+    );
+
+    useEffect(() => {
+        const hasCompletedRuns = runningTestRuns.some(run =>
+            testRunMonitors.isComplete(run.id)
+        );
+
+        if (hasCompletedRuns) {
+            client.useQueryClient().invalidateQueries({
+                queryKey: ['test-runs', systemId, profileConfigurationId]
+            });
+        }
+    }, [runningTestRuns, testRunMonitors.completedRuns]);
 
     // Combined loading state for all data dependencies
     const loadingState = (
@@ -56,60 +72,6 @@ export default function ProfileOverviewPage() {
         isNotFound || profileConfigurationNotFound || testRunsNotFound) {
         return loadingState;
     }
-
-    // Socket.io setup for real-time logs
-    //   useEffect(() => {
-    //     const socketInstance = io(getBackendAddress(), {
-    //         transports: ['websocket']
-    //     });
-
-    //     socketInstance.on('connect', () => {
-    //         console.log('Connected to WebSocket');
-    //         socketInstance.emit('join-room', `logs-${profileConfigurationId}`);
-    //     });
-
-    //     socketInstance.on('log', (log) => {
-    //         setLogs((prevLogs) => [...prevLogs, log]);
-    //         setLogStream((prevLogStream) => {
-    //             const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
-    //             const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
-    //             return prevLogStream + formattedMessage;
-    //         });
-    //     });
-
-    //     socketInstance.on("log-complete", () => {
-    //         console.log("Log streaming complete.");
-    //         setIsComplete(true);
-    //         socketInstance.emit('leave-room', `logs-${profileConfigurationId}`);
-    //         socketInstance.disconnect();
-    //         setConformanceVisible(true);
-    //         setLogsVisible(false);
-    //         toast({
-    //             title: "Test Run Completed",
-    //             description: "Conformance results are now available.",
-    //         });
-    //     });
-
-    //     setSocket(socketInstance);
-
-    //     return () => {
-    //         if (socketInstance) {
-    //             socketInstance.disconnect();
-    //         }
-    //     };
-    // }, [profileConfigurationId]);
-
-    // Use ts-rest query for conformance results
-    // const { data: conformanceResults, error: conformanceError } = client.checkTestRunResults.useQuery({
-    //     queryKey: ['conformance-results', profileConfigurationId, { enabled: isComplete }],
-    //     queryData: {
-    //       params: {
-    //         systemId,
-    //         profileConfigurationId,
-    //         id: profileConfigurationId
-    //       }
-    //     }
-    // });
 
     const handleStartNewTestRun = () => {
         startTestRun({
