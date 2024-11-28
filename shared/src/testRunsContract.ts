@@ -19,7 +19,8 @@ export const TestRunSchema = z.object({
     // state: z.enum(['pending', 'running', 'completed', 'failed']).openapi({ description: "The current state of the test run" }),
     createdAt: z.date().openapi({ description: "When the test run was created" }),
     updatedAt: z.date().openapi({ description: "When the test run was last updated" }),
-    results: z.any().nullable().optional().openapi({ description: "Test run results" })
+    results: z.any().nullable().optional().openapi({ description: "Test run results" }),
+    error: z.string().nullable().optional().openapi({ description: "Any errors reported while executing"})
 });
 
 export const TestRunCollectionSchema = CollectionResponseSchema.extend({

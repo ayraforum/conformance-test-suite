@@ -23,6 +23,7 @@ model TestRuns {
   jsonReport             Json?
   state                  String                @default("pending")
   results                Json?
+  error                  String?
 }
 
 model Systems {

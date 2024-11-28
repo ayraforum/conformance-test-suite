@@ -5,7 +5,7 @@ import { getBackendAddress } from "@/lib/backend";
 interface TestRunMonitor {
   systemId: string;
   profileConfigurationId: string;
-  testRunId: string;
+  testRunId: number;
 }
 
 export function useTestRunMonitors(testRuns: TestRunMonitor[]) {

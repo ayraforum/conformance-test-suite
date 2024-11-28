@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { tsr } from "@/lib/api";
 
 export default function SystemsPage() {
