@@ -20,6 +20,7 @@ model TestRuns {
   profileConfigurationId String
   profileConfiguration   ProfileConfigurations @relation(fields: [profileConfigurationId], references: [id])
   logs                   String[]
+  logPath                String?
   jsonReport             Json?
   state                  String                @default("pending")
   results                Json?

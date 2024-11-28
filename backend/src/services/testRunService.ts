@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 
 const COMMAND = `${AATH_PATH}/manage`;
+const LOGS_DIR = path.join(AATH_PATH, ".logs");
 
 const prisma = new PrismaClient();
 
@@ -120,6 +121,15 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
     const room = `logs-${profileConfigurationId}`;
     const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
 
+    // Create logs directory if it doesn't exist
+    if (!fs.existsSync(LOGS_DIR)) {
+        fs.mkdirSync(LOGS_DIR, { recursive: true });
+    }
+
+    // Create log file stream
+    const logFilePath = path.join(LOGS_DIR, `${systemId}-${profileConfigurationId}-${testRunId}.log`);
+    const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+
     try {
         // First verify the command path exists
         if (!fs.existsSync(COMMAND)) {
@@ -139,10 +149,16 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
             throw new Error("Failed to start process streams");
         }
 
-        // Store any error output
+        // Capture and store stdout
+        childProcess.stdout.on('data', (data) => {
+            logStream.write(data);
+        });
+
+        // Store any error output and write to log file
         let errorOutput = '';
         childProcess.stderr?.on('data', (data) => {
             errorOutput += data.toString();
+            logStream.write(data);
         });
 
         childProcess.on('error', async (error) => {
@@ -158,18 +174,22 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
 
         childProcess.on('exit', async (code) => {
             const state = code === 0 ? 'completed' : 'failed';
+            logStream.end(); // Close the log file stream
+
             await prisma.testRuns.update({
                 where: { id: testRunId },
                 data: {
                     state,
                     error: state === 'failed' ? errorOutput || `Process exited with code ${code}` : null,
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
+                    logPath: logFilePath // Store the log file path in the database
                 }
             });
         });
 
         streamLogs(childProcess, room, `${profileConfigurationId}-${testRunId}`);
     } catch (error) {
+        logStream.end(); // Ensure we close the stream on error
         // Handle any synchronous errors during setup
         await prisma.testRuns.update({
             where: { id: testRunId },
