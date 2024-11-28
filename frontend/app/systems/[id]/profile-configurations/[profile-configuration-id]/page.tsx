@@ -28,50 +28,76 @@ export default function ProfileOverviewPage() {
     const [logsVisible, setLogsVisible] = useState(true);
 
     const { system, isLoading, error, isNotFound } = useSystem(systemId);
-    const { profileConfiguration, isLoading: profileConfigurationLoading, error: profileConfigurationError, isNotFound: profileConfigurationNotFound } = useProfileConfiguration(systemId, profileConfigurationId);
-    const { testRuns, isLoading: testRunsLoading, error: testRunsError, isNotFound: testRunsNotFound } = useTestRuns(systemId, profileConfigurationId);
+    const {
+        profileConfiguration,
+        isLoading: profileConfigurationLoading,
+        error: profileConfigurationError,
+        isNotFound: profileConfigurationNotFound
+    } = useProfileConfiguration(systemId, profileConfigurationId);
+    const {
+        testRuns,
+        isLoading: testRunsLoading,
+        error: testRunsError,
+        isNotFound: testRunsNotFound
+    } = useTestRuns(systemId, profileConfigurationId);
 
-        // Socket.io setup for real-time logs
-      //   useEffect(() => {
-      //     const socketInstance = io(getBackendAddress(), {
-      //         transports: ['websocket']
-      //     });
+    // Combined loading state for all data dependencies
+    const loadingState = (
+        <SystemLoadingState
+            isLoading={isLoading || profileConfigurationLoading || testRunsLoading}
+            error={error || profileConfigurationError || testRunsError}
+            isNotFound={isNotFound || profileConfigurationNotFound || testRunsNotFound}
+        />
+    );
 
-      //     socketInstance.on('connect', () => {
-      //         console.log('Connected to WebSocket');
-      //         socketInstance.emit('join-room', `logs-${profileConfigurationId}`);
-      //     });
+    // Check all loading conditions before rendering main content
+    if (isLoading || profileConfigurationLoading || testRunsLoading ||
+        error || profileConfigurationError || testRunsError ||
+        isNotFound || profileConfigurationNotFound || testRunsNotFound) {
+        return loadingState;
+    }
 
-      //     socketInstance.on('log', (log) => {
-      //         setLogs((prevLogs) => [...prevLogs, log]);
-      //         setLogStream((prevLogStream) => {
-      //             const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
-      //             const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
-      //             return prevLogStream + formattedMessage;
-      //         });
-      //     });
+    // Socket.io setup for real-time logs
+    //   useEffect(() => {
+    //     const socketInstance = io(getBackendAddress(), {
+    //         transports: ['websocket']
+    //     });
 
-      //     socketInstance.on("log-complete", () => {
-      //         console.log("Log streaming complete.");
-      //         setIsComplete(true);
-      //         socketInstance.emit('leave-room', `logs-${profileConfigurationId}`);
-      //         socketInstance.disconnect();
-      //         setConformanceVisible(true);
-      //         setLogsVisible(false);
-      //         toast({
-      //             title: "Test Run Completed",
-      //             description: "Conformance results are now available.",
-      //         });
-      //     });
+    //     socketInstance.on('connect', () => {
+    //         console.log('Connected to WebSocket');
+    //         socketInstance.emit('join-room', `logs-${profileConfigurationId}`);
+    //     });
 
-      //     setSocket(socketInstance);
+    //     socketInstance.on('log', (log) => {
+    //         setLogs((prevLogs) => [...prevLogs, log]);
+    //         setLogStream((prevLogStream) => {
+    //             const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
+    //             const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
+    //             return prevLogStream + formattedMessage;
+    //         });
+    //     });
 
-      //     return () => {
-      //         if (socketInstance) {
-      //             socketInstance.disconnect();
-      //         }
-      //     };
-      // }, [profileConfigurationId]);
+    //     socketInstance.on("log-complete", () => {
+    //         console.log("Log streaming complete.");
+    //         setIsComplete(true);
+    //         socketInstance.emit('leave-room', `logs-${profileConfigurationId}`);
+    //         socketInstance.disconnect();
+    //         setConformanceVisible(true);
+    //         setLogsVisible(false);
+    //         toast({
+    //             title: "Test Run Completed",
+    //             description: "Conformance results are now available.",
+    //         });
+    //     });
+
+    //     setSocket(socketInstance);
+
+    //     return () => {
+    //         if (socketInstance) {
+    //             socketInstance.disconnect();
+    //         }
+    //     };
+    // }, [profileConfigurationId]);
 
     // Use ts-rest query for conformance results
     // const { data: conformanceResults, error: conformanceError } = client.checkTestRunResults.useQuery({
@@ -84,18 +110,6 @@ export default function ProfileOverviewPage() {
     //       }
     //     }
     // });
-
-    const loadingState = (
-        <SystemLoadingState
-            isLoading={isLoading}
-            error={error}
-            isNotFound={isNotFound}
-        />
-    );
-
-    if (isLoading || error || isNotFound) {
-        return loadingState;
-    }
 
     const handleStartNewTestRun = () => {
         startTestRun({
@@ -128,11 +142,11 @@ export default function ProfileOverviewPage() {
                                 <div className="flex justify-between items-center">
                                     <CardTitle>Test Run {run.id}</CardTitle>
                                     <span className={`px-3 py-1 rounded-full ${
-                                        run.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                                        run.status === 'RUNNING' ? 'bg-blue-100 text-blue-800' :
+                                        run.state === 'completed' ? 'bg-green-100 text-green-800' :
+                                        run.state === 'running' ? 'bg-blue-100 text-blue-800' :
                                         'bg-gray-100 text-gray-800'
                                     }`}>
-                                        {run.status}
+                                        {run.state}
                                     </span>
                                 </div>
                             </CardHeader>
@@ -141,19 +155,19 @@ export default function ProfileOverviewPage() {
                                     <div className="flex justify-between">
                                         <div>
                                             <div className="text-sm text-gray-500">Started at</div>
-                                            <div>{new Date(run.startedAt).toLocaleString()}</div>
+                                            <div>{new Date(run.createdAt).toLocaleString()}</div>
                                         </div>
-                                        {run.completedAt && (
+                                        {run.updatedAt && (
                                             <div>
-                                                <div className="text-sm text-gray-500">Completed at</div>
-                                                <div>{new Date(run.completedAt).toLocaleString()}</div>
+                                                <div className="text-sm text-gray-500">Updated at</div>
+                                                <div>{new Date(run.updatedAt).toLocaleString()}</div>
                                             </div>
                                         )}
                                     </div>
 
-                                    {run.results && (
-                                        <div>
-                                            <div className="text-sm font-medium mb-2">Results Summary</div>
+                                    <div>
+                                        <div className="text-sm font-medium mb-2">Results Summary</div>
+                                        {run.results ? (
                                             <div className="flex space-x-4">
                                                 <div className="text-green-600">
                                                     <span className="font-bold">{run.results.passedTests?.length || 0}</span> Passed
@@ -162,8 +176,14 @@ export default function ProfileOverviewPage() {
                                                     <span className="font-bold">{run.results.failedTests?.length || 0}</span> Failed
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        ) : (
+                                            <div className="text-gray-500">
+                                                Results will appear here once the test run completes...
+                                            </div>
+                                        )}
+                                    </div>
+
+
                                 </div>
                             </CardContent>
                         </Card>

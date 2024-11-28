@@ -61,7 +61,7 @@ export const testRunController = s.router(testRunContract, {
 
     getTestRun: async ({ params }: GetTestRunRequest): Promise<TestRunResponses['getTestRun']> => {
         try {
-            const testRun = await getTestRunById(params.systemId, params.profileConfigurationId, params.id);
+            const testRun = await getTestRunById(params.systemId, params.profileConfigurationId, Number(params.id));
             if (!testRun) {
                 return {
                     status: 404,
@@ -125,7 +125,7 @@ export const testRunController = s.router(testRunContract, {
 
     updateTestRun: async ({ params, body }: UpdateTestRunRequest): Promise<TestRunResponses['updateTestRun']> => {
         try {
-            const updatedTestRun = await updateTestRun(params.systemId, params.profileConfigurationId, params.id, body);
+            const updatedTestRun = await updateTestRun(params.systemId, params.profileConfigurationId, Number(params.id), body);
             const baseUrl = "https://api.conformance-test-suite.org";
             return {
                 status: 200,
@@ -151,7 +151,7 @@ export const testRunController = s.router(testRunContract, {
 
     deleteTestRun: async ({ params }: DeleteTestRunRequest): Promise<TestRunResponses['deleteTestRun']> => {
         try {
-            await deleteTestRun(params.systemId, params.profileConfigurationId, params.id);
+            await deleteTestRun(params.systemId, params.profileConfigurationId, Number(params.id));
             return { status: 204, body: { id: params.id } };
         } catch (error) {
             return {

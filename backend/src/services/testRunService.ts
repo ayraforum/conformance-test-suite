@@ -24,7 +24,7 @@ export async function getTestRuns(systemId: string, profileConfigurationId: stri
     });
 }
 
-export async function getTestRunById(systemId: string, profileConfigurationId: string, id: string) {
+export async function getTestRunById(systemId: string, profileConfigurationId: string, id: number) {
     const testRun = await prisma.testRuns.findFirst({
         where: {
             id,
@@ -117,9 +117,9 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
     return testRun;
 }
 
-async function executeTestRunProcess(systemId: string, profileConfigurationId: string, testRunId: string) {
+async function executeTestRunProcess(systemId: string, profileConfigurationId: string, testRunId: number) {
     // Move the execution logic from the old executeTestRun function here
-    const room = `logs-${testRunId}`;
+    const room = `logs-${profileConfigurationId}${testRunId}`;
     const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
 
     const childProcess = exec(fullCommand, {
@@ -146,10 +146,10 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
         });
     });
 
-    streamLogs(childProcess, room, testRunId);
+    streamLogs(childProcess, room, `${profileConfigurationId}${testRunId}`);
 }
 
-export async function updateTestRun(systemId: string, profileConfigurationId: string, id: string, data: unknown) {
+export async function updateTestRun(systemId: string, profileConfigurationId: string, id: number, data: unknown) {
     const parsedData = UpdateTestRunSchema.omit({ profileConfigurationId: true }).parse(data);
     return prisma.testRuns.update({
         where: {
@@ -163,7 +163,7 @@ export async function updateTestRun(systemId: string, profileConfigurationId: st
     });
 }
 
-export async function deleteTestRun(systemId: string, profileConfigurationId: string, id: string) {
+export async function deleteTestRun(systemId: string, profileConfigurationId: string, id: number) {
     return prisma.testRuns.delete({
         where: {
             id,
