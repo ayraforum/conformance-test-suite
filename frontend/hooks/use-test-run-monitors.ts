@@ -42,7 +42,8 @@ export function useTestRunMonitors(testRuns: TestRunMonitor[]) {
 
       setLogStreams(prevStreams => {
         const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
-        const formattedMessage = logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`;
+        const formattedMessage = logMessage === '.' ? logMessage :
+          (logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`);
         return {
           ...prevStreams,
           [correlationId]: (prevStreams[correlationId] || '') + formattedMessage
@@ -82,7 +83,7 @@ export function useTestRunMonitors(testRuns: TestRunMonitor[]) {
     getMonitor: (runId: number) => {
       const monitor = testRuns.find(run => run.testRunId === runId);
       if (!monitor) return null;
-      
+
       const correlationId = `${monitor.profileConfigurationId}-${runId.toString()}`
       return {
         logStream: logStreams[correlationId] || '',
