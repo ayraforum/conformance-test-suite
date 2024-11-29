@@ -12,15 +12,24 @@ interface CompletedTestRunLogViewerProps {
 
 export function CompletedTestRunLogViewer({ systemId, profileConfigurationId, testRunId }: CompletedTestRunLogViewerProps) {
   const [isVisible, setIsVisible] = useState(false);
-  const { logs, isLoading } = useTestRunLogs(systemId, profileConfigurationId, testRunId);
+  const [shouldFetch, setShouldFetch] = useState(false);
 
-  const logText = logs?.join('\n') || '';
+  const { logs, isLoading } = useTestRunLogs(systemId, profileConfigurationId, testRunId, shouldFetch);
+
+  const handleToggleVisibility = () => {
+    setIsVisible(!isVisible);
+    if (!shouldFetch) {
+      setShouldFetch(true);
+    }
+  };
+
+  const logText = logs?.map(log => log.message).join('\n') || '';
 
   return (
     <div className="border-t border-border mt-4 first:mt-0 first:border-t-0">
       <div
         className="flex justify-between items-center py-3 px-4 cursor-pointer hover:bg-accent/50"
-        onClick={() => setIsVisible(!isVisible)}
+        onClick={handleToggleVisibility}
       >
         <h3 className="font-semibold">Test Run {testRunId} Logs</h3>
         <span>{isVisible ? '▼' : '▶'}</span>

@@ -63,7 +63,20 @@ export const testRunController = s.router(testRunContract, {
 
     getTestRun: async ({ params }: GetTestRunRequest): Promise<TestRunResponses['getTestRun']> => {
         try {
-            const testRun = await getTestRunById(params.systemId, params.profileConfigurationId, Number(params.id));
+            const testRunId = Number(params.id);
+            if (isNaN(testRunId)) {
+                return {
+                    status: 400,
+                    body: {
+                        status: 400,
+                        type: "https://api.conformance-test-suite.org/errors/bad-request",
+                        title: "Invalid Test Run ID",
+                        detail: "Test run ID must be a valid number",
+                        instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}`,
+                    },
+                };
+            }
+            const testRun = await getTestRunById(params.systemId, params.profileConfigurationId, testRunId);
             if (!testRun) {
                 return {
                     status: 404,
@@ -127,7 +140,20 @@ export const testRunController = s.router(testRunContract, {
 
     updateTestRun: async ({ params, body }: UpdateTestRunRequest): Promise<TestRunResponses['updateTestRun']> => {
         try {
-            const updatedTestRun = await updateTestRun(params.systemId, params.profileConfigurationId, Number(params.id), body);
+            const testRunId = Number(params.id);
+            if (isNaN(testRunId)) {
+                return {
+                    status: 400,
+                    body: {
+                        status: 400,
+                        type: "https://api.conformance-test-suite.org/errors/bad-request",
+                        title: "Invalid Test Run ID",
+                        detail: "Test run ID must be a valid number",
+                        instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}`,
+                    },
+                };
+            }
+            const updatedTestRun = await updateTestRun(params.systemId, params.profileConfigurationId, testRunId, body);
             const baseUrl = "https://api.conformance-test-suite.org";
             return {
                 status: 200,
@@ -153,8 +179,21 @@ export const testRunController = s.router(testRunContract, {
 
     deleteTestRun: async ({ params }: DeleteTestRunRequest): Promise<TestRunResponses['deleteTestRun']> => {
         try {
-            await deleteTestRun(params.systemId, params.profileConfigurationId, Number(params.id));
-            return { status: 204, body: { id: params.id } };
+            const testRunId = Number(params.id);
+            if (isNaN(testRunId)) {
+                return {
+                    status: 400,
+                    body: {
+                        status: 400,
+                        type: "https://api.conformance-test-suite.org/errors/bad-request",
+                        title: "Invalid Test Run ID",
+                        detail: "Test run ID must be a valid number",
+                        instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}`,
+                    },
+                };
+            }
+            await deleteTestRun(params.systemId, params.profileConfigurationId, testRunId);
+            return { status: 204, body: { id: testRunId.toString() } };
         } catch (error) {
             return {
                 status: 404,
@@ -171,7 +210,20 @@ export const testRunController = s.router(testRunContract, {
 
     getTestRunLogs: async ({ params }: GetTestRunLogsRequest): Promise<TestRunResponses['getTestRunLogs']> => {
         try {
-            const logs = await getTestRunLogs(params.systemId, params.profileConfigurationId, Number(params.id));
+            const testRunId = Number(params.id);
+            if (isNaN(testRunId)) {
+                return {
+                    status: 400,
+                    body: {
+                        status: 400,
+                        type: "https://api.conformance-test-suite.org/errors/bad-request",
+                        title: "Invalid Test Run ID",
+                        detail: "Test run ID must be a valid number",
+                        instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}/logs`,
+                    },
+                };
+            }
+            const logs = await getTestRunLogs(params.systemId, params.profileConfigurationId, testRunId);
             const baseUrl = "https://api.conformance-test-suite.org";
             return {
                 status: 200,

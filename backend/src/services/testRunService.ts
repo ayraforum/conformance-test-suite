@@ -261,11 +261,11 @@ export async function getTestRunLogs(systemId: string, profileConfigurationId: s
     });
 
     if (!testRun) {
-        throw new Error("Test run not found");
+        throw new Error(`Requested TestRun ${id} for profile configuration ${profileConfigurationId} and system ${systemId} not found`);
     }
 
     if (!testRun.logPath || !fs.existsSync(testRun.logPath)) {
-        console.log("Log file does not exist");
+        console.log(`Log file for TestRun ${id} for profile configuration ${profileConfigurationId} and system ${systemId} does not exist`);
         return { logs: [] };
     }
 

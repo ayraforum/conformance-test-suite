@@ -1,6 +1,11 @@
 import { client } from '@/lib/api';
 
-export function useTestRunLogs(systemId: string, profileConfigurationId: string, testRunId: number) {
+export function useTestRunLogs(
+  systemId: string,
+  profileConfigurationId: string,
+  testRunId: number,
+  enabled: boolean = true
+) {
   const { data: response, isLoading, error } = client.getTestRunLogs.useQuery({
     queryKey: ['test-run-logs', systemId, profileConfigurationId, testRunId],
     queryData: {
@@ -9,7 +14,8 @@ export function useTestRunLogs(systemId: string, profileConfigurationId: string,
         profileConfigurationId,
         id: testRunId.toString()
       }
-    }
+    },
+    enabled
   });
 
   const logs = response?.body?.logs;

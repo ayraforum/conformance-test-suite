@@ -10,6 +10,11 @@ extendZodWithOpenApi(z);
 
 const c = initContract();
 
+const idParam = z.preprocess(
+    (val) => Number(val),
+    z.number().int().positive().openapi({ description: "The ID of the test run" })
+);
+
 export const TestRunSchema = z.object({
     id: z.number().int().positive().openapi({ description: "The auto-incrementing unique identifier for the test run" }),
     profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the associated profile configuration" }),
@@ -95,7 +100,7 @@ export const testRunContract = c.router({
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
+            id: idParam
         }),
         responses: {
             200: TestRunResponseSchema,
@@ -126,7 +131,7 @@ export const testRunContract = c.router({
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
+            id: idParam
         }),
         body: UpdateTestRunSchema.omit({ profileConfigurationId: true }),
         responses: {
@@ -144,7 +149,7 @@ export const testRunContract = c.router({
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
+            id: idParam
         }),
         responses: {
             204: DeleteResourceResponseSchema,
@@ -159,7 +164,7 @@ export const testRunContract = c.router({
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
+            id: idParam
         }),
         responses: {
             200: TestRunLogResponseSchema,
