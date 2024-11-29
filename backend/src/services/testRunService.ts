@@ -248,3 +248,34 @@ function checkTests(data: any[], profileName: string) {
 
     return testResults;
 }
+
+export async function getTestRunLogs(systemId: string, profileConfigurationId: string, id: number) {
+    const testRun = await prisma.testRuns.findFirst({
+        where: {
+            id,
+            profileConfiguration: {
+                id: profileConfigurationId,
+                systemId: systemId
+            }
+        }
+    });
+
+    if (!testRun) {
+        throw new Error("Test run not found");
+    }
+
+    if (!testRun.logPath || !fs.existsSync(testRun.logPath)) {
+        console.log("Log file does not exist");
+        return { logs: [] };
+    }
+
+    const logContent = fs.readFileSync(testRun.logPath, 'utf-8');
+    const logs = logContent.split('\n')
+        .filter(line => line.trim().length > 0)
+        .map(line => ({
+            type: line.includes('[ERROR]') ? 'stderr' : 'stdout',
+            message: line
+        }));
+
+    return { logs };
+}

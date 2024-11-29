@@ -6,7 +6,8 @@ import {
     getTestRunById,
     createTestRun,
     updateTestRun,
-    deleteTestRun
+    deleteTestRun,
+    getTestRunLogs
 } from "../services/testRunService";
 
 export const s = initServer();
@@ -17,6 +18,7 @@ type GetTestRunRequest = ServerInferRequest<typeof testRunContract.getTestRun>;
 type CreateTestRunRequest = ServerInferRequest<typeof testRunContract.createTestRun>;
 type UpdateTestRunRequest = ServerInferRequest<typeof testRunContract.updateTestRun>;
 type DeleteTestRunRequest = ServerInferRequest<typeof testRunContract.deleteTestRun>;
+type GetTestRunLogsRequest = ServerInferRequest<typeof testRunContract.getTestRunLogs>;
 
 export const testRunController = s.router(testRunContract, {
     getTestRuns: async ({ query, params }: GetTestRunsRequest): Promise<TestRunResponses['getTestRuns']> => {
@@ -162,6 +164,32 @@ export const testRunController = s.router(testRunContract, {
                     title: "Test Run Not Found",
                     detail: error instanceof Error ? error.message : "Failed to delete test run",
                     instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}`,
+                },
+            };
+        }
+    },
+
+    getTestRunLogs: async ({ params }: GetTestRunLogsRequest): Promise<TestRunResponses['getTestRunLogs']> => {
+        try {
+            const logs = await getTestRunLogs(params.systemId, params.profileConfigurationId, Number(params.id));
+            const baseUrl = "https://api.conformance-test-suite.org";
+            return {
+                status: 200,
+                body: {
+                    ...logs,
+                    kind: "TestRunLogs",
+                    self: `${baseUrl}/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}/logs`
+                }
+            };
+        } catch (error) {
+            return {
+                status: 404,
+                body: {
+                    status: 404,
+                    type: "https://api.conformance-test-suite.org/errors/not-found",
+                    title: "Test Run Logs Not Found",
+                    detail: error instanceof Error ? error.message : "Failed to fetch test run logs",
+                    instance: `/systems/${params.systemId}/profile-configurations/${params.profileConfigurationId}/test-runs/${params.id}/logs`,
                 },
             };
         }
