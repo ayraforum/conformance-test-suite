@@ -24,6 +24,13 @@ export const TestRunSchema = z.object({
     logPath: z.string().nullable().optional().openapi({ description: "The path to the log file for the test run" }),
 });
 
+export const TestRunLogSchema = z.object({
+    logs: z.array(z.object({
+        type: z.string(),
+        message: z.string()
+    }))
+});
+
 export const TestRunCollectionSchema = CollectionResponseSchema.extend({
     contents: z.array(TestRunSchema),
 });
@@ -34,6 +41,11 @@ export const UpdateTestRunSchema = TestRunSchema.partial();
 export const TestRunResponseSchema = z.object({
     ...ResourceResponseMetadataSchema.shape,
     ...TestRunSchema.shape,
+});
+
+export const TestRunLogResponseSchema = z.object({
+    ...ResourceResponseMetadataSchema.shape,
+    ...TestRunLogSchema.shape,
 });
 
 export const TestRunExecutionResponseSchema = z.object({
@@ -83,7 +95,7 @@ export const testRunContract = c.router({
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.string().uuid().openapi({ description: "The ID of the test run" })
+            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
         }),
         responses: {
             200: TestRunResponseSchema,
@@ -114,7 +126,7 @@ export const testRunContract = c.router({
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.string().uuid().openapi({ description: "The ID of the test run" })
+            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
         }),
         body: UpdateTestRunSchema.omit({ profileConfigurationId: true }),
         responses: {
@@ -132,10 +144,25 @@ export const testRunContract = c.router({
         pathParams: z.object({
             systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
             profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
-            id: z.string().uuid().openapi({ description: "The ID of the test run" })
+            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
         }),
         responses: {
             204: DeleteResourceResponseSchema,
+            404: ErrorResponseSchema,
+        },
+    },
+    getTestRunLogs: {
+        method: "GET",
+        path: "/systems/:systemId/profile-configurations/:profileConfigurationId/test-runs/:id/logs",
+        summary: "Get logs for a test run",
+        description: "Retrieve the logs for a specific test run",
+        pathParams: z.object({
+            systemId: z.string().uuid().openapi({ description: "The ID of the system" }),
+            profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the profile configuration" }),
+            id: z.number().int().positive().openapi({ description: "The ID of the test run" })
+        }),
+        responses: {
+            200: TestRunLogResponseSchema,
             404: ErrorResponseSchema,
         },
     }

@@ -17,6 +17,7 @@ import { StartTestRunButton } from '@/components/start-test-run-button';
 import { useTestRuns } from '@/hooks/use-test-runs';
 import { useTestRunMonitors } from '@/hooks/use-test-run-monitors';
 import { TestRunLogViewer } from '@/components/test-run-log-viewer';
+import { CompletedTestRunLogViewer } from '@/components/completed-test-run-log-viewer';
 
 export default function ProfileOverviewPage() {
     const params = useParams();
@@ -135,17 +136,12 @@ export default function ProfileOverviewPage() {
                                             <div className="text-red-600">{run.error}</div>
                                         </div>
                                     )}
-                                    {run.logPath && (
-                                        <div className="flex items-center space-x-2">
-                                            <div className="text-sm font-medium">Logs:</div>
-                                            <a
-                                                href={run.logPath}
-                                                download
-                                                className="text-blue-600 hover:text-blue-800 underline text-sm"
-                                            >
-                                                Download Log File
-                                            </a>
-                                        </div>
+                                    {run.state === 'completed' && (
+                                        <CompletedTestRunLogViewer
+                                            systemId={systemId}
+                                            profileConfigurationId={profileConfigurationId}
+                                            testRunId={run.id}
+                                        />
                                     )}
                                     <div>
                                         <div className="text-sm font-medium mb-2">Results Summary</div>
