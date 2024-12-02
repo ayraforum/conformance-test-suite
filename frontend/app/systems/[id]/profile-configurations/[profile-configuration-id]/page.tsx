@@ -19,6 +19,13 @@ import { useTestRunMonitors } from '@/hooks/use-test-run-monitors';
 import { TestRunLogViewer } from '@/components/test-run-log-viewer';
 import { CompletedTestRunLogViewer } from '@/components/completed-test-run-log-viewer';
 
+const formatElapsedTime = (startTime: string, endTime: string) => {
+    const elapsed = Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    return `${minutes}m ${seconds}s`;
+};
+
 export default function ProfileOverviewPage() {
     const params = useParams();
     const systemId = params.id as string;
@@ -59,6 +66,23 @@ export default function ProfileOverviewPage() {
             });
         }
     }, [runningTestRuns, testRunMonitors.completedRuns]);
+
+    // Add this new state and effect for tracking running time
+    const [runningTimes, setRunningTimes] = useState<Record<string, number>>({});
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setRunningTimes(prev => {
+                const newTimes = { ...prev };
+                runningTestRuns.forEach(run => {
+                    newTimes[run.id] = Math.floor((Date.now() - new Date(run.createdAt).getTime()) / 1000);
+                });
+                return newTimes;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [runningTestRuns]);
 
     // Combined loading state for all data dependencies
     const loadingState = (
@@ -106,13 +130,23 @@ export default function ProfileOverviewPage() {
                             <CardHeader>
                                 <div className="flex justify-between items-center">
                                     <CardTitle>Test Run {run.id}</CardTitle>
-                                    <span className={`px-3 py-1 rounded-full ${
-                                        run.state === 'completed' ? 'bg-green-100 text-green-800' :
-                                        run.state === 'running' ? 'bg-blue-100 text-blue-800' :
-                                        'bg-gray-100 text-gray-800'
-                                    }`}>
-                                        {run.state}
-                                    </span>
+                                    <div className="flex flex-col items-end">
+                                        <span className={`px-3 py-1 rounded-full relative ${
+                                            run.state === 'completed' ? 'bg-green-100 text-green-800' :
+                                            run.state === 'running' ? 'bg-blue-50 text-blue-800 border border-transparent' :
+                                            'bg-gray-100 text-gray-800'
+                                        } ${run.state === 'running' ? 'running-animation' : ''}`}>
+                                            {run.state}
+                                            {run.state === 'running' && (
+                                                <span className="absolute inset-0 rounded-full border-2 border-blue-400 running-border" />
+                                            )}
+                                        </span>
+                                        {run.state === 'running' && runningTimes[run.id] !== undefined && (
+                                            <span className="text-sm text-gray-500 mt-1">
+                                                Running time: {Math.floor(runningTimes[run.id] / 60)}m {runningTimes[run.id] % 60}s
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -126,6 +160,11 @@ export default function ProfileOverviewPage() {
                                             <div>
                                                 <div className="text-sm text-gray-500">Updated at</div>
                                                 <div>{new Date(run.updatedAt).toLocaleString()}</div>
+                                                {(run.state === 'completed' || run.state === 'failed') && (
+                                                    <div className="text-sm text-gray-500">
+                                                        Total time: {formatElapsedTime(run.createdAt, run.updatedAt)}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -136,7 +175,7 @@ export default function ProfileOverviewPage() {
                                             <div className="text-red-600">{run.error}</div>
                                         </div>
                                     )}
-                                    {run.state === 'completed' && (
+                                    {run.state !== 'running' && (
                                         <CompletedTestRunLogViewer
                                             systemId={systemId}
                                             profileConfigurationId={profileConfigurationId}
@@ -146,12 +185,89 @@ export default function ProfileOverviewPage() {
                                     <div>
                                         <div className="text-sm font-medium mb-2">Results Summary</div>
                                         {run.results ? (
-                                            <div className="flex space-x-4">
-                                                <div className="text-green-600">
-                                                    <span className="font-bold">{run.results.passedTests?.length || 0}</span> Passed
-                                                </div>
-                                                <div className="text-red-600">
-                                                    <span className="font-bold">{run.results.failedTests?.length || 0}</span> Failed
+                                            <div>
+                                                {run.results.profileResults.map((profileResult, index) => (
+                                                    <div key={index} className="mb-6">
+                                                        <div className="text-sm text-gray-600 mb-2">
+                                                            Profile: {profileResult.profileName}
+                                                        </div>
+                                                        <div className="flex space-x-4 mb-2">
+                                                            <div className="text-green-600">
+                                                                <span className="font-bold">{profileResult.passedTests.length}</span> Passed
+                                                            </div>
+                                                            <div className="text-red-600">
+                                                                <span className="font-bold">{profileResult.failedTests.length}</span> Failed
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Collapsible Passed Tests Section */}
+                                                        {profileResult.passedTests.length > 0 && (
+                                                            <details className="mt-2 bg-gray-50 rounded-lg">
+                                                                <summary className="cursor-pointer p-3 text-sm font-medium">
+                                                                    View Passed Tests
+                                                                </summary>
+                                                                <div className="p-3 border-t border-gray-200">
+                                                                    {profileResult.passedTests.map((test, testIndex) => (
+                                                                        <div key={testIndex} className="mb-4 last:mb-0">
+                                                                            <div className="text-sm font-medium text-gray-800">
+                                                                                {test.feature_name}
+                                                                            </div>
+                                                                            <div className="text-sm text-gray-600 mt-1">
+                                                                                {test.scenario_name}
+                                                                            </div>
+                                                                            <div className="flex flex-wrap gap-1 mt-2">
+                                                                                {test.tags.map((tag, tagIndex) => (
+                                                                                    <span
+                                                                                        key={tagIndex}
+                                                                                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                                                                                    >
+                                                                                        {tag}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </details>
+                                                        )}
+
+                                                        {/* Collapsible Failed Tests Section */}
+                                                        {profileResult.failedTests.length > 0 && (
+                                                            <details className="mt-2 bg-red-50 rounded-lg">
+                                                                <summary className="cursor-pointer p-3 text-sm font-medium">
+                                                                    View Failed Tests
+                                                                </summary>
+                                                                <div className="p-3 border-t border-red-200">
+                                                                    {profileResult.failedTests.map((test, testIndex) => (
+                                                                        <div key={testIndex} className="mb-4 last:mb-0">
+                                                                            <div className="text-sm font-medium text-gray-800">
+                                                                                {test.feature_name}
+                                                                            </div>
+                                                                            <div className="text-sm text-gray-600 mt-1">
+                                                                                {test.scenario_name}
+                                                                            </div>
+                                                                            <div className="flex flex-wrap gap-1 mt-2">
+                                                                                {test.tags.map((tag, tagIndex) => (
+                                                                                    <span
+                                                                                        key={tagIndex}
+                                                                                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800"
+                                                                                    >
+                                                                                        {tag}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </details>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                <div className="text-sm text-gray-600 mt-2">
+                                                    Overall Status: {run.results.isConformant ?
+                                                        <span className="text-green-600">Conformant</span> :
+                                                        <span className="text-red-600">Non-conformant</span>
+                                                    }
                                                 </div>
                                             </div>
                                         ) : (

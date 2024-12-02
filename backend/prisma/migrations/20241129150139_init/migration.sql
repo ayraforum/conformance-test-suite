@@ -5,9 +5,14 @@ CREATE TABLE "TestRuns" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "profileConfigurationId" TEXT NOT NULL,
     "logs" TEXT[],
+    "logPath" TEXT,
     "jsonReport" JSONB,
     "state" TEXT NOT NULL DEFAULT 'pending',
     "results" JSONB,
+    "error" TEXT,
+    "pid" INTEGER,
+    "processId" TEXT,
+    "processStatus" TEXT,
 
     CONSTRAINT "TestRuns_pkey" PRIMARY KEY ("id")
 );

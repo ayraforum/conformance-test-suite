@@ -15,6 +15,11 @@ const idParam = z.preprocess(
     z.number().int().positive().openapi({ description: "The ID of the test run" })
 );
 
+export enum ProcessStatus {
+    RUNNING = 'RUNNING',
+    EXITED = 'EXITED'
+  }
+
 export const TestRunSchema = z.object({
     id: z.number().int().positive().openapi({ description: "The auto-incrementing unique identifier for the test run" }),
     profileConfigurationId: z.string().uuid().openapi({ description: "The ID of the associated profile configuration" }),
@@ -27,6 +32,9 @@ export const TestRunSchema = z.object({
     results: z.any().nullable().optional().openapi({ description: "Test run results" }),
     error: z.string().nullable().optional().openapi({ description: "Any errors reported while executing" }),
     logPath: z.string().nullable().optional().openapi({ description: "The path to the log file for the test run" }),
+    pid: z.number().int().positive().nullable().optional().openapi({ description: "The PID of the test run process" }),
+    processId: z.string().uuid().nullable().optional().openapi({ description: "The UUID of the test run process" }),
+    processStatus: z.string().nullable().optional().openapi({ description: "The status of the test run process" }),
 });
 
 export const TestRunLogSchema = z.object({
