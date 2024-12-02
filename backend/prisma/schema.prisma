@@ -25,6 +25,9 @@ model TestRuns {
   state                  String                @default("pending")
   results                Json?
   error                  String?
+  pid                    Int?
+  processId              String? // UUID for the process
+  processStatus          String? // Status of the process
 }
 
 model Systems {

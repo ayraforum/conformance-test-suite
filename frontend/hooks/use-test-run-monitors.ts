@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getBackendAddress } from "@/lib/backend";
+import { useQueryClient } from '@tanstack/react-query';
 
 interface TestRunMonitor {
   systemId: string;
@@ -18,37 +19,54 @@ export function useTestRunMonitors(testRuns: TestRunMonitor[]) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [logStreams, setLogStreams] = useState<Record<string, string>>({});
   const [logs, setLogs] = useState<Record<string, LogEntry[]>>({});
+  const queryClient = useQueryClient();
+
+  // Memoize the room IDs
+  const rooms = useMemo(() =>
+    testRuns
+      ?.map(run => run?.profileConfigurationId ? `updates-${run.profileConfigurationId}-${run.testRunId}` : null)
+      .filter(Boolean) ?? [],
+    [testRuns?.map(run => `${run?.profileConfigurationId}-${run?.testRunId}`).join(',')]
+  );
 
   useEffect(() => {
-    if (!testRuns?.length) return;
+    if (!rooms.length) return;
 
     const socketInstance = io(getBackendAddress(), {
       transports: ['websocket']
     });
 
     socketInstance.on('connect', () => {
-      testRuns.forEach(run => {
-        if (run?.profileConfigurationId) {
-          socketInstance.emit('join-room', `logs-${run.profileConfigurationId}`);
-        }
+      rooms.forEach(room => {
+        socketInstance.emit('join-room', room);
       });
     });
 
-    socketInstance.on('log', (log: LogEntry, correlationId: string) => {
-      setLogs(prevLogs => ({
-        ...prevLogs,
-        [correlationId]: [...(prevLogs[correlationId] || []), log]
-      }));
+    socketInstance.on('update', (update: { type: string; payload?: any }, correlationId: string) => {
+      switch (update.type) {
+        case 'log':
+          setLogs(prevLogs => ({
+            ...prevLogs,
+            [correlationId]: [...(prevLogs[correlationId] || []), update.payload]
+          }));
 
-      setLogStreams(prevStreams => {
-        const logMessage = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
-        const formattedMessage = logMessage === '.' ? logMessage :
-          (logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`);
-        return {
-          ...prevStreams,
-          [correlationId]: (prevStreams[correlationId] || '') + formattedMessage
-        };
-      });
+          setLogStreams(prevStreams => {
+            const logMessage = typeof update.payload.message === 'string'
+              ? update.payload.message
+              : JSON.stringify(update.payload.message);
+            const formattedMessage = logMessage === '.' ? logMessage :
+              (logMessage.endsWith('\n') ? logMessage : `${logMessage}\n`);
+            return {
+              ...prevStreams,
+              [correlationId]: (prevStreams[correlationId] || '') + formattedMessage
+            };
+          });
+          break;
+
+        case 'status':
+          queryClient.invalidateQueries(['test-run', correlationId]);
+          break;
+      }
     });
 
     socketInstance.on("log-complete", (runId: string) => {
@@ -67,15 +85,13 @@ export function useTestRunMonitors(testRuns: TestRunMonitor[]) {
 
     return () => {
       if (socketInstance?.connected) {
-        testRuns.forEach(run => {
-          if (run?.profileConfigurationId) {
-            socketInstance.emit('leave-room', `logs-${run.profileConfigurationId}`);
-          }
+        rooms.forEach(room => {
+          socketInstance.emit('leave-room', room);
         });
         socketInstance.disconnect();
       }
     };
-  }, [JSON.stringify(testRuns)]);
+  }, [rooms]);
 
   return {
     completedRuns,
