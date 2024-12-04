@@ -1,4 +1,4 @@
-import { profileConfigurationContract } from "@conformance-test-suite/shared/src/profileConfigurationContract";
+import { ProfileConfigurationCollectionSchema, profileConfigurationContract, ProfileConfigurationSchema } from "@conformance-test-suite/shared/src/profileConfigurationContract";
 import { initServer } from "@ts-rest/express";
 import { ServerInferRequest, ServerInferResponses } from "@ts-rest/core";
 import {
@@ -44,7 +44,7 @@ export const profileConfigurationController = s.router(profileConfigurationContr
                     `${baseUrl}/systems/${params.systemId}/profile-configurations?${new URLSearchParams({ offset: Math.max(0, offset - limit).toString(), limit: limit.toString() }).toString()}` :
                     null
             };
-            return { status: 200, body: paginatedResponse };
+            return { status: 200, body: ProfileConfigurationCollectionSchema.parse(paginatedResponse) };
         } catch (error) {
             return {
                 status: 500,
@@ -78,7 +78,7 @@ export const profileConfigurationController = s.router(profileConfigurationContr
             return {
                 status: 200,
                 body: {
-                    ...configuration,
+                    ...ProfileConfigurationSchema.parse(configuration),
                     kind: "ProfileConfiguration",
                     self: `${baseUrl}/systems/${params.systemId}/profile-configurations/${params.id}`
                 }
@@ -104,7 +104,7 @@ export const profileConfigurationController = s.router(profileConfigurationContr
             return {
                 status: 201,
                 body: {
-                    ...newConfiguration,
+                    ...ProfileConfigurationSchema.parse(newConfiguration),
                     kind: "ProfileConfiguration",
                     self: `${baseUrl}/systems/${params.systemId}/profile-configurations/${newConfiguration.id}`
                 }
@@ -130,7 +130,7 @@ export const profileConfigurationController = s.router(profileConfigurationContr
             return {
                 status: 200,
                 body: {
-                    ...updatedConfiguration,
+                    ...ProfileConfigurationSchema.parse(updatedConfiguration),
                     kind: "ProfileConfiguration",
                     self: `${baseUrl}/systems/${params.systemId}/profile-configurations/${params.id}`
                 }

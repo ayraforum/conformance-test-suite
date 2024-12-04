@@ -18,6 +18,7 @@ import { useTestRuns } from '@/hooks/use-test-runs';
 import { useTestRunMonitors } from '@/hooks/use-test-run-monitors';
 import { TestRunLogViewer } from '@/components/test-run-log-viewer';
 import { CompletedTestRunLogViewer } from '@/components/completed-test-run-log-viewer';
+import QRCodeGenerator from '@/components/qr-code';
 
 const formatElapsedTime = (startTime: string, endTime: string) => {
     const elapsed = Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000);
@@ -286,6 +287,17 @@ export default function ProfileOverviewPage() {
                                         logStream={testRunMonitors.getMonitor(run.id)?.logStream || ''}
                                         isComplete={testRunMonitors.isComplete(run.id)}
                                     />
+                                </div>
+                            )}
+                            {run.state === 'waiting' && (
+                                <div className="mt-4 flex flex-col items-center justify-center p-6 bg-yellow-50 rounded-lg">
+                                    <div className="text-lg font-semibold text-yellow-800 mb-4">
+                                        Action Required: Wallet interaction needed
+                                    </div>
+                                    <div className="text-sm text-yellow-600 mb-6">
+                                        Please scan the QR code below to continue with the test run
+                                    </div>
+                                    <QRCodeGenerator text={run.lastManualInteractionStep} size={300} />
                                 </div>
                             )}
                         </Card>

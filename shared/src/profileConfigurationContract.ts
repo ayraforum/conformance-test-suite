@@ -10,12 +10,18 @@ extendZodWithOpenApi(z);
 
 const c = initContract();
 
+export enum ProfileConfigurationType {
+    API = "api",
+    MESSAGE = "message",
+}
+
 export const ProfileConfigurationSchema = z.object({
     id: z.string().uuid().openapi({ description: "The unique identifier for the profile configuration", example: "123e4567-e89b-12d3-a456-426614174000" }),
     name: z.string().min(2).max(255).openapi({ description: "The name of the profile configuration", example: "Production Profile" }),
     description: z.string().min(2).max(255).openapi({ description: "The description of the profile configuration", example: "Configuration for production environment" }),
     systemId: z.string().uuid().openapi({ description: "The ID of the associated system", example: "123e4567-e89b-12d3-a456-426614174000" }),
     configuration: z.any().optional().openapi({ description: "The JSON configuration data" }),
+    type: z.nativeEnum(ProfileConfigurationType).openapi({ description: "The type of the profile configuration", example: "api" }),
 });
 
 export const ProfileConfigurationCollectionSchema = CollectionResponseSchema.extend({

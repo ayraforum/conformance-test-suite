@@ -6,6 +6,16 @@ import { AATH_PATH, DEFAULT_ARGS } from "../config/constants";
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from 'uuid';
+import { ProfileConfiguration, ProfileConfigurationType } from "@conformance-test-suite/shared/src/profileConfigurationContract";
+import {
+    createTestPlan,
+    createTest,
+    startTest,
+    getTestStatus,
+    getTestLog
+} from '../clients/oid-conformance-suite-0.9.0-v2/sdk.gen';
+import { config } from '../config/env';
+import { TestResult } from "../models/testModel";
 
 const COMMAND = `${AATH_PATH}/manage`;
 const LOGS_DIR = path.join(AATH_PATH, ".logs");
@@ -59,7 +69,7 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
             id: profileConfigurationId,
             systemId: systemId
         }
-    });
+    }) as ProfileConfiguration;
 
     if (!profileConfig) {
         throw new Error("Profile configuration not found or does not belong to the specified system");
@@ -74,18 +84,34 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
         }
     });
 
-    // Start the execution process asynchronously
-    executeTestRunProcess(systemId, profileConfigurationId, testRun.id)
-        .catch(error => {
-            console.error('Error executing test run:', error);
-            // Update test run state to failed
-            prisma.testRuns.update({
-                where: { id: testRun.id },
-                data: {
-                    state: 'failed'
-                }
+    if(profileConfig.type === ProfileConfigurationType.API) {
+        // Assume that an OID Conformance Suite is running and accessible on the address provided
+        executeApiTestRun(systemId, profileConfigurationId, testRun.id, profileConfig)
+            .catch(error => {
+                console.error('Error executing API test run:', error);
+                prisma.testRuns.update({
+                    where: { id: testRun.id },
+                    data: {
+                        state: 'failed',
+                        error: error instanceof Error ? error.message : 'Unknown error',
+                        processStatus: ProcessStatus.EXITED
+                    }
+                });
             });
-        });
+    } else if (profileConfig.type === ProfileConfigurationType.MESSAGE) {
+        // Start the AATH execution process asynchronously locally
+        executeTestRunProcess(systemId, profileConfigurationId, testRun.id)
+            .catch(error => {
+                console.error('Error executing test run:', error);
+                // Update test run state to failed
+                prisma.testRuns.update({
+                    where: { id: testRun.id },
+                    data: {
+                        state: 'failed'
+                    }
+                });
+            });
+        }
 
     return testRun;
 }
@@ -375,4 +401,286 @@ async function updateOrphanedTestRuns(systemId: string, profileConfigurationId: 
             });
         }
     }
+}
+
+
+async function executeApiTestRun(systemId: string, profileConfigurationId: string, testRunId: number, profileConfig: ProfileConfiguration) {
+    const planName = 'oid4vp-id2-wallet-test-plan';
+    const moduleName = 'oid4vp-id2-wallet-happy-flow-no-state';
+    try {
+        // Create test plan
+        const variantConfig = {
+            credential_format: "sd_jwt_vc",
+            client_id_scheme: "did",
+            request_method: "request_uri_unsigned",
+            response_mode: "direct_post"
+        };
+
+        const variantParam = encodeURIComponent(JSON.stringify(variantConfig));
+        const planResponse = await fetch(`${config.OID_CONFORMANCE_SUITE_API_URL}/plan?planName=${planName}&variant=${variantParam}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                "alias": "dave-example",
+                "description": "dave-example",
+                "server": {
+                    "authorization_endpoint": "openid4vp://authorize"
+                },
+                "client": {
+                    "presentation_definition": {
+                        "id": "university_degree_presentation_definition",
+                        "input_descriptors": [
+                            {
+                                "id": "university_degree",
+                                "name": "University Degree",
+                                "purpose": "Verify that the holder has a university degree",
+                                "constraints": {
+                                    "fields": [
+                                        {
+                                            "path": [
+                                                "$.type"
+                                            ],
+                                            "filter": {
+                                                "type": "array",
+                                                "contains": {
+                                                    "const": "UniversityDegree"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "path": [
+                                                "$.credentialSubject.degree.type"
+                                            ],
+                                            "filter": {
+                                                "type": "string",
+                                                "const": "BachelorDegree"
+                                            }
+                                        },
+                                        {
+                                            "path": [
+                                                "$.credentialSubject.degree.name"
+                                            ],
+                                            "filter": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        {
+                                            "path": [
+                                                "$.@context"
+                                            ],
+                                            "filter": {
+                                                "type": "array",
+                                                "contains": {
+                                                    "const": "https://www.w3.org/2018/credentials/v1"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    "jwks": {
+                        "keys": [
+                            {
+                                "kty": "EC",
+                                "d": "k9UAUgc505Y7EhClayWVyaaV8K_U4nMv_P0xXCE4KP8",
+                                "crv": "P-256",
+                                "alg": "ES256",
+                                "kid": "khljdeulFBjJFBkannQf4LgMnDphp7309lcskUqtDRs",
+                                "x": "qDoclYhZi28PYgKwygUHukpLnOu3A6ZIzhVjekNiGhA",
+                                "y": "UhFlim9fLkrSu0s3GmT96FsBM_z1tayNbOmmM6sqjHU"
+                            }
+                        ]
+                    },
+                    "client_id": "test"
+                }
+            })
+        }).then(res => res.json());
+
+        if (!planResponse) {
+            throw new Error("Failed to create test plan");
+        }
+
+        const planId = planResponse.id;
+        const planModules = planResponse.modules;
+
+        // Verify plan modules contains required test
+        if (!Array.isArray(planModules) || !planModules.some(module => module.testModule === 'oid4vp-happy-flow-no-state')) {
+            throw new Error("Test plan does not contain required test module 'oid4vp-happy-flow-no-state'");
+        }
+
+        // Create test module instance
+        const moduleResponse = await fetch(`https://localhost:8443/api/runner?test=oid4vp-happy-flow-no-state&plan=${planId}&variant=%7B%7D`, {
+            method: 'POST'
+        }).then(res => res.json());
+
+        if (!moduleResponse) {
+            throw new Error("Failed to create test module");
+        }
+
+        const oidModuleId = moduleResponse.id;
+
+        // Store the module ID in the test run for status checking
+        await prisma.testRuns.update({
+            where: { id: testRunId },
+            data: {
+                processId: oidModuleId,
+                processStatus: ProcessStatus.RUNNING
+            }
+        });
+
+        // Start background monitoring process
+        monitorApiTestProgress(systemId, profileConfigurationId, testRunId, oidModuleId);
+
+    } catch (error) {
+        console.error('Error executing API test:', error);
+        await prisma.testRuns.update({
+            where: { id: testRunId },
+            data: {
+                state: 'failed',
+                error: error instanceof Error ? error.message : 'Unknown error during API test execution',
+                processStatus: ProcessStatus.EXITED
+            }
+        });
+    }
+}
+
+async function monitorApiTestProgress(systemId: string, profileConfigurationId: string, testRunId: number, oidModuleId: string) {
+    const checkStatus = async () => {
+        try {
+            console.log(`Checking status of test run ${testRunId} with module ID ${oidModuleId}`);
+
+            const testInfo = await fetch(`${config.OID_CONFORMANCE_SUITE_API_URL}/info/${oidModuleId}`).then(res => res.json());
+
+            if (!testInfo) {
+                throw new Error("Failed to get test info");
+            }
+
+            const status = testInfo.status;
+
+            // Update test run status based on response
+            if (status === 'CREATED') {
+                console.log("Test created");
+            } else if (status === 'WAITING') {
+                console.log("Test waiting for browser interaction");
+                // Wallet test is waiting for browser interaction
+                // Get current test runner state
+                const testRunnerState = await fetch(`https://localhost:8443/api/runner/${oidModuleId}`).then(res => res.json());
+
+                if (!testRunnerState) {
+                    throw new Error("Failed to get test runner state");
+                }
+
+                // Get the first URL from the browser urls array if it exists
+                const browserUrl = testRunnerState?.browser?.urls?.[0];
+
+                console.log(`Browser URL: ${browserUrl}`);
+
+                if (browserUrl) {
+                    await prisma.testRuns.update({
+                        where: { id: testRunId },
+                        data: {
+                            lastManualInteractionStep: browserUrl,
+                            processStatus: ProcessStatus.WAITING,
+                            state: 'waiting'
+                        }
+                    });
+                } else {
+                    throw new Error("No browser URL found in test runner state");
+                }
+
+            } else if (status.status === 'FINISHED') {
+                // Get test logs
+                const logResponse = await getTestLog({
+                    path: { id: oidModuleId }
+                });
+
+                if (!logResponse.data) {
+                    throw new Error("Failed to get test logs");
+                }
+
+                // Process results
+                const results = processApiTestResults(logResponse.data);
+
+                await prisma.testRuns.update({
+                    where: { id: testRunId },
+                    data: {
+                        state: 'completed',
+                        results: results,
+                        processStatus: ProcessStatus.EXITED,
+                        updatedAt: new Date()
+                    }
+                });
+
+                return; // Stop monitoring
+            } else if (status.status === 'INTERRUPTED' || status.status === 'FINISHED_WITH_ERRORS') {
+                await prisma.testRuns.update({
+                    where: { id: testRunId },
+                    data: {
+                        state: 'failed',
+                        error: `Test ${status.status.toLowerCase()}`,
+                        processStatus: ProcessStatus.EXITED,
+                        updatedAt: new Date()
+                    }
+                });
+
+                return; // Stop monitoring
+            }
+
+            // Continue monitoring
+            setTimeout(checkStatus, 5000); // Check every 5 seconds
+
+        } catch (error) {
+            console.error('Error monitoring API test:', error);
+            await prisma.testRuns.update({
+                where: { id: testRunId },
+                data: {
+                    state: 'failed',
+                    error: error instanceof Error ? error.message : 'Unknown error during monitoring',
+                    processStatus: ProcessStatus.EXITED,
+                    updatedAt: new Date()
+                }
+            });
+        }
+    };
+
+    // Start monitoring
+    checkStatus();
+}
+
+function processApiTestResults(testLog: any): any {
+    // Process the test log into the expected results format
+    const passedTests: TestResult[] = [];
+    const failedTests: TestResult[] = [];
+
+    // Process test log results into passed/failed arrays
+    // This will need to be adjusted based on the actual test log format
+    testLog.results?.forEach((result: any) => {
+        const testResult: TestResult = {
+            profile: "default-profile",
+            feature_name: result.testName || "Unknown Test",
+            scenario_name: result.description || "Unknown Scenario",
+            status: result.success ? "passed" : "failed",
+            tags: result.tags || []
+        };
+
+        if (result.success) {
+            passedTests.push(testResult);
+        } else {
+            failedTests.push(testResult);
+        }
+    });
+
+    return {
+        profileResults: [{
+            profileName: "default-profile",
+            passedTests,
+            failedTests
+        }],
+        conformantProfiles: failedTests.length === 0 ? ["default-profile"] : [],
+        isConformant: failedTests.length === 0
+    };
 }

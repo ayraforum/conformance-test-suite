@@ -17,7 +17,8 @@ const idParam = z.preprocess(
 
 export enum ProcessStatus {
     RUNNING = 'RUNNING',
-    EXITED = 'EXITED'
+    EXITED = 'EXITED',
+    WAITING = 'WAITING'
   }
 
 export const TestRunSchema = z.object({
@@ -35,6 +36,7 @@ export const TestRunSchema = z.object({
     pid: z.number().int().positive().nullable().optional().openapi({ description: "The PID of the test run process" }),
     processId: z.string().uuid().nullable().optional().openapi({ description: "The UUID of the test run process" }),
     processStatus: z.string().nullable().optional().openapi({ description: "The status of the test run process" }),
+    lastManualInteractionStep: z.string().nullable().optional().openapi({ description: "The current manual interaction step for the test run" }),
 });
 
 export const TestRunLogSchema = z.object({

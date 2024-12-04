@@ -11,6 +11,7 @@ import { useSystem } from '@/hooks/use-system';
 export default function SelectProfilePage() {
 
   const params = useParams();
+  const router = useRouter();
   const systemId = params.id as string;
   const { system, isLoading, error, isNotFound } = useSystem(systemId);
 
@@ -26,14 +27,12 @@ export default function SelectProfilePage() {
     return loadingState;
   }
 
-  const router = useRouter();
-
   // Handles selection and moves to the next step
   const handleSelect = (profile: string) => {
     if(profile === 'api') {
-      router.push(`/systems/${systemId}/profile-configurations/new/api`);
+      router.push(`/systems/${systemId}/profile-configurations/new/api/`);
     } else if (profile === 'message') {
-      router.push(`/systems/${systemId}/profile-configurations/new/message`);
+      router.push(`/systems/${systemId}/profile-configurations/new/message/`);
     }
   };
 
@@ -79,4 +78,3 @@ export default function SelectProfilePage() {
     </div>
   );
 }
-``
