@@ -1,0 +1,732 @@
+openapi: 3.0.3
+info:
+  title: OpenID Conformance Suite API
+  description: API for managing test plans, logs, and conformance testing
+  version: 1.0.0
+servers:
+  - url: /api
+    description: Base API path
+
+components:
+  schemas:
+    TestPlan:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the test plan
+        id:
+          type: string
+          description: Unique identifier for the test plan
+        modules:
+          type: array
+          items:
+            type: object
+            properties:
+              testModule:
+                type: string
+              instances:
+                type: array
+                items:
+                  type: string
+    PaginationRequest:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: Page number (0-based)
+        size:
+          type: integer
+          description: Number of items per page
+    TestLog:
+      type: object
+      properties:
+        id:
+          type: string
+        testName:
+          type: string
+        variant:
+          type: object
+        results:
+          type: array
+          items:
+            type: object
+    JWKSet:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            description: JSON Web Key
+
+paths:
+  /plan:
+    post:
+      summary: Create test plan
+      operationId: createTestPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planName:
+                  type: string
+                variant:
+                  type: object
+                config:
+                  type: object
+      responses:
+        '201':
+          description: Created test plan successfully
+        '404':
+          description: Couldn't find test plan for provided plan name
+
+    get:
+      summary: Get a list of test plan instances with paging
+      operationId: getTestPlans
+      parameters:
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Published data only
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestPlan'
+
+  /plan/{id}:
+    get:
+      summary: Get test plan information by plan id
+      operationId: getTestPlan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Retrieved successfully
+        '404':
+          description: Couldn't find test plan for provided plan Id
+    delete:
+      summary: Delete a test plan and related configuration
+      description: Requires the plan to be mutable
+      operationId: deleteMutableTestPlan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted successfully
+        '404':
+          description: Could not find a plan with the given id, belonging to the user
+        '405':
+          description: The plan is immutable and cannot be deleted
+
+  /plan/{id}/publish:
+    post:
+      summary: Publish a test plan by plan Id
+      operationId: publishTestPlan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                publish:
+                  type: string
+      responses:
+        '200':
+          description: Published test plan successfully
+        '400':
+          description: The publish field is missing or its value is not JsonPrimitive
+        '403':
+          description: The publish value is not valid or couldn't find test plan by provided plan Id
+
+  /plan/{id}/makemutable:
+    post:
+      summary: Make a test plan mutable again (requires administrator privileges)
+      operationId: makeTestPlanMutable
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Made the test plan mutable again successfully
+        '400':
+          description: Could not find plan
+        '403':
+          description: Not authorized
+
+  /plan/info/{planName}:
+    get:
+      summary: Get information for one test plan by name
+      operationId: getTestPlanInfo
+      parameters:
+        - name: planName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Retrieved successfully
+        '404':
+          description: Couldn't find test plan for provided plan name
+
+  /plan/available:
+    get:
+      summary: Get a list of available test plans and their attributes
+      operationId: getAvailableTestPlans
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    planName:
+                      type: string
+                    displayName:
+                      type: string
+                    profile:
+                      type: string
+                    modules:
+                      type: array
+                      items:
+                        type: string
+                    configurationFields:
+                      type: object
+                    summary:
+                      type: string
+                    variants:
+                      type: object
+
+  /log:
+    get:
+      summary: Get all test logs with paging
+      operationId: getAllTestLogs
+      parameters:
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Published data only
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TestLog'
+
+  /log/{id}:
+    get:
+      summary: Get test log of given testId
+      operationId: getTestLog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Since when test created
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestLog'
+
+  /log/export/{id}:
+    get:
+      summary: Export test log by test id
+      operationId: exportTestLog
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Exported successfully
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Couldn't find given test Id
+
+  /log/exporthtml/{id}:
+    get:
+      summary: Export test logs as html by test id
+      operationId: exportTestHtml
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Exported successfully
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Couldn't find given test Id
+
+  /info:
+    get:
+      summary: Get information of all test module instances
+      description: Will return all run test modules if user is admin role, otherwise only the logged in user's tests will be returned. This API is currently disabled due to performance concerns.
+      operationId: getAllTestInfo
+      responses:
+        '200':
+          description: Retrieved successfully
+        '400':
+          description: API is disabled
+
+  /info/{id}:
+    get:
+      summary: Get test information by test id
+      operationId: getTestInfo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: public
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Published data only
+      responses:
+        '200':
+          description: Retrieved successfully
+        '404':
+          description: Couldn't find test information for provided testId
+
+  /info/{id}/publish:
+    post:
+      summary: Publish test information
+      operationId: publishTestInfo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                publish:
+                  type: string
+      responses:
+        '200':
+          description: Published successfully
+        '400':
+          description: The publish field is missing or its value is not JsonPrimitive
+        '403':
+          description: The publish value is not valid
+
+  /runner:
+    post:
+      summary: Create test module instance
+      description: Normally a test plan should be created first. After a test is created, use /api/info/{testid} to wait for the test to be in the WAITING state before trying to interact with the test
+      operationId: createTest
+      parameters:
+        - name: test
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Test name, use to identify a specific TestModule
+        - name: plan
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Plan Id
+        - name: variant
+          in: query
+          required: false
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+          description: Kind of test variation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                alias:
+                  type: string
+                  description: Optional alias for the test
+                description:
+                  type: string
+                  description: Optional description for the test
+                publish:
+                  type: string
+                  description: Optional publish flag
+      responses:
+        '201':
+          description: Created test successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Test name
+                  id:
+                    type: string
+                    description: Test ID
+                  url:
+                    type: string
+                    description: Test URL
+        '400':
+          description: Configuration validation error - You shouldn't supply a configuration when creating a test from a test plan / You should supply a configuration when creating individual test module
+        '401':
+          description: Unauthorized - The plan is immutable
+        '404':
+          description: Couldn't find configuration of plan Id you provided
+        '409':
+          description: There was a failure in creating the test alias
+        '500':
+          description: Created test failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message
+
+  /runner/available:
+    get:
+      summary: Get list of available TestModule names
+      operationId: getAvailableTests
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    testName:
+                      type: string
+                    displayName:
+                      type: string
+                    profile:
+                      type: string
+                    configurationFields:
+                      type: object
+                    variants:
+                      type: object
+                    summary:
+                      type: string
+
+  /runner/running:
+    get:
+      summary: Get list of running testIDs
+      operationId: getAllRunningTestIds
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /runner/{id}:
+    get:
+      summary: Get test status, results, and exposed strings
+      operationId: getTestStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                  result:
+                    type: string
+                  exposed:
+                    type: object
+        '404':
+          description: The test you were trying to retrieve is not found
+    post:
+      summary: Start test by id
+      operationId: startTest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Started test successfully
+        '404':
+          description: The test you were trying to run is not found
+    delete:
+      summary: Cancel test by Id
+      operationId: cancelTest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cancelled test successfully
+        '404':
+          description: The test you were trying to cancel is not found
+
+  /runner/browser/{id}:
+    get:
+      summary: Get front-channel external URLs exposed to the [BrowserControl] for a given test
+      operationId: getBrowserStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  show_qr_code:
+                    type: boolean
+                  urls:
+                    type: array
+                    items:
+                      type: string
+                  visited:
+                    type: array
+                    items:
+                      type: string
+                  runners:
+                    type: object
+        '404':
+          description: The test you were trying to retrieve is not found
+        '503':
+          description: Couldn't find Browser information
+
+  /runner/browser/{id}/visit:
+    post:
+      summary: Mark front-channel external URL as visited
+      operationId: visitBrowserUrl
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Url which you want to visit
+      responses:
+        '204':
+          description: Visited url successfully
+        '404':
+          description: The test you were trying to retrieve is not found
+        '503':
+          description: Couldn't find Browser information
+
+  /jwks:
+    get:
+      summary: Get JSON Web Key Set
+      operationId: getJwks
+      responses:
+        '200':
+          description: Retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSet'
+
+  /image:
+    post:
+      summary: Upload an image
+      operationId: uploadImage
+      parameters:
+        - name: description
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Description for image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Image uploaded successfully
+
+  /certification:
+    post:
+      summary: Create certification
+      operationId: createCertification
+      parameters:
+        - name: nameOfImplementer
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Name of Entity (Implementer) Making this Certification
+        - name: deploymentVersion
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Software or Service (Deployment) Name & Version #
+        - name: conformanceProfile
+          in: query
+          required: false
+          schema:
+            type: string
+          description: OpenID Conformance Profile
+        - name: suiteSoftware
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Conformance Test Suite Software
+        - name: testDate
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Test Date
+        - name: moreInfoUrl
+          in: query
+          required: false
+          schema:
+            type: string
+          description: URL at which people interested in using your implementation can learn about it and/or obtain it
+        - name: implementationDescription
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 1-2 sentence description of the implementation
+        - name: programmingLanguage
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The programming language of the software and deployment environment for it, if applicable
+        - name: license
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Licensing terms of the software, if applicable
+      responses:
+        '200':
+          description: Certification created successfully

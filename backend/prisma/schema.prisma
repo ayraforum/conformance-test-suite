@@ -28,6 +28,7 @@ model TestRuns {
   pid                    Int?
   processId              String? // UUID for the process
   processStatus          String? // Status of the process
+  lastManualInteractionStep String?
 }
 
 model Systems {
@@ -51,4 +52,5 @@ model ProfileConfigurations {
   system        Systems    @relation(fields: [systemId], references: [id])
   configuration Json?
   testRuns      TestRuns[]
+  type          String       @default("api")
 }
