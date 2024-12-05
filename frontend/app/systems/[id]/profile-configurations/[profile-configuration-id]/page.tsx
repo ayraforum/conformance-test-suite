@@ -47,7 +47,7 @@ export default function ProfileOverviewPage() {
         isNotFound: testRunsNotFound
     } = useTestRuns(systemId, profileConfigurationId);
 
-    const runningTestRuns = testRuns?.contents.filter(run => run.state === 'running') || [];
+    const runningTestRuns = testRuns?.contents.filter(run => run.state === 'running' || run.state === 'waiting') || [];
 
     const testRunMonitors = useTestRunMonitors(
         runningTestRuns.map(run => ({
@@ -152,7 +152,7 @@ export default function ProfileOverviewPage() {
                                                 <span className="absolute inset-0 rounded-full border-2 border-blue-400 running-border" />
                                             )}
                                         </span>
-                                        {run.state === 'running' && runningTimes[run.id] !== undefined && (
+                                        {(run.state === 'running' || run.state === 'waiting') && runningTimes[run.id] !== undefined && (
                                             <span className="text-sm text-gray-500 mt-1">
                                                 Running time: {Math.floor(runningTimes[run.id] / 60)}m {runningTimes[run.id] % 60}s
                                             </span>
@@ -193,100 +193,102 @@ export default function ProfileOverviewPage() {
                                             testRunId={run.id}
                                         />
                                     )}
-                                    <div>
-                                        <div className="text-sm font-medium mb-2">Results Summary</div>
-                                        {run.results ? (
-                                            <div>
-                                                {run.results.profileResults.map((profileResult, index) => (
-                                                    <div key={index} className="mb-6">
-                                                        <div className="text-sm text-gray-600 mb-2">
-                                                            Profile: {profileResult.profileName}
-                                                        </div>
-                                                        <div className="flex space-x-4 mb-2">
-                                                            <div className="text-green-600">
-                                                                <span className="font-bold">{profileResult.passedTests.length}</span> Passed
+                                    {run.state !== 'failed' && (
+                                        <div>
+                                            <div className="text-sm font-medium mb-2">Results Summary</div>
+                                            {run.results ? (
+                                                <div>
+                                                    {run.results.profileResults.map((profileResult, index) => (
+                                                        <div key={index} className="mb-6">
+                                                            <div className="text-sm text-gray-600 mb-2">
+                                                                Profile: {profileResult.profileName}
                                                             </div>
-                                                            <div className="text-red-600">
-                                                                <span className="font-bold">{profileResult.failedTests.length}</span> Failed
+                                                            <div className="flex space-x-4 mb-2">
+                                                                <div className="text-green-600">
+                                                                    <span className="font-bold">{profileResult.passedTests.length}</span> Passed
+                                                                </div>
+                                                                <div className="text-red-600">
+                                                                    <span className="font-bold">{profileResult.failedTests.length}</span> Failed
+                                                                </div>
                                                             </div>
+
+                                                            {/* Collapsible Passed Tests Section */}
+                                                            {profileResult.passedTests.length > 0 && (
+                                                                <details className="mt-2 bg-gray-50 rounded-lg">
+                                                                    <summary className="cursor-pointer p-3 text-sm font-medium">
+                                                                        View Passed Tests
+                                                                    </summary>
+                                                                    <div className="p-3 border-t border-gray-200">
+                                                                        {profileResult.passedTests.map((test, testIndex) => (
+                                                                            <div key={testIndex} className="mb-4 last:mb-0">
+                                                                                <div className="text-sm font-medium text-gray-800">
+                                                                                    {test.feature_name}
+                                                                                </div>
+                                                                                <div className="text-sm text-gray-600 mt-1">
+                                                                                    {test.scenario_name}
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-1 mt-2">
+                                                                                    {test.tags.map((tag, tagIndex) => (
+                                                                                        <span
+                                                                                            key={tagIndex}
+                                                                                            className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                                                                                        >
+                                                                                            {tag}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </details>
+                                                            )}
+
+                                                            {/* Collapsible Failed Tests Section */}
+                                                            {profileResult.failedTests.length > 0 && (
+                                                                <details className="mt-2 bg-red-50 rounded-lg">
+                                                                    <summary className="cursor-pointer p-3 text-sm font-medium">
+                                                                        View Failed Tests
+                                                                    </summary>
+                                                                    <div className="p-3 border-t border-red-200">
+                                                                        {profileResult.failedTests.map((test, testIndex) => (
+                                                                            <div key={testIndex} className="mb-4 last:mb-0">
+                                                                                <div className="text-sm font-medium text-gray-800">
+                                                                                    {test.feature_name}
+                                                                                </div>
+                                                                                <div className="text-sm text-gray-600 mt-1">
+                                                                                    {test.scenario_name}
+                                                                                </div>
+                                                                                <div className="flex flex-wrap gap-1 mt-2">
+                                                                                    {test.tags.map((tag, tagIndex) => (
+                                                                                        <span
+                                                                                            key={tagIndex}
+                                                                                            className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800"
+                                                                                        >
+                                                                                            {tag}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </details>
+                                                            )}
                                                         </div>
-
-                                                        {/* Collapsible Passed Tests Section */}
-                                                        {profileResult.passedTests.length > 0 && (
-                                                            <details className="mt-2 bg-gray-50 rounded-lg">
-                                                                <summary className="cursor-pointer p-3 text-sm font-medium">
-                                                                    View Passed Tests
-                                                                </summary>
-                                                                <div className="p-3 border-t border-gray-200">
-                                                                    {profileResult.passedTests.map((test, testIndex) => (
-                                                                        <div key={testIndex} className="mb-4 last:mb-0">
-                                                                            <div className="text-sm font-medium text-gray-800">
-                                                                                {test.feature_name}
-                                                                            </div>
-                                                                            <div className="text-sm text-gray-600 mt-1">
-                                                                                {test.scenario_name}
-                                                                            </div>
-                                                                            <div className="flex flex-wrap gap-1 mt-2">
-                                                                                {test.tags.map((tag, tagIndex) => (
-                                                                                    <span
-                                                                                        key={tagIndex}
-                                                                                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                                                                                    >
-                                                                                        {tag}
-                                                                                    </span>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </details>
-                                                        )}
-
-                                                        {/* Collapsible Failed Tests Section */}
-                                                        {profileResult.failedTests.length > 0 && (
-                                                            <details className="mt-2 bg-red-50 rounded-lg">
-                                                                <summary className="cursor-pointer p-3 text-sm font-medium">
-                                                                    View Failed Tests
-                                                                </summary>
-                                                                <div className="p-3 border-t border-red-200">
-                                                                    {profileResult.failedTests.map((test, testIndex) => (
-                                                                        <div key={testIndex} className="mb-4 last:mb-0">
-                                                                            <div className="text-sm font-medium text-gray-800">
-                                                                                {test.feature_name}
-                                                                            </div>
-                                                                            <div className="text-sm text-gray-600 mt-1">
-                                                                                {test.scenario_name}
-                                                                            </div>
-                                                                            <div className="flex flex-wrap gap-1 mt-2">
-                                                                                {test.tags.map((tag, tagIndex) => (
-                                                                                    <span
-                                                                                        key={tagIndex}
-                                                                                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800"
-                                                                                    >
-                                                                                        {tag}
-                                                                                    </span>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </details>
-                                                        )}
+                                                    ))}
+                                                    <div className="text-sm text-gray-600 mt-2">
+                                                        Overall Status: {run.results.isConformant ?
+                                                            <span className="text-green-600">Conformant</span> :
+                                                            <span className="text-red-600">Non-conformant</span>
+                                                        }
                                                     </div>
-                                                ))}
-                                                <div className="text-sm text-gray-600 mt-2">
-                                                    Overall Status: {run.results.isConformant ?
-                                                        <span className="text-green-600">Conformant</span> :
-                                                        <span className="text-red-600">Non-conformant</span>
-                                                    }
                                                 </div>
-                                            </div>
-                                        ) : (
-                                            <div className="text-gray-500">
-                                                Results will appear here once the test run completes...
-                                            </div>
-                                        )}
-                                    </div>
+                                            ) : (
+                                                <div className="text-gray-500">
+                                                    Results will appear here once the test run completes...
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
                             {run.state === 'running' && testRunMonitors.getMonitor(run.id) && (
