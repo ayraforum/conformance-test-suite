@@ -53,4 +53,6 @@ model ProfileConfigurations {
   configuration Json?
   testRuns      TestRuns[]
   type          String       @default("api")
+  conformant   Boolean      @default(false)
+  locked        Boolean      @default(false)
 }

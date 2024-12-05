@@ -14,7 +14,7 @@ interface LogEntry {
   message: string;
 }
 
-export function useTestRunMonitors(testRuns: TestRunMonitor[]) {
+export function useTestRunMonitors(testRuns: TestRunMonitor[], systemId: string, profileConfigurationId: string) {
   const [completedRuns, setCompletedRuns] = useState<Set<string>>(new Set());
   const [socket, setSocket] = useState<Socket | null>(null);
   const [logStreams, setLogStreams] = useState<Record<string, string>>({});
@@ -64,7 +64,8 @@ export function useTestRunMonitors(testRuns: TestRunMonitor[]) {
           break;
 
         case 'status':
-          queryClient.invalidateQueries(['test-run', correlationId]);
+          queryClient.invalidateQueries({ queryKey: ['test-run', correlationId] });
+          queryClient.invalidateQueries({ queryKey: ['profile-configuration', systemId, profileConfigurationId] });
           break;
       }
     });

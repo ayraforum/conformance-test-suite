@@ -19,6 +19,7 @@ import { useTestRunMonitors } from '@/hooks/use-test-run-monitors';
 import { TestRunLogViewer } from '@/components/test-run-log-viewer';
 import { CompletedTestRunLogViewer } from '@/components/completed-test-run-log-viewer';
 import QRCodeGenerator from '@/components/qr-code';
+import { ConformanceStatusCard } from '@/components/conformance-status-card';
 
 const formatElapsedTime = (startTime: string, endTime: string) => {
     const elapsed = Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000);
@@ -53,7 +54,9 @@ export default function ProfileOverviewPage() {
             systemId,
             profileConfigurationId,
             testRunId: run.id
-        }))
+        })),
+        systemId,
+        profileConfigurationId
     );
 
     useEffect(() => {
@@ -64,6 +67,9 @@ export default function ProfileOverviewPage() {
         if (hasCompletedRuns) {
             client.useQueryClient().invalidateQueries({
                 queryKey: ['test-runs', systemId, profileConfigurationId]
+            });
+            client.useQueryClient().invalidateQueries({
+                queryKey: ['profile-configuration', systemId, profileConfigurationId]
             });
         }
     }, [runningTestRuns, testRunMonitors.completedRuns]);
@@ -115,6 +121,10 @@ export default function ProfileOverviewPage() {
       <div className="container mx-auto py-10 space-y-6">
             <SystemInfoPanel system={system} />
             <ProfileConfigurationInfoPanel profileConfiguration={profileConfiguration} />
+            <ConformanceStatusCard
+                isConformant={profileConfiguration?.conformant || false}
+                lastTestRun={testRuns?.contents[0]}
+            />
             <h1 className="text-2xl font-bold mb-4">Test Runs</h1>
             {/* Buttons to start a new test run */}
             <div className="mb-4">
