@@ -64,7 +64,7 @@ export function useTestRunMonitors(testRuns: TestRunMonitor[], systemId: string,
           break;
 
         case 'status':
-          queryClient.invalidateQueries({ queryKey: ['test-run', correlationId] });
+          queryClient.invalidateQueries({ queryKey: ['test-runs', systemId, profileConfigurationId] });
           queryClient.invalidateQueries({ queryKey: ['profile-configuration', systemId, profileConfigurationId] });
           break;
       }

@@ -8,62 +8,86 @@ type ProcessMap = Record<
 
 export const processes: ProcessMap = {};
 
-/**
- * Stream process updates to a WebSocket room.
- */
-export const streamProcessUpdates = (childProcess: ChildProcess, correlationId: string) => {
-  const room = `updates-${correlationId}`;
+type UpdateType = 'log' | 'status' | 'complete';
+type LogType = 'stdout' | 'stderr' | 'error' | 'status';
+type StatusState = 'completed' | 'failed' | 'running' | 'waiting';
 
-  // Store the process in the global map
+interface UpdatePayload {
+  type: LogType;
+  message?: string;
+  state?: StatusState;
+  error?: string;
+}
+
+interface UpdateEmitter {
+  emit: (type: UpdateType, payload: UpdatePayload) => void;
+}
+
+export class ProcessStreamManager {
+  private room: string;
+
+  constructor(private correlationId: string) {
+    this.room = `updates-${correlationId}`;
+  }
+
+  private emit(type: UpdateType, payload: UpdatePayload) {
+    io.to(this.room).emit('update', { type, payload }, this.correlationId);
+  }
+
+  logStdout(message: string) {
+    this.emit('log', { type: 'stdout', message });
+  }
+
+  logStderr(message: string) {
+    this.emit('log', { type: 'stderr', message });
+  }
+
+  logError(error: Error | string) {
+    const message = error instanceof Error ? error.message : error;
+    this.emit('log', { type: 'error', message });
+    this.emit('status', { type: 'error', state: 'failed', error: message });
+  }
+
+  sendStatus(state: StatusState) {
+    this.emit('status', { type: 'status', state });
+  }
+
+  complete(success: boolean, exitCode?: number) {
+    if (exitCode !== undefined) {
+      this.emit('log', {
+        type: 'status',
+        message: `Process exited with code ${exitCode}`
+      });
+    }
+
+    this.emit('status', { type: 'status', state: success ? 'completed' : 'failed' });
+    delete processes[this.correlationId];
+  }
+}
+
+export const streamProcessUpdates = (childProcess: ChildProcess, correlationId: string) => {
+  const manager = new ProcessStreamManager(correlationId);
+
   processes[correlationId] = {
     process: childProcess,
-    room
+    room: `updates-${correlationId}`
   };
 
-  // Stream stdout logs
-  childProcess.stdout?.on("data", (data) => {
-    io.to(room).emit("update", {
-      type: "log",
-      payload: { type: "stdout", message: data.toString() }
-    }, correlationId);
+  childProcess.stdout?.on('data', (data) => {
+    manager.logStdout(data.toString());
   });
 
-  // Stream stderr logs
-  childProcess.stderr?.on("data", (data) => {
-    io.to(room).emit("update", {
-      type: "log",
-      payload: { type: "stderr", message: data.toString() }
-    }, correlationId);
+  childProcess.stderr?.on('data', (data) => {
+    manager.logStderr(data.toString());
   });
 
-  // Handle process completion
-  childProcess.on("close", (code) => {
-    io.to(room).emit("update", {
-      type: "log",
-      payload: { type: "status", message: `Process exited with code ${code}` }
-    }, correlationId);
-
-    io.to(room).emit("update", {
-      type: "status",
-      payload: { state: code === 0 ? 'completed' : 'failed' }
-    }, correlationId);
-
-    io.to(room).emit("update", { type: "complete" }, correlationId);
-    delete processes[correlationId];
+  childProcess.on('close', (code) => {
+    manager.complete(code === 0, code ?? undefined);
   });
 
-  // Handle errors
-  childProcess.on("error", (error) => {
-    io.to(room).emit("update", {
-      type: "log",
-      payload: { type: "error", message: error.message }
-    });
-
-    io.to(room).emit("update", {
-      type: "status",
-      payload: { state: 'failed', error: error.message }
-    });
-
-    delete processes[correlationId];
+  childProcess.on('error', (error) => {
+    manager.logError(error);
   });
+
+  return manager;
 };

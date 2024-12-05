@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { CreateTestRunSchema, UpdateTestRunSchema, ProcessStatus} from "@conformance-test-suite/shared/src/testRunsContract";
 import { exec } from "child_process";
-import { streamProcessUpdates } from "./updateService";
+import { streamProcessUpdates, ProcessStreamManager } from "./updateService";
 import { AATH_PATH, DEFAULT_ARGS } from "../config/constants";
 import fs from "fs";
 import path from "path";
@@ -26,6 +26,13 @@ interface ProcessInfo {
     pid: number;
     processId: string;
     startTime: number;
+}
+
+// Define the expected structure of entry
+interface LogEntry {
+    result: string;
+    src: string;
+    msg: string;
 }
 
 export async function getTestRuns(systemId: string, profileConfigurationId: string, offset: number, limit: number) {
@@ -331,24 +338,60 @@ export async function getTestRunLogs(systemId: string, profileConfigurationId: s
         }
     });
 
+    const profileConfiguration = await prisma.profileConfigurations.findFirst({
+        where: {
+            id: profileConfigurationId,
+            systemId: systemId
+        }
+    });
+
+    if (!profileConfiguration) {
+        throw new Error(`Profile configuration ${profileConfigurationId} for system ${systemId} not found`);
+    }
+
     if (!testRun) {
         throw new Error(`Requested TestRun ${id} for profile configuration ${profileConfigurationId} and system ${systemId} not found`);
     }
 
-    if (!testRun.logPath || !fs.existsSync(testRun.logPath)) {
-        console.log(`Log file for TestRun ${id} for profile configuration ${profileConfigurationId} and system ${systemId} does not exist`);
-        return { logs: [] };
+    if (profileConfiguration.type === ProfileConfigurationType.API) {
+        if (!testRun.processId) {
+            throw new Error(`Test run ${id} for profile configuration ${profileConfigurationId} and system ${systemId} does not have a process ID`);
+        }
+        const jsonLogs = await getApiTestRunLogs(testRun.processId);
+        const logs = [];
+
+        // Process each log entry
+        for (const [key, entry] of Object.entries(jsonLogs)) {
+            // Skip metadata fields
+            if (key === 'kind' || key === 'self') continue;
+
+            const logEntry = {
+                type: (entry as LogEntry).result === 'ERROR' ? 'stderr' : 'stdout',
+                message: `[${(entry as LogEntry).result}] ${(entry as LogEntry).msg}`
+            };
+
+            logs.push(logEntry);
+        }
+
+        return { logs };
+    } else {
+        if (!testRun.logPath || !fs.existsSync(testRun.logPath)) {
+            console.log(`Log file for TestRun ${id} for profile configuration ${profileConfigurationId} and system ${systemId} does not exist`);
+            return { logs: [] };
+        }
+
+        const logContent = fs.readFileSync(testRun.logPath, 'utf-8');
+        const logs = logContent.split('\n')
+            .filter(line => line.trim().length > 0)
+            .map(line => ({
+                type: line.includes('[ERROR]') ? 'stderr' : 'stdout',
+                message: line
+            }));
+
+        return { logs };
     }
 
-    const logContent = fs.readFileSync(testRun.logPath, 'utf-8');
-    const logs = logContent.split('\n')
-        .filter(line => line.trim().length > 0)
-        .map(line => ({
-            type: line.includes('[ERROR]') ? 'stderr' : 'stdout',
-            message: line
-        }));
 
-    return { logs };
 }
 
 async function isProcessRunning(pid: number, processId: string): Promise<boolean> {
@@ -537,7 +580,7 @@ async function executeApiTestRun(systemId: string, profileConfigurationId: strin
         });
 
         // Start background monitoring process
-        monitorApiTestProgress(systemId, profileConfigurationId, testRunId, oidModuleId);
+        monitorApiTestProgress(profileConfigurationId, testRunId, oidModuleId);
 
     } catch (error) {
         console.error('Error executing API test:', error);
@@ -552,9 +595,36 @@ async function executeApiTestRun(systemId: string, profileConfigurationId: strin
     }
 }
 
-async function monitorApiTestProgress(systemId: string, profileConfigurationId: string, testRunId: number, oidModuleId: string) {
+async function monitorApiTestProgress(profileConfigurationId: string, testRunId: number, oidModuleId: string) {
+    const manager = new ProcessStreamManager(`${profileConfigurationId}-${testRunId}`);
+    let lastLogTime = 0;
+    const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+
     const checkStatus = async () => {
         try {
+
+            const testRun = await prisma.testRuns.findFirst({
+                where: { id: testRunId }
+            });
+
+            if (!testRun) {
+                throw new Error(`Test run ${testRunId} not found`);
+            }
+
+            if (Date.now() - testRun.createdAt.getTime() > TIMEOUT_MS) {
+                manager.sendStatus('failed');
+                await prisma.testRuns.update({
+                    where: { id: testRunId },
+                    data: {
+                        state: 'failed',
+                        error: 'Test run timed out after 15 minutes',
+                        processStatus: ProcessStatus.EXITED,
+                        updatedAt: new Date()
+                    }
+                });
+                return; // Stop monitoring
+            }
+
             console.log(`Checking status of test run ${testRunId} with module ID ${oidModuleId}`);
 
             const testInfo = await fetch(`${config.OID_CONFORMANCE_SUITE_API_URL}/info/${oidModuleId}`).then(res => res.json());
@@ -565,11 +635,29 @@ async function monitorApiTestProgress(systemId: string, profileConfigurationId: 
 
             const status = testInfo.status;
 
+            const logResponse = await getApiTestRunLogs(oidModuleId);
+
+            const results = processApiTestResults(logResponse);
+
+            // Filter new log entries based on time
+            const newLogs = logResponse.filter((log: any) => log.time > lastLogTime);
+
+            // Emit new log messages
+            newLogs.forEach((log: any) => {
+                manager.logStdout(log.msg);
+            });
+
+            // Update last log time
+            if (newLogs.length > 0) {
+                lastLogTime = newLogs[newLogs.length - 1].time;
+            }
+
             // Update test run status based on response
             if (status === 'CREATED') {
-                console.log("Test created");
+                console.log(`Test created for test run ${testRunId}`);
             } else if (status === 'WAITING') {
-                console.log("Test waiting for browser interaction");
+                manager.sendStatus('waiting');
+                console.log(`Test waiting for browser interaction for test run ${testRunId}`);
                 // Wallet test is waiting for browser interaction
                 // Get current test runner state
                 const testRunnerState = await fetch(`https://localhost:8443/api/runner/${oidModuleId}`).then(res => res.json());
@@ -581,15 +669,14 @@ async function monitorApiTestProgress(systemId: string, profileConfigurationId: 
                 // Get the first URL from the browser urls array if it exists
                 const browserUrl = testRunnerState?.browser?.urls?.[0];
 
-                console.log(`Browser URL: ${browserUrl}`);
-
                 if (browserUrl) {
                     await prisma.testRuns.update({
                         where: { id: testRunId },
                         data: {
                             lastManualInteractionStep: browserUrl,
                             processStatus: ProcessStatus.WAITING,
-                            state: 'waiting'
+                            state: 'waiting',
+                            results: results
                         }
                     });
                 } else {
@@ -597,17 +684,10 @@ async function monitorApiTestProgress(systemId: string, profileConfigurationId: 
                 }
 
             } else if (status.status === 'FINISHED') {
-                // Get test logs
-                const logResponse = await getTestLog({
-                    path: { id: oidModuleId }
-                });
-
-                if (!logResponse.data) {
-                    throw new Error("Failed to get test logs");
-                }
-
                 // Process results
-                const results = processApiTestResults(logResponse.data);
+                manager.sendStatus('completed');
+
+                const results = processApiTestResults(logResponse);
 
                 await prisma.testRuns.update({
                     where: { id: testRunId },
@@ -626,6 +706,7 @@ async function monitorApiTestProgress(systemId: string, profileConfigurationId: 
 
                 return; // Stop monitoring
             } else if (status.status === 'INTERRUPTED' || status.status === 'FINISHED_WITH_ERRORS') {
+                manager.sendStatus('failed');
                 await prisma.testRuns.update({
                     where: { id: testRunId },
                     data: {
@@ -661,26 +742,31 @@ async function monitorApiTestProgress(systemId: string, profileConfigurationId: 
 }
 
 function processApiTestResults(testLog: any): any {
-    // Process the test log into the expected results format
     const passedTests: TestResult[] = [];
     const failedTests: TestResult[] = [];
 
-    // Process test log results into passed/failed arrays
-    // This will need to be adjusted based on the actual test log format
-    testLog.results?.forEach((result: any) => {
+    // Filter out metadata fields and process each log entry
+    Object.entries(testLog).forEach(([key, entry]) => {
+        // Skip metadata fields
+        if (key === 'kind' || key === 'self') return;
+
+        const logEntry = entry as LogEntry;
+
+        // Create a test result from the log entry
         const testResult: TestResult = {
             profile: "default-profile",
-            feature_name: result.testName || "Unknown Test",
-            scenario_name: result.description || "Unknown Scenario",
-            status: result.success ? "passed" : "failed",
-            tags: result.tags || []
+            feature_name: logEntry.msg || "Unknown Msg",
+            scenario_name: logEntry.src || "Unknown Src",
+            status: (logEntry.result === 'SUCCESS' || logEntry.result === 'INFO') ? 'passed' : 'failed',
+            tags: [] // Add relevant tags if available in the log entry
         };
 
-        if (result.success) {
+        if (logEntry.result === 'SUCCESS' || logEntry.result === 'INFO') {
             passedTests.push(testResult);
-        } else {
+        } else if (logEntry.result === 'ERROR' || logEntry.result === 'FAILURE') {
             failedTests.push(testResult);
         }
+        // Ignore other result types (INFO, WARNING, etc.)
     });
 
     return {
@@ -707,3 +793,36 @@ async function updateProfileConformanceStatus(profileId: string) {
         console.error('Error updating profile configuration conformance status:', error);
     }
 }
+
+async function restartMonitoringForIncompleteTestRuns() {
+    const incompleteTestRuns = await prisma.testRuns.findMany({
+        where: {
+            OR: [
+                { state: 'running' },
+                { state: 'waiting' }
+            ],
+            processId: { not: null }
+        }
+    });
+
+    for (const testRun of incompleteTestRuns) {
+        console.log(`Restarting monitoring for test run ${testRun.id}`);
+        if (testRun.processId) {
+            monitorApiTestProgress(testRun.profileConfigurationId, testRun.id, testRun.processId);
+        }
+    }
+}
+
+async function getApiTestRunLogs(oidModuleId: string) {
+    // Fetch logs from the endpoint
+    const logResponse = await fetch(`https://localhost:8443/api/log/${oidModuleId}?public=false`).then(res => res.json());
+
+    if (!logResponse) {
+        throw new Error("Failed to fetch logs");
+    }
+
+    return logResponse;
+}
+
+// Call this function on service startup
+restartMonitoringForIncompleteTestRuns();
