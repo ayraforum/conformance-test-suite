@@ -26,18 +26,14 @@ const Header = () => {
     <div className="container mx-auto flex items-center justify-between p-4">
       {/* Logo and Title */}
       <div className="flex items-center space-x-4">
-        <Link href="/">
-          <img src="/logo.png" alt="Logo" className="h-8" />
+        <Link href="/systems">
+          <img src="/gan-logo.svg" alt="Logo" className="h-8" />
         </Link>
-        <span className="text-accentPink font-semibold">Conformance Test Suite</span>
+        <span className="text font-semibold mt-1">Conformance Test Suite</span>
       </div>
 
       {/* Navigation Menu */}
-      <nav className="absolute left-1/2 transform -translate-x-1/2 flex items-center space-x-8">
-        <Link href="/" className="text-lg font-semibold text-primary hover:text-accentBlue">
-          Dashboard
-        </Link>
-        <div className="border-l border-gray-300 h-6"></div>
+      <nav className="absolute left-1/2 transform -translate-x-1/2 flex items-center space-x-8 mt-1">
         <Link href="/systems" className="text-lg font-semibold text-primary hover:text-accentBlue">
           Systems
         </Link>

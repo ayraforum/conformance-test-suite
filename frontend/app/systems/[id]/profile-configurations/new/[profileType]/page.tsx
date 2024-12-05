@@ -27,18 +27,24 @@ import { useParams } from 'next/navigation';
 import { SystemLoadingState } from '@/components/system-loading-state';
 import { useSystem } from '@/hooks/use-system';
 
-const formSchema = CreateProfileConfigurationSchema.omit({ systemId: true, type: true }).extend({
+const formSchema = CreateProfileConfigurationSchema.omit({ systemId: true, type: true })
+
+const apiFormSchema = formSchema.extend({
   authorizationEndpoint: z.string().url().min(5).max(255).optional(),
   clientId: z.string().min(5).max(255).optional(),
   jwks: z.string().min(5).optional(),
-  type: z.nativeEnum(ProfileConfigurationType),
 });
+
+const messageFormSchema = formSchema;
 
 export default function ProfileConfigurationCreationForm() {
   const params = useParams();
   const profileType = (params.profileType as string) === 'api'
     ? ProfileConfigurationType.API
     : ProfileConfigurationType.MESSAGE;
+
+
+  const finalFormSchema = profileType === ProfileConfigurationType.API ? apiFormSchema : messageFormSchema;
 
   const systemId = params.id as string;
   const { system, isLoading, error, isNotFound } = useSystem(systemId);
@@ -67,7 +73,7 @@ export default function ProfileConfigurationCreationForm() {
 
   // Setup form
   const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(finalFormSchema),
     defaultValues: {
       name: profileType === ProfileConfigurationType.API
         ? "API Profile Configuration"

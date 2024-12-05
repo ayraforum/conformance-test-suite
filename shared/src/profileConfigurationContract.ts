@@ -22,6 +22,8 @@ export const ProfileConfigurationSchema = z.object({
     systemId: z.string().uuid().openapi({ description: "The ID of the associated system", example: "123e4567-e89b-12d3-a456-426614174000" }),
     configuration: z.any().optional().openapi({ description: "The JSON configuration data" }),
     type: z.nativeEnum(ProfileConfigurationType).openapi({ description: "The type of the profile configuration", example: "api" }),
+    conformant: z.boolean().default(false).openapi({ description: "The conformance status of the profile configuration", example: true }),
+    locked: z.boolean().default(false).openapi({ description: "Whether the profile configuration is locked", example: false }),
 });
 
 export const ProfileConfigurationCollectionSchema = CollectionResponseSchema.extend({

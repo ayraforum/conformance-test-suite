@@ -216,6 +216,10 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
                             failedTests: failedTests
                         }]
                     };
+
+                    if (results.isConformant) {
+                        await updateProfileConformanceStatus(profileConfigurationId);
+                    }
                 } else {
                     errorReadingResults = `Test results file does not exist: ${jsonOutputPath}`;
                     console.log(errorReadingResults);
@@ -508,12 +512,12 @@ async function executeApiTestRun(systemId: string, profileConfigurationId: strin
         const planModules = planResponse.modules;
 
         // Verify plan modules contains required test
-        if (!Array.isArray(planModules) || !planModules.some(module => module.testModule === 'oid4vp-happy-flow-no-state')) {
-            throw new Error("Test plan does not contain required test module 'oid4vp-happy-flow-no-state'");
+        if (!Array.isArray(planModules) || !planModules.some(module => module.testModule === moduleName)) {
+            throw new Error(`Test plan does not contain required test module ${moduleName}`);
         }
 
         // Create test module instance
-        const moduleResponse = await fetch(`https://localhost:8443/api/runner?test=oid4vp-happy-flow-no-state&plan=${planId}&variant=%7B%7D`, {
+        const moduleResponse = await fetch(`https://localhost:8443/api/runner?test=${moduleName}&plan=${planId}&variant=%7B%7D`, {
             method: 'POST'
         }).then(res => res.json());
 
@@ -615,6 +619,11 @@ async function monitorApiTestProgress(systemId: string, profileConfigurationId: 
                     }
                 });
 
+                // If test was successful and system is conformant, update system status
+                if (results.isConformant) {
+                    await updateProfileConformanceStatus(profileConfigurationId);
+                }
+
                 return; // Stop monitoring
             } else if (status.status === 'INTERRUPTED' || status.status === 'FINISHED_WITH_ERRORS') {
                 await prisma.testRuns.update({
@@ -683,4 +692,18 @@ function processApiTestResults(testLog: any): any {
         conformantProfiles: failedTests.length === 0 ? ["default-profile"] : [],
         isConformant: failedTests.length === 0
     };
+}
+
+async function updateProfileConformanceStatus(profileId: string) {
+    try {
+        await prisma.profileConfigurations.update({
+            where: { id: profileId },
+            data: {
+                conformant: true,
+                locked: true
+            }
+        });
+    } catch (error) {
+        console.error('Error updating profile configuration conformance status:', error);
+    }
 }

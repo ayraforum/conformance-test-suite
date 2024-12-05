@@ -50,6 +50,32 @@ export const columns: ColumnDef<ProfileConfiguration>[] = [
     ),
   },
   {
+    accessorKey: "conformant",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Conformance
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    cell: ({ row }) => {
+      const conformant = row.getValue("conformant");
+      return (
+        <div className={`
+          inline-flex px-2 py-1 rounded-full text-xs font-medium
+          ${conformant
+            ? "bg-green-200/50 text-green-700 dark:bg-green-900/50 dark:text-green-300"
+            : "bg-red-200/50 text-red-700 dark:bg-red-900/50 dark:text-red-300"
+          }
+        `}>
+          {conformant ? "Conformant" : "Non-conformant"}
+        </div>
+      );
+    },
+  },
+  {
     id: "actions",
     cell: ({ row }) => {
       const config = row.original;
