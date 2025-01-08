@@ -18,13 +18,14 @@ The CTS integrates existing open-source test suites, such as the Aries Agent Tes
 └── docs/              # Documentation files
 ```
 
+---
+
 ## Getting Started
 
 ### Prerequisites
 - Node.js (LTS version)
 - pnpm package manager
-
-### Development Setup
+- Community Test Harnesses (see below)
 
 #### Community Test Harnesses
 
@@ -43,6 +44,15 @@ There is an environment variable in the backend `.env` file that points to the A
 
 Example Commands:
 
+#### Aries Agent Test Harness
+
+```bash
+# Clone the Aries Agent Test Harness
+git clone https://github.com/openwallet-foundation/owl-agent-test-harness.git
+```
+
+#### OpenID Conformance Suite
+
 ```bash
 # Clone the OpenID Conformance Suite
 git clone https://gitlab.com/openid/conformance-suite.git
@@ -53,8 +63,9 @@ devenv up
 # In another terminal, start the OpenID Conformance Suite server
 mvn spring-boot:run
 ```
+---
 
-#### Conformance Test Suite
+### Development Setup
 
 This will start both the frontend and backend concurrently.
 
