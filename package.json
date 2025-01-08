@@ -1,5 +1,11 @@
 {
   "name": "cts",
   "private": true,
-  "packageManager": "pnpm@9.1.0"
+  "packageManager": "pnpm@9.1.0",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "scripts": {
+    "dev": "concurrently --prefix '[{name}]' --names 'frontend,backend' \"pnpm --filter frontend run dev\" \"pnpm --filter backend run dev\""
+  }
 }

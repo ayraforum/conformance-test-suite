@@ -1,20 +1,82 @@
 # Conformance Test Suite
 
-A modern web application for managing and running conformance tests, built with Next.js frontend and Express.js backend.
+A modern web application for managing and running conformance tests, built with a Next.js frontend and Express.js backend.
 
 ## Overview
 
-The Conformance Test Suite is a comprehensive testing platform that allows users to manage, configure, and monitor test runs for system conformance testing. The application features a modern web interface and a robust backend API.
+The Conformance Test Suite (CTS) underpins interoperability in the GAN Trust Network by enabling systems to be tested for compliance with GAN's technical interoperability profiles. It is designed to reduce complexity for developers, ensure system compatibility, and accelerate adoption of interoperable standards.
+
+The CTS integrates existing open-source test suites, such as the Aries Agent Test Harness (AATH) and the OpenID Conformance Suite, to verify conformance. While initially focused on interoperability, the CTS will evolve to include security, performance, and certification testing.
 
 ## Project Structure
 
 ```
 ├── frontend/          # Next.js frontend application
-├── backend/          # Express.js backend server
-├── shared/           # Shared utilities and types
-├── hurl/            # API testing configurations
-└── docs/            # Documentation files
+├── backend/           # Express.js backend server
+├── shared/            # Shared utilities and types
+├── hurl/              # API testing configurations
+└── docs/              # Documentation files
 ```
+
+## Getting Started
+
+### Prerequisites
+- Node.js (LTS version)
+- pnpm package manager
+
+### Development Setup
+
+This will start both the frontend and backend concurrently.
+
+Development setup includes hot-reloading, source code mounting, and development dependencies:
+
+1. Clone the repository:
+   ```bash
+   git clone git@github.com:GANfoundation/conformance-test-suite.git
+   ```
+
+2. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+
+3. Copy the example environment files:
+    ```bash
+    cp frontend/.env.example frontend/.env
+    cp backend/.env.example backend/.env
+    ```
+
+4. Start the postgres database required for the backend from the root directory:
+   ```bash
+   docker compose up -d
+   ```
+
+5. Run prisma migrations to create the database schema:
+   ```bash
+   pnpm --filter backend prisma-migrate
+   ```
+
+6. Start the development servers:
+   ```bash
+   pnpm dev
+   ```
+
+### Environment Variables
+
+Update the environment variables as needed for your setup.
+
+| Variable                      | Description                                         | Example                                                           |
+| ----------------------------- | --------------------------------------------------- | ----------------------------------------------------------------- |
+| DATABASE_URL                  | PostgreSQL connection string for Prisma             | `postgresql://postgres:postgres@localhost:5432/cts?schema=public` |
+| AATH_PATH                     | Local path to Aries Agent Test Harness installation | `/home/user/Projects/owl-agent-test-harness`                      |
+| PORT                          | Backend server port                                 | `5001`                                                            |
+| OID_CONFORMANCE_SUITE_API_URL | OpenID Conformance Suite API endpoint               | `https://localhost:8443/api`                                      |
+
+Note: Never commit sensitive environment variables to version control. The `.env` files are included in `.gitignore` by default.
+
+## Developer Experience
+
+The project leverages pnpm workspaces for efficient dependency management and `concurrently` for running both the frontend and backend servers with a single command. The backend uses `nodemon` for hot reloading, ensuring a smooth development process.
 
 ## Tech Stack
 
@@ -30,58 +92,29 @@ The Conformance Test Suite is a comprehensive testing platform that allows users
 - Socket.IO for real-time communication
 - Swagger/OpenAPI documentation
 - RESTful API architecture
+- Prisma for PostgreSQL database interactions
 
-## Getting Started
+## Key Features
 
-### Prerequisites
-- Node.js (LTS version)
-- pnpm package manager
+- **Interoperability Testing**: Supports message-centric and API-centric profiles.
+- **Profile Configuration**: Manage system and profile-specific test configurations.
+- **Real-time Monitoring**: WebSocket-powered live updates during test runs.
+- **Reporting**: In-app conformance reports.
+- **Test Suite Integration**:
+  - Aries Agent Test Harness
+  - OpenID Conformance Suite
 
-### Installation
+## Development Roadmap
 
-1. Clone the repository:
-```bash
-git clone [repository-url]
-```
-
-2. Install dependencies:
-```bash
-pnpm install
-```
-
-3. Start the development servers:
-
-For frontend:
-```bash
-cd frontend
-pnpm dev
-```
-
-For backend:
-```bash
-cd backend
-pnpm dev
-```
-
-## Features
-
-- System Profile Configuration Management
-- Real-time Test Run Monitoring
-- Test Run History and Analytics
-- API Documentation via Swagger UI
-- WebSocket-based Live Updates
-
-## Development
-
-This project uses a monorepo structure managed with pnpm workspaces. The main packages are:
-
-- `@conformance-test-suite/frontend`: Next.js web application
-- `@conformance-test-suite/backend`: Express.js server
-- `@conformance-test-suite/shared`: Shared utilities and types
+The CTS roadmap includes:
+- Expanded profile support, including advanced cryptographic standards like BBS+ signatures.
+- Automated test execution in CI/CD pipelines.
+- Certification lifecycle management for long-term ecosystem trust.
+- Enhanced integrations with external tools (e.g., Jenkins, Postman).
 
 ## Contributing
 
-Please read our [Contributing Guide](CONTRIBUTING) for details on our code of conduct and the process for submitting pull requests.
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING) for details on how to get involved.
 
 ## License
 
@@ -89,7 +122,8 @@ This project is licensed under the terms specified in the [LICENSE](LICENSE) fil
 
 ## Documentation
 
-API documentation is available at `/api-docs` when running the backend server.
+- API documentation is available at `/api-docs` when running the backend server.
+- Whitepaper: See `docs/whitepaper.pdf` for in-depth project details.
 
 ## Support
 

@@ -2,6 +2,7 @@
     "name": "@conformance-test-suite/backend",
     "version": "1.0.0",
     "private": true,
+    "packageManager": "pnpm@9.15.3",
     "dependencies": {
         "@conformance-test-suite/shared": "workspace:*",
         "@fastify/cors": "^10.0.1",
@@ -29,7 +30,8 @@
     },
     "main": "index.js",
     "scripts": {
-        "dev": "ts-node src/server.ts",
+        "dev": "nodemon --watch src --ext ts,js --exec ts-node src/server.ts",
+        "prisma-migrate": "prisma migrate dev",
         "build": "tsc",
         "start": "node dist/server.js"
     },
@@ -42,6 +44,7 @@
         "@hey-api/openapi-ts": "^0.58.0",
         "@types/dockerode": "^3.3.32",
         "@types/node": "^22.9.1",
+        "nodemon": "^3.1.9",
         "ts-node": "^10.9.2",
         "typescript": "^5.6.3"
     }
