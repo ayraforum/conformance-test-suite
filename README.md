@@ -26,6 +26,36 @@ The CTS integrates existing open-source test suites, such as the Aries Agent Tes
 
 ### Development Setup
 
+#### Community Test Harnesses
+
+The CTS uses the following test harnesses which must be installed/running on your local machine:
+
+- Aries Agent Test Harness
+  - https://github.com/openwallet-foundation/owl-agent-test-harness
+- OpenID Conformance Suite
+  - https://gitlab.com/openid/conformance-suite/
+
+For the ATH, you will need to checkout the source code to your local machine. There is an environment variable in the backend `.env` file that points to the local path of the ATH.
+
+For the OpenID Conformance Suite, you will need to checkout the source code to your local machine and ensure it's requirements are installed.
+
+There is an environment variable in the backend `.env` file that points to the API endpoint of the OpenID Conformance Suite.
+
+Example Commands:
+
+```bash
+# Clone the OpenID Conformance Suite
+git clone https://gitlab.com/openid/conformance-suite.git
+
+# Start the OpenID Conformance Suite dev environment
+devenv up
+
+# In another terminal, start the OpenID Conformance Suite server
+mvn spring-boot:run
+```
+
+#### Conformance Test Suite
+
 This will start both the frontend and backend concurrently.
 
 Development setup includes hot-reloading, source code mounting, and development dependencies:
