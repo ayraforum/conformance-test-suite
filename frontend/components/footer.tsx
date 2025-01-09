@@ -9,7 +9,7 @@ const Footer = () => {
             <h3 className="font-semibold text-gray-900 mb-3">Documentation</h3>
             <ul className="space-y-2">
               <li>
-                <Link href="/docs" className="text-gray-600 hover:text-gray-900">
+                <Link href="http://localhost:5001/api-docs" className="text-gray-600 hover:text-gray-900">
                   API Reference
                 </Link>
               </li>
