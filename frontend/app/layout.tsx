@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import Header from "../components/header";
+import Footer from "../components/footer";
 import { Toaster } from "@/components/ui/toaster"
 import QueryProvider from "@/providers/query-provider";
 
@@ -28,13 +29,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} >
-          <QueryProvider>
-            <Header />
-            <main className="mt-20 container mx-auto px-4">{children}</main>
-            <Toaster />
-          </QueryProvider>
-        </body>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
+        <QueryProvider>
+          <Header />
+          <main className="mt-20 container mx-auto px-4 flex-grow">{children}</main>
+          <Footer />
+          <Toaster />
+        </QueryProvider>
+      </body>
     </html>
   );
 }
