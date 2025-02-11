@@ -126,7 +126,7 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
 async function executeTestRunProcess(systemId: string, profileConfigurationId: string, testRunId: number) {
     const room = `logs-${profileConfigurationId}`;
     const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
-
+    console.log(`Full command: ${fullCommand}`);
     // Create logs directory if it doesn't exist
     if (!fs.existsSync(LOGS_DIR)) {
         fs.mkdirSync(LOGS_DIR, { recursive: true });
@@ -139,6 +139,7 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
     try {
         // First verify the command path exists
         if (!fs.existsSync(COMMAND)) {
+            console.log(`Command path does not exist: ${COMMAND}`);
             throw new Error(`Command path does not exist: ${COMMAND}`);
         }
 

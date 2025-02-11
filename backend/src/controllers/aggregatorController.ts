@@ -5,13 +5,14 @@ import { systemController } from './systemController';
 import { profileConfigurationController } from './profileConfigurationController';
 import { generateOpenApi } from '@ts-rest/open-api';
 import { testRunController } from './testRunController';
-
+import { testHarnessController } from './testHarnessController';
 const s = initServer();
 
 export const controllerAggregator = s.router(contract, {
     ...systemController,
     ...profileConfigurationController,
-    ...testRunController
+    ...testRunController,
+    ...testHarnessController
 });
 
 export const openApiDocument = generateOpenApi(contract, {

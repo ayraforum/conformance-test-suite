@@ -37,6 +37,9 @@ const Header = () => {
         <Link href="/systems" className="text-lg font-semibold text-primary hover:text-accentBlue">
           Systems
         </Link>
+        <Link href="/test-harnesses" className="text-lg font-semibold text-primary hover:text-accentBlue">
+          Test Harnesses
+        </Link>
       </nav>
 
     </div>
