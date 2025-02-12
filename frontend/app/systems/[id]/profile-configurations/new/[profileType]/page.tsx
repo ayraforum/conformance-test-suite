@@ -15,6 +15,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +29,7 @@ import { toast } from '@/hooks/use-toast';
 import { SystemInfoPanel } from '@/components/system-info-panel';
 
 import { client } from '@/lib/api';
-import { CreateProfileConfigurationSchema, ProfileConfigurationType } from '@conformance-test-suite/shared/src/profileConfigurationContract';
+import { CreateProfileConfigurationSchema, ProfileConfigurationType, Role } from '@conformance-test-suite/shared/src/profileConfigurationContract';
 import { useParams } from 'next/navigation';
 import { SystemLoadingState } from '@/components/system-loading-state';
 import { useSystem } from '@/hooks/use-system';
@@ -35,7 +42,10 @@ const apiFormSchema = formSchema.extend({
   jwks: z.string().min(5).optional(),
 });
 
-const messageFormSchema = formSchema;
+const messageFormSchema = formSchema.extend({
+  ledgerUrl: z.string().url().min(5).max(255).optional(),
+  tailsServerUrl: z.string().url().min(5).max(255).optional(),
+});
 
 export default function ProfileConfigurationCreationForm() {
   const params = useParams();
@@ -82,10 +92,14 @@ export default function ProfileConfigurationCreationForm() {
         ? "Default profile configuration for conformance testing with API-based flows"
         : "Default profile configuration for conformance testing with AATH and DIDComm v1",
       configuration: {},
+      endpoint: '',
       type: profileType,
       authorizationEndpoint: 'openid4vp://authorize',
       clientId: '',
       jwks: '',
+      ledgerUrl: '',
+      tailsServerUrl: '',
+      role: Role.ISSUER,
     },
   });
 
@@ -99,10 +113,13 @@ export default function ProfileConfigurationCreationForm() {
         ? "Default profile configuration for conformance testing with API-based flows"
         : "Default profile configuration for conformance testing with AATH and DIDComm v1",
       configuration: {},
+      endpoint: '',
       type: profileType,
       authorizationEndpoint: 'openid4vp://authorize',
       clientId: '',
       jwks: '',
+      ledgerUrl: '',
+      tailsServerUrl: '',
     });
   }, [profileType]); // Add profileType to dependencies
 
@@ -126,7 +143,10 @@ export default function ProfileConfigurationCreationForm() {
           clientId: values.clientId,
           jwks: values.jwks,
         }
-      : {};
+      : {
+          ledgerUrl: values.ledgerUrl,
+          tailsServerUrl: values.tailsServerUrl,
+        };
 
     mutation.mutate({
       params: { systemId },
@@ -134,7 +154,9 @@ export default function ProfileConfigurationCreationForm() {
         name: values.name,
         description: values.description,
         type: profileType,
-        configuration
+        configuration,
+        endpoint: values.endpoint,
+        role: values.role,
       }
     });
   };
@@ -165,6 +187,49 @@ export default function ProfileConfigurationCreationForm() {
                     </FormControl>
                     <FormDescription>
                       Pre-set name for this profile configuration.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="endpoint"
+                render={({ field }) => (
+                <FormItem>
+                  <FormLabel>System Endpoint</FormLabel>
+                  <FormControl>
+                    <Input placeholder="https://example-system-endpoint.local" {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    Please enter the endpoint for the system.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a role" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={Role.ISSUER}>Issuer</SelectItem>
+                        <SelectItem value={Role.PROVER}>Prover</SelectItem>
+                        <SelectItem value={Role.VERIFIER}>Verifier</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Select the role this profile configuration will assume during testing.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -239,6 +304,44 @@ export default function ProfileConfigurationCreationForm() {
                         </FormControl>
                         <FormDescription>
                           The JWKS for the message profile.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+
+              {profileType === ProfileConfigurationType.MESSAGE && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="ledgerUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ledger URL</FormLabel>
+                        <FormControl>
+                          <Input placeholder="https://ledger.example.com" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          The URL of the ledger for the message profile.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="tailsServerUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tails Server URL</FormLabel>
+                        <FormControl>
+                          <Input placeholder="https://tails-server.example.com" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          The URL of the tails server for the message profile.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

@@ -45,20 +45,7 @@ export const columns: ColumnDef<System>[] = [
         variant="ghost"
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
       >
-        Name
-        <ArrowUpDown className="ml-2 h-4 w-4" />
-      </Button>
-    ),
-    enableSorting: true,
-  },
-  {
-    accessorKey: "endpoint",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-      >
-        Name
+        Version
         <ArrowUpDown className="ml-2 h-4 w-4" />
       </Button>
     ),

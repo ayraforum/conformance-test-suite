@@ -31,10 +31,6 @@ export function SystemInfoPanel({ system }: SystemInfoPanelProps) {
                     <p className="text-sm text-muted-foreground">{system.version}</p>
                 </div>
                 <div>
-                    <h3 className="font-semibold">Endpoint</h3>
-                    <p className="text-sm text-muted-foreground">{system.endpoint}</p>
-                </div>
-                <div>
                     <h3 className="font-semibold">Description</h3>
                     <p className="text-sm text-muted-foreground">{system.description}</p>
                 </div>

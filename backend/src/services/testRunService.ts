@@ -1,12 +1,12 @@
 import { PrismaClient } from "@prisma/client";
-import { CreateTestRunSchema, UpdateTestRunSchema, ProcessStatus} from "@conformance-test-suite/shared/src/testRunsContract";
+import { CreateTestRunSchema, UpdateTestRunSchema, ProcessStatus } from "@conformance-test-suite/shared/src/testRunsContract";
 import { exec } from "child_process";
 import { streamProcessUpdates, ProcessStreamManager } from "./updateService";
 import { AATH_PATH, DEFAULT_ARGS } from "../config/constants";
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from 'uuid';
-import { ProfileConfiguration, ProfileConfigurationType } from "@conformance-test-suite/shared/src/profileConfigurationContract";
+import { ProfileConfiguration, ProfileConfigurationType, Role } from "@conformance-test-suite/shared/src/profileConfigurationContract";
 import {
     createTestPlan,
     createTest,
@@ -93,7 +93,7 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
 
     if(profileConfig.type === ProfileConfigurationType.API) {
         // Assume that an OID Conformance Suite is running and accessible on the address provided
-        executeApiTestRun(systemId, profileConfigurationId, testRun.id, profileConfig)
+        executeOIDCS(systemId, profileConfigurationId, testRun.id, profileConfig)
             .catch(error => {
                 console.error('Error executing API test run:', error);
                 prisma.testRuns.update({
@@ -107,7 +107,7 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
             });
     } else if (profileConfig.type === ProfileConfigurationType.MESSAGE) {
         // Start the AATH execution process asynchronously locally
-        executeTestRunProcess(systemId, profileConfigurationId, testRun.id)
+        executeAATH(systemId, profileConfigurationId, testRun.id, profileConfig)
             .catch(error => {
                 console.error('Error executing test run:', error);
                 // Update test run state to failed
@@ -123,9 +123,21 @@ export async function createTestRun(systemId: string, profileConfigurationId: st
     return testRun;
 }
 
-async function executeTestRunProcess(systemId: string, profileConfigurationId: string, testRunId: number) {
+function getArgsBasedOnRole(role: Role, profileConfig: ProfileConfiguration): string {
+    switch(role) {
+        case Role.ISSUER:
+            return `-a remote --aep ${profileConfig.endpoint} -b acapy-main -f acapy-main -m acapy-main`;
+        case Role.PROVER:
+            return `-b remote --bep ${profileConfig.endpoint} -a acapy-main -f acapy-main -m acapy-main`;
+        case Role.VERIFIER:
+            return `-f remote --fep ${profileConfig.endpoint} -a acapy-main -b acapy-main -m acapy-main`;
+    }
+}
+
+async function executeAATH(systemId: string, profileConfigurationId: string, testRunId: number, profileConfig: ProfileConfiguration) {
     const room = `logs-${profileConfigurationId}`;
-    const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")}`;
+    const agentArgs = getArgsBasedOnRole(profileConfig.role, profileConfig);
+    const fullCommand = `bash ${COMMAND} ${DEFAULT_ARGS.join(" ")} ${agentArgs}`;
     console.log(`Full command: ${fullCommand}`);
     // Create logs directory if it doesn't exist
     if (!fs.existsSync(LOGS_DIR)) {
@@ -145,13 +157,27 @@ async function executeTestRunProcess(systemId: string, profileConfigurationId: s
 
         const processId = uuidv4();
 
+        // Verify and assign required configuration parameters
+        const ledgerUrl = profileConfig.configuration?.ledgerUrl;
+        const tailsServerUrl = profileConfig.configuration?.tailsServerUrl;
+
+        if (!ledgerUrl) {
+            throw new Error('Ledger URL is required for MESSAGE profile configuration');
+        }
+
+        if (!tailsServerUrl) {
+            throw new Error('Tails Server URL is required for MESSAGE profile configuration');
+        }
+
         const childProcess = exec(fullCommand, {
             cwd: AATH_PATH,
             env: {
                 ...process.env,
                 NO_TTY: "1",
                 BEHAVE_REPORT_FILENAME: `${testRunId}.json`,
-                PROCESS_ID: processId  // Pass the processId to the child process if needed
+                PROCESS_ID: processId,  // Pass the processId to the child process if needed
+                LEDGER_URL_CONFIG: ledgerUrl,
+                TAILS_SERVER_URL_CONFIG: tailsServerUrl,
             },
         });
 
@@ -452,7 +478,7 @@ async function updateOrphanedTestRuns(systemId: string, profileConfigurationId: 
 }
 
 
-async function executeApiTestRun(systemId: string, profileConfigurationId: string, testRunId: number, profileConfig: ProfileConfiguration) {
+async function executeOIDCS(systemId: string, profileConfigurationId: string, testRunId: number, profileConfig: ProfileConfiguration) {
     const planName = 'oid4vp-id2-wallet-test-plan';
     const moduleName = 'oid4vp-id2-wallet-happy-flow-no-state';
     try {

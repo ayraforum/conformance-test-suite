@@ -50,6 +50,18 @@ export const columns: ColumnDef<ProfileConfiguration>[] = [
     ),
   },
   {
+    accessorKey: "role",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Role
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+  },
+  {
     accessorKey: "conformant",
     header: ({ column }) => (
       <Button
@@ -74,6 +86,19 @@ export const columns: ColumnDef<ProfileConfiguration>[] = [
         </div>
       );
     },
+  },
+  {
+    accessorKey: "endpoint",
+    header: ({ column }) => (
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      >
+        Endpoint
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    ),
+    enableSorting: true,
   },
   {
     id: "actions",

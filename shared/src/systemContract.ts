@@ -17,7 +17,6 @@ export const SystemSchema = z.object({
     name: z.string().min(2).max(255).openapi({ description: "The name of the system", example: "Example System" }),
     description: z.string().min(2).max(255).openapi({ description: "The description of the system", example: "Example System Description" }),
     version: z.string().min(2).max(255).openapi({ description: "The version of the system", example: "1.0.0" }),
-    endpoint: z.string().min(2).max(255).url().openapi({ description: "The endpoint of the system", example: "https://example.com/api" }),
 });
 
 export const SystemCollectionSchema = CollectionResponseSchema.extend({
