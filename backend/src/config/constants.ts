@@ -1,5 +1,5 @@
 export const AATH_PATH = process.env.AATH_PATH || "/home/davidpoltorak-io/Projects/gan-aath/";
-export const DEFAULT_ARGS = [
+export const LDP_VC_DEFAULT_ARGS = [
   "run",
   "-d",
   "acapy-main",
@@ -11,4 +11,12 @@ export const DEFAULT_ARGS = [
   "-t", "~@DidMethod_orb",
   "-t", "~@DidMethod_sov",
   "-t", "~@ProofType_BbsBls12381G2PubKey"
+];
+export const DEFAULT_ARGS = [
+  "run",
+  "-t", "@RFC0023,@RFC0453,@RFC0454,@Anoncreds",
+  "-t", "~@CredFormat_JSON-LD",
+  "-t", "@critical",
+  "-t", "~@RFC0793",
+  "-t", "~@RFC0434"
 ];

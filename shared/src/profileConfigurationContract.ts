@@ -15,6 +15,12 @@ export enum ProfileConfigurationType {
     MESSAGE = "message",
 }
 
+export enum Role {
+    ISSUER = "issuer",
+    PROVER = "prover",
+    VERIFIER = "verifier"
+}
+
 export const ProfileConfigurationSchema = z.object({
     id: z.string().uuid().openapi({ description: "The unique identifier for the profile configuration", example: "123e4567-e89b-12d3-a456-426614174000" }),
     name: z.string().min(2).max(255).openapi({ description: "The name of the profile configuration", example: "Production Profile" }),
@@ -24,6 +30,8 @@ export const ProfileConfigurationSchema = z.object({
     type: z.nativeEnum(ProfileConfigurationType).openapi({ description: "The type of the profile configuration", example: "api" }),
     conformant: z.boolean().default(false).openapi({ description: "The conformance status of the profile configuration", example: true }),
     locked: z.boolean().default(false).openapi({ description: "Whether the profile configuration is locked", example: false }),
+    endpoint: z.string().min(2).max(255).url().openapi({ description: "The endpoint of the system", example: "https://example.com/api" }),
+    role: z.nativeEnum(Role).openapi({ description: "The role to assume for testing this profile configuration", example: "issuer" }),
 });
 
 export const ProfileConfigurationCollectionSchema = CollectionResponseSchema.extend({

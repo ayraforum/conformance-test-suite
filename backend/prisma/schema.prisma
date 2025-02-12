@@ -37,7 +37,6 @@ model Systems {
   updatedAt             DateTime                @updatedAt()
   name                  String
   description           String
-  endpoint              String
   version               String
   ProfileConfigurations ProfileConfigurations[]
 }
@@ -55,4 +54,6 @@ model ProfileConfigurations {
   type          String       @default("api")
   conformant   Boolean      @default(false)
   locked        Boolean      @default(false)
+  endpoint      String
+  role          String       @default("issuer")
 }

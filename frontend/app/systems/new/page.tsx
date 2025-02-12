@@ -32,7 +32,6 @@ export default function SystemCreationForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
-      endpoint: "",
       version: "",
       description: "",
     },
@@ -86,22 +85,6 @@ export default function SystemCreationForm() {
                   </FormControl>
                   <FormDescription>
                     Please enter a name for the system.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="endpoint"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>System Endpoint</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://example-system-endpoint.local" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    Please enter the endpoint for the system.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
