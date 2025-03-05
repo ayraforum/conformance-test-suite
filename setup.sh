@@ -242,7 +242,11 @@ if $CLONE_REPO; then
     fi
     cd conformance-test-suite
 else
-    echo "Skipping repository cloning as per user request."
+    if [ -d "conformance-test-suite" ]; then
+        cd conformance-test-suite
+    else
+        echo "Repository not found in the current directory. Assuming you are in the correct directory."
+    fi
 fi
 
 echo ""
