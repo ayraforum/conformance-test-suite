@@ -13,8 +13,8 @@ export default function Home() {
         <div className="container max-w-4xl relative">
           <div className="flex justify-center mb-8">
             <Image
-              src="/gan-logo.svg"
-              alt="GAN Logo"
+              src="/logo.svg"
+              alt="Ayra Logo"
               width={140}
               height={140}
               className="animate-fade-in"
@@ -22,24 +22,33 @@ export default function Home() {
             />
           </div>
           <h1 className="text-5xl sm:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-blue-500">
-            GAN Conformance Test Suite
+            Ayra Conformance Test Suite
           </h1>
           <p className="text-xl text-muted-foreground mb-4">
             Streamlining interoperability testing for verifiable data systems
           </p>
           <p className="text-lg text-muted-foreground mb-8">
-            Validate your systems against GAN API and Message Profiles
+            Validate your systems against Ayra API and Message Profiles
           </p>
           <div className="flex flex-col sm:flex-row gap-6 justify-center">
-            <Button asChild size="lg" className="text-lg px-8 py-6 shadow-lg hover:shadow-xl transition-all">
+            <Button
+              asChild
+              size="lg"
+              className="text-lg px-8 py-6 shadow-lg hover:shadow-xl transition-all"
+            >
               <Link href="/systems" className="gap-2">
                 Start Testing Now
                 <ArrowRight className="h-5 w-5" />
               </Link>
             </Button>
-            <Button variant="outline" size="lg" asChild className="text-lg px-8 py-6 border-2">
+            <Button
+              variant="outline"
+              size="lg"
+              asChild
+              className="text-lg px-8 py-6 border-2"
+            >
               <Link href="https://gan.foundation/" className="gap-2">
-                Learn More About GAN
+                Learn More About Ayra
                 <ArrowRight className="h-5 w-5" />
               </Link>
             </Button>
@@ -52,14 +61,20 @@ export default function Home() {
         <div className="container">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 text-center">
             {[
-              { count: "Open-Source", label: "Transparent Tooling", icon: Code2 },
+              {
+                count: "Open-Source",
+                label: "Transparent Tooling",
+                icon: Code2,
+              },
               { count: "Real-time", label: "Test Monitoring", icon: Workflow },
               { count: "Detailed", label: "Test Reports", icon: FileText },
               { count: "Automated", label: "Certification", icon: Shield },
             ].map((stat, i) => (
               <div key={i} className="flex flex-col items-center gap-2">
                 <stat.icon className="h-8 w-8 text-blue-600 mb-2" />
-                <div className="text-2xl font-bold text-blue-700">{stat.count}</div>
+                <div className="text-2xl font-bold text-blue-700">
+                  {stat.count}
+                </div>
                 <div className="text-muted-foreground">{stat.label}</div>
               </div>
             ))}
@@ -86,7 +101,8 @@ export default function Home() {
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground mb-4">
-                  Validate your systems against GAN technical profiles with automated test suites and real-time feedback.
+                  Validate your systems against Ayra technical profiles with
+                  automated test suites and real-time feedback.
                 </p>
                 <ul className="text-sm space-y-2 text-muted-foreground">
                   <li>• Pre-configured test profiles</li>
@@ -110,7 +126,8 @@ export default function Home() {
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground">
-                  Get detailed conformance reports and actionable insights to ensure your implementation meets standards.
+                  Get detailed conformance reports and actionable insights to
+                  ensure your implementation meets standards.
                 </p>
               </CardContent>
             </Card>
@@ -129,7 +146,8 @@ export default function Home() {
               </CardHeader>
               <CardContent>
                 <p className="text-muted-foreground">
-                  Ready your systems for formal certification within the GAN Trust Network ecosystem.
+                  Ready your systems for formal certification within the Ayra
+                  Trust Network ecosystem.
                 </p>
               </CardContent>
             </Card>
@@ -142,11 +160,15 @@ export default function Home() {
         <div className="container max-w-6xl">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div className="space-y-6">
-              <h2 className="text-3xl font-bold">Why Use the Conformance Test Suite?</h2>
+              <h2 className="text-3xl font-bold">
+                Why Use the Conformance Test Suite?
+              </h2>
               <p className="text-lg text-muted-foreground">
-                The GAN Conformance Test Suite streamlines the process of validating your systems against established
-                interoperability standards. Our automated testing tools support both message-centric and API-centric
-                profiles, ensuring comprehensive coverage of your implementation.
+                The Ayra Conformance Test Suite streamlines the process of
+                validating your systems against established interoperability
+                standards. Our automated testing tools support both
+                message-centric and API-centric profiles, ensuring comprehensive
+                coverage of your implementation.
               </p>
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
@@ -155,7 +177,10 @@ export default function Home() {
                   </div>
                   <div>
                     <h3 className="font-semibold">Trusted Certification</h3>
-                    <p className="text-muted-foreground">Generate verifiable attestations of your system's conformance.</p>
+                    <p className="text-muted-foreground">
+                      Generate verifiable attestations of your system's
+                      conformance.
+                    </p>
                   </div>
                 </div>
                 {/* Add more benefit items */}
@@ -172,7 +197,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
     </div>
   );
 }
