@@ -9,18 +9,18 @@ CLONE_REPO=false
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
-        --non-interactive)
-            NONINTERACTIVE=true
-            shift
-            ;;
-        --clone)
-            CLONE_REPO=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $key"
-            shift
-            ;;
+    --non-interactive)
+        NONINTERACTIVE=true
+        shift
+        ;;
+    --clone)
+        CLONE_REPO=true
+        shift
+        ;;
+    *)
+        echo "Unknown option: $key"
+        shift
+        ;;
     esac
 done
 
@@ -44,22 +44,31 @@ if [ -n "$MISSING_TOOLS" ]; then
         if [[ "$ans" =~ ^[Yy]$ ]]; then
             for tool in $MISSING_TOOLS; do
                 case $tool in
-                    pnpm)
-                        echo "Installing pnpm via npm..."
-                        npm install -g pnpm || { echo "Failed to install pnpm. Please install it manually."; exit 1; }
-                        ;;
-                    mvn)
-                        echo "Installing Maven..."
-                        sudo apt-get update && sudo apt-get install -y maven || { echo "Failed to install Maven. Please install it manually."; exit 1; }
-                        ;;
-                    docker)
-                        echo "Installing Docker..."
-                        sudo apt-get update && sudo apt-get install -y docker.io || { echo "Failed to install Docker. Please install it manually."; exit 1; }
-                        ;;
-                    *)
-                        echo "Don't know how to install $tool. Please install it manually."
+                pnpm)
+                    echo "Installing pnpm via npm..."
+                    npm install -g pnpm@9.15.3 || {
+                        echo "Failed to install pnpm. Please install it manually."
                         exit 1
-                        ;;
+                    }
+                    ;;
+                mvn)
+                    echo "Installing Maven..."
+                    sudo apt-get update && sudo apt-get install -y maven || {
+                        echo "Failed to install Maven. Please install it manually."
+                        exit 1
+                    }
+                    ;;
+                docker)
+                    echo "Installing Docker..."
+                    sudo apt-get update && sudo apt-get install -y docker.io || {
+                        echo "Failed to install Docker. Please install it manually."
+                        exit 1
+                    }
+                    ;;
+                *)
+                    echo "Don't know how to install $tool. Please install it manually."
+                    exit 1
+                    ;;
                 esac
             done
         else
@@ -153,7 +162,7 @@ echo "Writing .env.local file to both frontend and backend directories..."
 
 # Write the file in the frontend folder
 if [ -d frontend ]; then
-    echo "${ENV_CONTENT}" > frontend/.env.local
+    echo "${ENV_CONTENT}" >frontend/.env.local
     echo "Created frontend/.env.local"
 else
     echo "Directory 'frontend' not found. Skipping frontend .env.local creation."
@@ -161,7 +170,7 @@ fi
 
 # Write the file in the backend folder and export the variables for use by Prisma
 if [ -d backend ]; then
-    echo "${ENV_CONTENT}" > backend/.env.local
+    echo "${ENV_CONTENT}" >backend/.env.local
     echo "Created backend/.env.local"
 else
     echo "Directory 'backend' not found. Skipping backend .env.local creation."
@@ -253,9 +262,16 @@ echo ""
 echo "Installing dependencies with pnpm..."
 pnpm install
 
+echo "Installing npm packages"
+npm install -g concurrently
+cd frontend
+pnpm install
+cd ../backend
+pnpm install
+
 echo ""
 echo "Starting the PostgreSQL database using Docker Compose..."
-docker compose up -d
+docker-compose up -d
 
 echo ""
 echo "Running Prisma migrations for the backend..."
