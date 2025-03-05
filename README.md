@@ -18,7 +18,11 @@ The CTS integrates existing open-source test suites, such as the Aries Agent Tes
 └── docs/              # Documentation files
 ```
 
----
+## Setup
+
+See below for how to set things up, or if you'd like, just run the `./setup.sh` script (linux and osx) to get started.
+
+**Windows Support Not Verified. Use At Your Own Risk**
 
 ## Getting Started
 
@@ -26,6 +30,7 @@ The CTS integrates existing open-source test suites, such as the Aries Agent Tes
 - Node.js (LTS version)
 - pnpm package manager
 - Community Test Harnesses (see below)
+- Compatible System: OSX or Linux. 
 
 #### Community Test Harnesses
 
