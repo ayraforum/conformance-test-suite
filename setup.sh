@@ -1,11 +1,28 @@
 #!/bin/bash
 set -e
 
-# Check for non-interactive flag
+# Default flags
 NONINTERACTIVE=false
-if [ "$1" == "--non-interactive" ]; then
-    NONINTERACTIVE=true
-fi
+CLONE_REPO=false
+
+# Process input flags
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        --non-interactive)
+            NONINTERACTIVE=true
+            shift
+            ;;
+        --clone)
+            CLONE_REPO=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $key"
+            shift
+            ;;
+    esac
+done
 
 # --- Check for Required Tools ---
 REQUIRED_TOOLS=("pnpm" "mvn" "docker")
@@ -211,16 +228,28 @@ case "$harness_choice" in
     ;;
 esac
 
-echo ""
-echo "Cloning the Conformance Test Suite repository..."
-if [ -n "$GITHUB_ACTIONS" ]; then
-    echo "Detected GitHub Actions environment. Using GITHUB_TOKEN for authentication..."
-    git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git conformance-test-suite
+# --- Cloning Conformance Test Suite Repository ---
+
+if $CLONE_REPO; then
+    echo ""
+    echo "Cloning the Conformance Test Suite repository..."
+    if [ -n "$GITHUB_ACTIONS" ]; then
+        echo "Detected GitHub Actions environment. Using GITHUB_TOKEN for authentication..."
+        git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git conformance-test-suite
+    else
+        echo "Running locally. Using SSH authentication..."
+        git clone git@github.com:GANFoundation/conformance-test-suite.git conformance-test-suite
+    fi
+    cd conformance-test-suite
 else
-    echo "Running locally. Using SSH authentication..."
-    git clone git@github.com:GANfoundation/conformance-test-suite.git conformance-test-suite
+    if [ -d "conformance-test-suite" ]; then
+        echo "Assuming repository already cloned. Using the existing conformance-test-suite directory."
+        cd conformance-test-suite
+    else
+        echo "Repository not found in the current directory. Use the --clone flag to perform a fresh clone."
+        exit 1
+    fi
 fi
-cd conformance-test-suite
 
 echo ""
 echo "Installing dependencies with pnpm..."
