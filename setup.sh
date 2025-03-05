@@ -238,17 +238,11 @@ if $CLONE_REPO; then
         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git conformance-test-suite
     else
         echo "Running locally. Using SSH authentication..."
-        git clone git@github.com:GANFoundation/conformance-test-suite.git conformance-test-suite
+        git clone git@github.com:GANfoundation/conformance-test-suite.git conformance-test-suite
     fi
     cd conformance-test-suite
 else
-    if [ -d "conformance-test-suite" ]; then
-        echo "Assuming repository already cloned. Using the existing conformance-test-suite directory."
-        cd conformance-test-suite
-    else
-        echo "Repository not found in the current directory. Use the --clone flag to perform a fresh clone."
-        exit 1
-    fi
+    echo "Skipping repository cloning as per user request."
 fi
 
 echo ""
