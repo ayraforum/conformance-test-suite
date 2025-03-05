@@ -271,7 +271,7 @@ pnpm install
 
 echo ""
 echo "Starting the PostgreSQL database using Docker Compose..."
-docker-compose up -d
+docker compose up -d
 
 echo ""
 echo "Running Prisma migrations for the backend..."
