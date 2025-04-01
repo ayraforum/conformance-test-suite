@@ -1,16 +1,15 @@
 import React from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import dynamic from "next/dynamic";
 
-export interface RenderQRCodeProps {
-    /** The data to encode in the QR code */
+// Dynamically import react-json-view to ensure it only runs on the client side
+const ReactJson = dynamic(() => import("react-json-view"), { ssr: false });
+
+interface RenderQRCodeProps {
     value: string;
-    /** Size of the QR code in pixels */
     size?: number;
-    /** Background color of the QR code */
     bgColor?: string;
-    /** Foreground color (QR code color) */
     fgColor?: string;
-    /** Error correction level: L, M, Q, or H */
     level?: "L" | "M" | "Q" | "H";
 }
 
@@ -22,14 +21,28 @@ const RenderQRCode: React.FC<RenderQRCodeProps> = ({
     level = "M",
 }) => {
     return (
-        <div className="flex justify-center items-center p-4">
-            <QRCodeCanvas
-                value={value}
-                size={size}
-                bgColor={bgColor}
-                fgColor={fgColor}
-                level={level}
-            />
+        <div className="p-4">
+            <div className="flex justify-center items-center p-4">
+                <QRCodeCanvas
+                    value={value}
+                    size={size}
+                    bgColor={bgColor}
+                    fgColor={fgColor}
+                    level={level}
+                />
+            </div>
+            {ReactJson && (
+                <div className="max-w-full overflow-auto">
+                    <ReactJson
+                        src={{ value }}
+                        theme="monokai"
+                        collapsed={false}
+                        displayDataTypes={false}
+                        displayObjectSize={false}
+                        style={{ width: "100%", wordBreak: "break-word" }}
+                    />
+                </div>
+            )}
         </div>
     );
 };
