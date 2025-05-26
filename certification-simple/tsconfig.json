@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.build.json",
+  "ts-node": {
+    "files": true
+  },
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@demo/*": ["packages/*/src"]
+    },
+    "types": ["jest", "node"]
+  },
+  "exclude": ["node_modules", "**/build/**", "**/gen/**"]
+}

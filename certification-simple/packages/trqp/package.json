@@ -1,0 +1,45 @@
+{
+  "name": "@demo/trqp",
+  "main": "src/index",
+  "description": "trqp client",
+  "types": "src/index",
+  "version": "0.5.11",
+  "files": ["build"],
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "main": "build/index",
+    "types": "build/index",
+    "access": "public"
+  },
+  "scripts": {
+    "spec:gen": "openapi-generator-cli generate -i ./src/api/openapi.v2.yaml -g typescript-axios -o ./gen/api-client",
+    "build": "pnpm run clean && pnpm run compile",
+    "compile": "tsc -p tsconfig.build.json",
+    "clean": "rimraf ./build",
+    "prepublishOnly": "pnpm run build",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@jest/types": "^29.6.3",
+    "@stablelib/ed25519": "^1.0.3",
+    "@types/express": "^5.0.0",
+    "@types/mocha": "^10.0.9",
+    "axios": "^1.7.7",
+    "class-transformer": "^0.5.1",
+    "class-validator": "0.14.1",
+    "express": "^4.21.1",
+    "jest": "^29.7.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.0",
+    "ts-node": "^10.9.2",
+    "tsyringe": "^4.8.0",
+    "typescript": "^5.6.3",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.14.0",
+    "@types/node": "18.18.8",
+    "rimraf": "^4.0.7",
+    "typescript": "~5.5.2"
+  }
+}
