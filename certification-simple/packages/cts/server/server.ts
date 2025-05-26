@@ -1,4 +1,5 @@
 // server.ts
+import 'dotenv/config';
 
 import {
   SetupConnectionTask,
@@ -53,8 +54,8 @@ const init = async () => {
     setAgent(agent);
     console.log("set agent and config");
   } else {
-    const baseUrl = process.env.BASE_URL
-      ? process.env.BASE_URL
+    const baseUrl = process.env.API_URL
+      ? process.env.API_URL
       : "http://localhost:5005";
     if (!baseUrl) {
       throw new Error("BASE_URL not defined");
@@ -102,7 +103,7 @@ export const run = async () => {
 
     // Start executing the DAG
     await dag.start();
-    console.log("DAG execution started.");
+    emitDAGUpdate();
   } catch (error) {
     console.error("An error occurred during execution:", error);
     process.exit(1); // Exit with an error code if something failed
@@ -113,7 +114,7 @@ console.log("initializing");
 try {
   init().then(() => {
     try {
-      selectPipeline(PipelineType.NYC_GAN_MEETING);
+      selectPipeline(PipelineType.VERIFIER_TEST);
     } catch (e) {
       console.error(e);
     }

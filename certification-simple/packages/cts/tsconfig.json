@@ -1,8 +1,29 @@
 {
   "extends": "../../tsconfig.build.json",
   "compilerOptions": {
-    "types": ["jest"],
+    "types": [
+      "jest"
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "moduleResolution": "node",
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "**/*.ts",
+    "**/*.tsx"
+  ]
 }

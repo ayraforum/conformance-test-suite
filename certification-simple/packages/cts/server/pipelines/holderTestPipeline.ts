@@ -40,8 +40,9 @@ export default class HolderTestPipeline {
     );
 
     // Schema ID for test credential - adapt as needed
-    const schemaId = "HYfhCRaKhccZtr7v8CHTe8:2:ConformanceTestCredential:1.0.0";
-    
+      const schemaId =
+      "did:indy:bcovrin:test:HYfhCRaKhccZtr7v8CHTe8/anoncreds/v0/CLAIM_DEF/2815242/latest"
+
     // Define proof request structure for credential presentation
     const proof = {
       protocolVersion: "v2",
@@ -51,15 +52,7 @@ export default class HolderTestPipeline {
           version: "1.0",
           requested_attributes: {
             name: {
-              name: "name",
-              restrictions: [
-                {
-                  cred_def_id: schemaId,
-                },
-              ],
-            },
-            dateOfBirth: {
-              name: "dateOfBirth",
+              name: "type",
               restrictions: [
                 {
                   cred_def_id: schemaId,
@@ -86,7 +79,7 @@ export default class HolderTestPipeline {
       "Request a presentation from the holder and verify it"
     );
 
-    // Add evaluation task for final assessment
+   // Add evaluation task for final assessment
     const evaluationTask = new HolderTestEvaluationTask(
       "Evaluate Holder Test",
       "Evaluate holder's conformance based on connection and presentation"
@@ -119,6 +112,7 @@ export class HolderTestEvaluationTask extends BaseRunnableTask {
 
   async run(): Promise<void> {
     super.run();
+    console.log("Running holder test evaluation");
     this.addMessage("Evaluating holder conformance test results");
     this.addMessage("Checking connection establishment");
     this.addMessage("Checking presentation response");
