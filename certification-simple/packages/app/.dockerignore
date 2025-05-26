@@ -1,0 +1,8 @@
+# Exclude all node_modules folders within packages/
+node_modules/**
+node_modules
+# Optionally, exclude any other unnecessary files or directories
+*.log
+dist/
+.git/
+

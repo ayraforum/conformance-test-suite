@@ -1,0 +1,21 @@
+services:
+  server:
+    build:
+      context: ../../
+      dockerfile: packages/app/Dockerfile.server
+    ports:
+      - "5005:5005"
+    environment:
+      - NODE_ENV=development
+      - USE_NGROK=true
+      - BASE_URL=http://localhost:5005
+    env_file: ./.env
+  app:
+    build:
+      context: ../../
+      dockerfile: packages/app/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - SOCKET_SERVER_URL="http://localhost:5005"
