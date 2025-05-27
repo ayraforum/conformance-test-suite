@@ -102,16 +102,7 @@ export class IssueCredentialTask extends BaseRunnableTask {
         name: "Certified GAN Employee Credential " + v4(),
         version: "1.0.0",
         attrNames: [
-          "name",
           "type",
-          "date",
-          "role",
-          "egf",
-          "expiry",
-          "company",
-          "company_did",
-          "authorized_countries",
-          "profile",
         ],
         issuerId: this._options.did,
       };
@@ -169,46 +160,9 @@ export class IssueCredentialTask extends BaseRunnableTask {
             anoncreds: {
               attributes: [
                 {
-                  name: "name",
-                  value: "Andor Kesselman",
-                },
-                {
                   name: "type",
                   value: "Certified GAN Employee Credential",
-                },
-                {
-                  name: "date",
-                  value: "04/03/1992",
-                },
-                {
-                  name: "role",
-                  value: "consultant",
-                },
-                {
-                  name: "expiry",
-                  value: "12/31/2024",
-                },
-                {
-                  name: "company",
-                  value: "GAN Foundation",
-                },
-                {
-                  name: "egf",
-                  value: "did:web:gan.foundation",
-                },
-                {
-                  name: "company_did",
-                  value: "did:web:gan.foundation",
-                },
-                {
-                  name: "authorized_countries",
-                  value: "US",
-                },
-                {
-                  name: "profile",
-                  value:
-                    "https://media.licdn.com/dms/image/v2/C4D03AQH-nNtREKGefQ/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1609844548992?e=1734566400&v=beta&t=Pq45efNsucEM3t8S3m17ZKFEIRllWPfE2k5G4pVQFkw",
-                },
+                }
               ],
               credentialDefinitionId:
                 credentialDefinition.credentialDefinitionId,
