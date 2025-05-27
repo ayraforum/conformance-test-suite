@@ -42,6 +42,9 @@ export const testProgressionMiddleware: Middleware<{}, RootState> =
       // Determine the new step based on DAG state
       let newStep = currentStep;
 
+      // Determine report step index (nodes.length for verifier, 2 for holder)
+      const reportStepIndex = dag.nodes.length === 6 ? 6 : 2; // 6 for verifier, 2 for holder
+      
       // Check if all nodes are completed -> go to report step
       const allNodesCompleted = dag.nodes.every(node => 
         node.task.state.status === 'Accepted' && 
@@ -50,7 +53,7 @@ export const testProgressionMiddleware: Middleware<{}, RootState> =
       
       if (allNodesCompleted) {
         console.log('TestProgressionMiddleware: All nodes completed, moving to report');
-        newStep = 2; // Report step
+        newStep = reportStepIndex;
         store.dispatch(completeTest());
       } else {
         // Find the first running node
@@ -73,7 +76,7 @@ export const testProgressionMiddleware: Middleware<{}, RootState> =
           
           if (completedNodeCount > 0) {
             // Move to the step after the last completed one, but not beyond report step
-            newStep = Math.min(completedNodeCount, 2);
+            newStep = Math.min(completedNodeCount, reportStepIndex);
             console.log('TestProgressionMiddleware: Completed nodes:', completedNodeCount, 'new step:', newStep);
           }
         }

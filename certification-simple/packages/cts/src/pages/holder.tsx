@@ -8,7 +8,6 @@ export default function HolderTestPage() {
         This process tests your wallet's ability to establish connections, receive credentials, 
         and provide verifiable presentations.
       </p>
-      
       <HolderTest />
     </div>
   );

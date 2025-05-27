@@ -100,7 +100,12 @@ function ConnectionStep({
       // Small delay to ensure pipeline is selected
       setTimeout(async () => {
         // Start the pipeline execution
-        await fetch('http://localhost:5005/api/run');
+        await fetch('http://localhost:5005/api/run', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
         console.log('Pipeline started');
         setMessages(prev => [...prev, 'Pipeline started']);
       }, 500);

@@ -95,6 +95,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     // Application-specific event handlers
     socketInstance.on("dag-state-update", (data: { sequence: number; dag: any }) => {
       console.log("Unified Socket: DAG state update received:", data.sequence);
+      console.log("DAG:", data.dag);
       if (data.dag) {
         dispatch(setDAG(data.dag));
       }
@@ -103,15 +104,6 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketInstance.on("invitation", (url: string) => {
       console.log("Unified Socket: Invitation received:", url);
       dispatch(setInvitation(url));
-    });
-
-    socketInstance.on("heartbeat", (data: any) => {
-      console.log("Unified Socket: Heartbeat received:", data.count);
-      // Send response back to server
-      socketInstance.emit("heartbeat-response", {
-        received: data.count,
-        clientTime: new Date().toISOString()
-      });
     });
 
     socketRef.current = socketInstance;

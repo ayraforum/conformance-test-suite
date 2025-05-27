@@ -21,12 +21,12 @@ export const fetchDAG = async () => {
   }
 };
 
-// Fetch DAG data from the server
-export const run = async () => {
+// Run the pipeline with optional params
+export const run = async (params?: any) => {
   try {
-    axiosClient.get("/api/run");
+    await axiosClient.post("/api/run", params || {});
   } catch (error) {
-    console.error("Error fetching DAG:", error);
+    console.error("Error running pipeline:", error);
     throw error;
   }
 };
