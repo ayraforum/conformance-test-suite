@@ -11,7 +11,11 @@
     "start": "next start",
     "dev": "next dev",
     "build": "next build",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test-holder": "ts-node scripts/test-holder.ts",
+    "test-verifier": "ts-node scripts/test-verifier.ts",
+    "test-integration": "ts-node scripts/test-integration.ts",
+    "test-all": "npm run test-integration"
   },
   "dependencies": {
     "@cosmjs/crypto": "~0.30.0",

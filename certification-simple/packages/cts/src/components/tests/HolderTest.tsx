@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { TestRunner, TestStep, TestStepStatus, TaskNode } from "@/components/TestRunner";
 import { useSocket } from "@/providers/SocketProvider";
@@ -160,7 +160,9 @@ function ConnectionStep({
       // Small delay to ensure pipeline is selected
       setTimeout(async () => {
         // Start the pipeline execution
-        await fetch('http://localhost:5005/api/run');
+        await fetch('http://localhost:5005/api/run', {
+          method: 'POST'
+        });
         console.log('Pipeline started');
         dispatch(addMessage({ stepIndex: 0, message: 'Pipeline started' }));
       }, 500);
@@ -559,8 +561,6 @@ export function HolderTest() {
 
   // Listen for DAG updates from your existing backend
   useEffect(() => {
-    // Socket events are now handled in SocketProvider and Redux middleware
-    // This component just reacts to Redux state changes
     console.log('HolderTest - Component mounted, currentStep:', currentStep);
   }, [currentStep]);
 
@@ -592,9 +592,9 @@ export function HolderTest() {
     return 'pending';
   };
 
-  const handleRestart = () => {
+  const handleRestart = useCallback(() => {
     dispatch(resetTest());
-  };
+  }, [dispatch]);
 
   // Initialize steps
   useEffect(() => {

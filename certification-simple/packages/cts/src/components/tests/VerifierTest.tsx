@@ -1,374 +1,325 @@
-import React, { useState, useEffect } from "react";
-import { TestRunner, TestStep } from "@/components/TestRunner";
-import type { TestStepStatus as RunnerTestStepStatus } from "@/components/TestRunner";
-import { VerifierContext, createEmptyVerifierContext } from "@/services/tests/VerifierContext";
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { TestRunner, TestStep, TestStepStatus, TaskNode } from "@/components/TestRunner";
 import { useSocket } from "@/providers/SocketProvider";
-import { TestStepController, TestStepStatus as BaseTestStepStatus } from "@/services/BaseTestContext";
+import { RootState } from "@/store";
+import { startTest, resetTest, addMessage } from "@/store/testSlice";
 
-// Types matching your existing backend
-interface TaskNode {
-  id: string;
-  name: string;
-  description: string;
-  state: string;
-  finished: boolean;
-  stopped: boolean;
-  task: {
-    id: string;
-    metadata: {
-      name: string;
-      id: string;
-      description: string;
-    };
-    state: {
-      status: string;
-      runState: string;
-      warnings: string[];
-      messages: string[];
-      errors: string[];
-    };
-  };
+// Simple Message Renderer Component
+function MessageRenderer({ messages, title = "Step Log" }: { messages: string[]; title?: string; }) {
+  if (messages.length === 0) return null;
+
+  return (
+    <div className="mt-4 bg-gray-50 rounded-lg border border-gray-200 p-4">
+      <h5 className="font-medium text-gray-700 mb-2">{title}</h5>
+      <div className="space-y-1">
+        {messages.map((message, index) => (
+          <div key={index} className="text-sm text-gray-600 flex items-start">
+            <span className="text-gray-400 mr-2">•</span>
+            <span>{message}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-interface DAGData {
-  status: {
-    status: string;
-    runState: string;
-  };
-  metadata: {
-    name: string;
-    id: string;
-  };
-  nodes: TaskNode[];
-}
-
-// Import step components
-import { VerifierConnectionStep } from "@/components/steps/verifier/VerifierConnectionStep";
-import { PresentationRequestStep } from "@/components/steps/verifier/PresentationRequestStep";
-import { VerificationStep } from "@/components/steps/verifier/VerificationStep";
-import { VerifierReportStep } from "@/components/steps/verifier/VerifierReportStep";
-
-export function VerifierTest() {
+// Connection Step Component
+function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; taskData?: TaskNode; }) {
+  const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
-  const [context, setContext] = useState<VerifierContext>(createEmptyVerifierContext());
-  const [currentStep, setCurrentStep] = useState(0);
-  const [steps, setSteps] = useState<TestStep[]>([]);
-  const [dagData, setDagData] = useState<DAGData | null>(null);
-  const [messages, setMessages] = useState<string[]>([]);
+  const { messages } = useSelector((state: RootState) => state.test);
   const [hasStarted, setHasStarted] = useState(false);
-  const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
+  const [oobUrl, setOobUrl] = useState<string>("");
+  
+  const stepMessages = messages[0] || [];
 
-  // Listen for socket events
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on('invitation', (url: string) => {
-      console.log('Received invitation:', url);
-      setInvitationUrl(url);
-      setMessages(prev => [...prev, 'Received connection invitation']);
-      updateStepStatus(0, "running" as BaseTestStepStatus);
-    });
-
-    socket.on('dag-update', (data: { dag: DAGData }) => {
-      console.log('DAG Update received:', JSON.stringify(data.dag, null, 2));
-      if (data.dag) {
-        setDagData(data.dag);
-        updateStepsFromDAG(data.dag);
-      }
-    });
-
-    // Add debug logging for socket events
-    socket.on('connect', () => {
-      console.log('Socket connected');
-      setMessages(prev => [...prev, 'Socket connected']);
-    });
-
-    socket.on('disconnect', () => {
-      console.log('Socket disconnected');
-      setMessages(prev => [...prev, 'Socket disconnected']);
-    });
-
-    socket.on('error', (error: any) => {
-      console.error('Socket error:', error);
-      setMessages(prev => [...prev, `Socket error: ${error.message || 'Unknown error'}`]);
-    });
-
-    return () => {
-      socket.off('invitation');
-      socket.off('dag-update');
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('error');
-    };
-  }, [socket]);
-
-  // Convert DAG node status to test step status
-  const getStepStatusFromNode = (node: TaskNode): BaseTestStepStatus => {
-    // Check for completed states
-    if (node.task.state.status === 'Accepted' || 
-        node.task.state.runState === 'completed' || 
-        node.task.state.status === 'Completed') {
-      return 'passed';
-    }
-    
-    // Check for running states
-    if (node.task.state.runState === 'running' || 
-        node.task.state.status === 'Running' ||
-        node.task.state.status === 'Started' ||
-        node.task.state.runState === 'Started') {
-      return 'running';
-    }
-    
-    // Check for failed states
-    if (node.task.state.status === 'Failed' || 
-        node.task.state.runState === 'failed' ||
-        node.task.state.status === 'Error') {
-      return 'failed';
-    }
-    
-    // Default to pending for all other states
-    return 'pending';
-  };
-
-  // Update steps based on DAG data
-  const updateStepsFromDAG = (dag: DAGData) => {
-    if (!dag.nodes || dag.nodes.length === 0) return;
-
-    // Find the current running step
-    let newCurrentStep = currentStep;
-    const firstRunningNode = dag.nodes.findIndex(node => 
-      node.task.state.runState === 'running' || node.task.state.status === 'Running'
-    );
-    const lastCompletedNode = dag.nodes.findIndex(node => 
-      node.task.state.status === 'Accepted' || node.task.state.runState === 'completed'
-    );
-
-    if (firstRunningNode !== -1) {
-      newCurrentStep = firstRunningNode;
-    } else if (lastCompletedNode !== -1 && lastCompletedNode === dag.nodes.length - 1) {
-      // All steps completed, go to report
-      newCurrentStep = 4;
-    } else if (lastCompletedNode !== -1) {
-      // Move to next step after completed one
-      newCurrentStep = Math.min(lastCompletedNode + 1, 4);
-    }
-
-    if (newCurrentStep !== currentStep) {
-      setCurrentStep(newCurrentStep);
-    }
-  };
-
-  // Start the verifier test
   const startVerifierTest = async () => {
     if (!socket || !isConnected) {
       console.error('Not connected to server. Please refresh and try again.');
-      setMessages(prev => [...prev, 'Error: Not connected to server. Please refresh and try again.']);
+      return;
+    }
+
+    if (!oobUrl.trim()) {
+      dispatch(addMessage({ stepIndex: 0, message: 'Error: Please enter an OOB URL' }));
       return;
     }
 
     setHasStarted(true);
-    setMessages(['Starting verifier test...']);
+    dispatch(addMessage({ stepIndex: 0, message: 'Starting verifier test...' }));
+    dispatch(startTest());
     
     try {
-      // Select the verifier pipeline first
       const pipelineResponse = await fetch('http://localhost:5005/api/select/pipeline?pipeline=VERIFIER_TEST');
       if (!pipelineResponse.ok) {
         throw new Error(`Failed to select pipeline: ${pipelineResponse.statusText}`);
       }
-      console.log('Verifier pipeline selected');
-      setMessages(prev => [...prev, 'Verifier pipeline selected']);
+      dispatch(addMessage({ stepIndex: 0, message: 'Verifier pipeline selected' }));
       
-      // Small delay to ensure pipeline is selected
       setTimeout(async () => {
-        // Start the pipeline execution
-        const runResponse = await fetch('http://localhost:5005/api/run');
+        const runResponse = await fetch('http://localhost:5005/api/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oobUrl }),
+        });
         if (!runResponse.ok) {
           throw new Error(`Failed to start pipeline: ${runResponse.statusText}`);
         }
-        console.log('Pipeline started');
-        setMessages(prev => [...prev, 'Pipeline started']);
+        dispatch(addMessage({ stepIndex: 0, message: 'Pipeline started' }));
       }, 500);
     } catch (error) {
       console.error('Error starting verifier test:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start test. Please try again.';
-      setMessages(prev => [...prev, `Error: ${errorMessage}`]);
+      dispatch(addMessage({ stepIndex: 0, message: `Error: ${errorMessage}` }));
       setHasStarted(false);
     }
   };
 
-  // Update context
-  const updateContext = (updates: Partial<VerifierContext>) => {
-    setContext(prevContext => ({
-      ...prevContext,
-      ...updates,
-      errors: {
-        ...prevContext.errors,
-        ...(updates.errors || {})
-      }
-    }));
-  };
-  
-  // Update step status
-  const updateStepStatus = (stepIndex: number, status: BaseTestStepStatus) => {
-    // Convert BaseTestStepStatus to RunnerTestStepStatus
-    const runnerStatus: RunnerTestStepStatus = 
-      status === "waiting" ? "running" :
-      status === "pending" ? "pending" :
-      status === "running" ? "running" :
-      status === "passed" ? "passed" :
-      "failed";
+  if (!isActive) return null;
 
-    setSteps(prevSteps => {
-      const newSteps = [...prevSteps];
-      if (newSteps[stepIndex]) {
-        newSteps[stepIndex] = {
-          ...newSteps[stepIndex],
-          status: runnerStatus
-        };
-      }
-      return newSteps;
-    });
+  return (
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="font-semibold text-blue-900 mb-2">Setup Connection</h4>
+        <p className="text-blue-800 text-sm">
+          This step will process your verifier's OOB URL and establish a connection for testing.
+        </p>
+      </div>
+      
+      <div className="flex items-center gap-2 text-sm">
+        <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+        <span className="text-gray-600">
+          {isConnected ? 'Connected to backend' : 'Disconnected from backend'}
+        </span>
+      </div>
+
+      {!hasStarted ? (
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="oobUrl" className="block text-sm font-medium text-gray-700 mb-2">
+              Verifier OOB URL
+            </label>
+            <input
+              type="text"
+              id="oobUrl"
+              value={oobUrl}
+              onChange={(e) => setOobUrl(e.target.value)}
+              placeholder="Enter the out-of-band URL from your verifier"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          
+          <button
+            onClick={startVerifierTest}
+            disabled={!isConnected || !oobUrl.trim()}
+            className="btn btn-blue disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Start Verifier Test
+          </button>
+        </div>
+      ) : (
+        <div className="text-center py-4">
+          <div className="inline-flex items-center">
+            <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12z"></path>
+            </svg>
+            <span className="ml-2 text-gray-600">Processing verifier connection...</span>
+          </div>
+        </div>
+      )}
+
+      <MessageRenderer messages={stepMessages} title="Connection Log" />
+    </div>
+  );
+}
+
+// Generic Step Component for steps 1-5
+function GenericVerifierStep({ 
+  isActive, 
+  stepIndex, 
+  title, 
+  description, 
+  taskData 
+}: { 
+  isActive: boolean; 
+  stepIndex: number;
+  title: string;
+  description: string;
+  taskData?: TaskNode; 
+}) {
+  const { messages } = useSelector((state: RootState) => state.test);
+  const stepMessages = messages[stepIndex] || [];
+
+  if (!isActive) return null;
+
+  const isProcessing = taskData?.task?.state?.status === 'Running' || taskData?.task?.state?.status === 'Started';
+  const isCompleted = taskData?.task?.state?.status === 'Accepted' || taskData?.task?.state?.status === 'Completed';
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h4 className="font-semibold text-gray-900 mb-2">{title}</h4>
+        <p className="text-gray-800 text-sm">{description}</p>
+      </div>
+      
+      <div className="text-center py-4">
+        {isCompleted ? (
+          <div className="inline-flex items-center text-green-600">
+            <svg className="h-6 w-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="font-medium">Step completed successfully!</span>
+          </div>
+        ) : isProcessing ? (
+          <div className="inline-flex items-center text-blue-600">
+            <svg className="animate-spin h-5 w-5 text-blue-500 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12z"></path>
+            </svg>
+            <span className="font-medium">Processing...</span>
+          </div>
+        ) : (
+          <div className="inline-flex items-center">
+            <svg className="animate-spin h-5 w-5 text-gray-500 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12z"></path>
+            </svg>
+            <span className="text-gray-600">Waiting...</span>
+          </div>
+        )}
+      </div>
+
+      <MessageRenderer messages={stepMessages} title={`${title} Log`} />
+    </div>
+  );
+}
+
+// Report Step Component
+function ReportStep({ isActive, onRestart, dagData }: { isActive: boolean; onRestart: () => void; dagData?: any; }) {
+  if (!isActive) return null;
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <h4 className="font-semibold text-green-900 mb-2">Verifier Test Complete!</h4>
+        <p className="text-green-800 text-sm">
+          Your verifier has successfully completed the conformance test.
+        </p>
+      </div>
+      
+      <div className="text-center">
+        <button onClick={onRestart} className="btn btn-blue">
+          Run Another Test
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function VerifierTest() {
+  const dispatch = useDispatch();
+  const { currentStep } = useSelector((state: RootState) => state.test);
+  const { dag } = useSelector((state: RootState) => state.dag);
+  const [steps, setSteps] = useState<TestStep[]>([]);
+
+  // Convert DAG node status to test step status
+  const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
+    if (node.task.state.status === 'Accepted' || node.task.state.status === 'Completed') {
+      return 'passed';
+    }
+    if (node.task.state.status === 'Running' || node.task.state.status === 'Started') {
+      return 'running';
+    }
+    if (node.task.state.status === 'Failed' || node.task.state.status === 'Error') {
+      return 'failed';
+    }
+    return 'pending';
   };
-  
-  // Reset and restart
-  const handleRestart = () => {
-    setContext(createEmptyVerifierContext());
-    setCurrentStep(0);
-    setDagData(null);
-    setMessages([]);
-    setHasStarted(false);
-    setInvitationUrl(null);
-    setSteps(prevSteps => 
-      prevSteps.map(step => ({
-        ...step,
-        status: "pending" as BaseTestStepStatus,
-        isActive: step.id === 1
-      }))
-    );
-  };
-  
+
+  const handleRestart = useCallback(() => {
+    dispatch(resetTest());
+  }, [dispatch]);
+
   // Initialize steps
   useEffect(() => {
-    const initialSteps: TestStep[] = [
-      {
-        id: 1,
-        name: "Connection",
-        description: "Establish connection with the holder wallet",
-        status: currentStep > 0 ? "passed" : currentStep === 0 ? "running" : "pending",
-        component: (
-          <VerifierConnectionStep
-            context={context}
-            controller={{
-              setStatus: (status) => updateStepStatus(0, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, connection: error } }),
-              complete: (success) => {},
-              updateContext: updateContext,
-              goToNextStep: () => setCurrentStep(1)
-            }}
-            isActive={currentStep === 0}
-            invitationUrl={invitationUrl}
-            messages={messages}
-            hasStarted={hasStarted}
-            onStart={startVerifierTest}
-          />
-        ),
-        isActive: currentStep === 0
-      },
-      {
-        id: 2,
-        name: "User Requests Proof",
-        description: "Send a presentation request to the holder wallet",
-        status: currentStep > 1 ? "passed" : currentStep === 1 ? "running" : "pending",
-        component: (
-          <PresentationRequestStep
-            context={context}
-            controller={{
-              setStatus: (status) => updateStepStatus(1, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, request: error } }),
-              complete: (success) => {},
-              updateContext: updateContext,
-              goToNextStep: () => setCurrentStep(2)
-            }}
-            isActive={currentStep === 1}
-          />
-        ),
-        isActive: currentStep === 1
-      },
-      {
-        id: 3,
-        name: "Ayra Present Proof",
-        description: "Wait for the holder to present their proof",
-        status: currentStep > 2 ? "passed" : currentStep === 2 ? "running" : "pending",
-        component: (
-          <VerificationStep
-            context={context}
-            controller={{
-              setStatus: (status) => updateStepStatus(2, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, verification: error } }),
-              complete: (success) => {},
-              updateContext: updateContext,
-              goToNextStep: () => setCurrentStep(3)
-            }}
-            isActive={currentStep === 2}
-          />
-        ),
-        isActive: currentStep === 2
-      },
-      {
-        id: 4,
-        name: "Verify Response",
-        description: "Verify the presented proof",
-        status: currentStep > 3 ? "passed" : currentStep === 3 ? "running" : "pending",
-        component: (
-          <VerificationStep
-            context={context}
-            controller={{
-              setStatus: (status) => updateStepStatus(3, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, verification: error } }),
-              complete: (success) => {},
-              updateContext: updateContext,
-              goToNextStep: () => setCurrentStep(4)
-            }}
-            isActive={currentStep === 3}
-          />
-        ),
-        isActive: currentStep === 3
-      },
-      {
-        id: 5,
-        name: "Report",
-        description: "Review the test results",
-        status: currentStep === 4 ? "passed" : "pending",
-        component: (
-          <VerifierReportStep
-            context={context}
-            controller={{
-              setStatus: (status) => updateStepStatus(4, status),
-              setError: () => {},
-              complete: (success) => {},
-              updateContext: updateContext,
-              goToNextStep: () => {}
-            }}
-            isActive={currentStep === 4}
-            onRestart={handleRestart}
-          />
-        ),
-        isActive: currentStep === 4
-      }
+    const stepDefinitions = [
+      { name: "Setup Connection", description: "Process OOB URL and establish connection with verifier" },
+      { name: "Send Presentation", description: "Send the requested presentation to the verifier" },
+      { name: "Wait for Verification", description: "Wait for the verifier to process and verify the presentation" },
+      { name: "Evaluate Results", description: "Evaluate verifier's conformance based on test results" }
     ];
-    
+
+    const initialSteps: TestStep[] = [];
+
+    // Add the connection step (special handling)
+    initialSteps.push({
+      id: 1,
+      name: stepDefinitions[0].name,
+      description: stepDefinitions[0].description,
+      status: currentStep > 0 ? "passed" : currentStep === 0 ? "running" : "pending",
+      component: (
+        <VerifierConnectionStep
+          isActive={currentStep === 0}
+          taskData={dag?.nodes?.[0]}
+        />
+      ),
+      isActive: currentStep === 0,
+      taskData: dag?.nodes?.[0]
+    });
+
+    // Add steps 1-5 (generic steps)
+    for (let i = 1; i < 4; i++) {
+      initialSteps.push({
+        id: i + 1,
+        name: stepDefinitions[i].name,
+        description: stepDefinitions[i].description,
+        status: currentStep > i ? "passed" : currentStep === i ? "running" : "pending",
+        component: (
+          <GenericVerifierStep
+            isActive={currentStep === i}
+            stepIndex={i}
+            title={stepDefinitions[i].name}
+            description={stepDefinitions[i].description}
+            taskData={dag?.nodes?.[i]}
+          />
+        ),
+        isActive: currentStep === i,
+        taskData: dag?.nodes?.[i]
+      });
+    }
+
+    // Add report step
+    initialSteps.push({
+      id: 7,
+      name: "Report",
+      description: "Review the complete test results",
+      status: currentStep === 6 ? "passed" : "pending",
+      component: (
+        <ReportStep
+          isActive={currentStep === 6}
+          onRestart={handleRestart}
+          dagData={dag}
+        />
+      ),
+      isActive: currentStep === 6
+    });
+
     // Update step statuses based on DAG data
-    if (dagData?.nodes) {
-      dagData.nodes.forEach((node, index) => {
+    if (dag?.nodes) {
+      dag.nodes.forEach((node, index) => {
         if (initialSteps[index]) {
           const status = getStepStatusFromNode(node);
           initialSteps[index].status = status;
+          initialSteps[index].taskData = node;
         }
       });
     }
-    
+
     setSteps(initialSteps);
-  }, [currentStep, context, dagData, hasStarted, isConnected, invitationUrl, messages]);
+  }, [currentStep, dag, handleRestart]);
 
   return (
     <div>
@@ -377,7 +328,6 @@ export function VerifierTest() {
         description="This test verifies if a Verifier implements the required functionality for connection, presentation request, and verification."
         steps={steps}
         currentStep={currentStep}
-        onStepChange={setCurrentStep}
         onRestart={handleRestart}
       />
     </div>

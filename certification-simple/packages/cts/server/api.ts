@@ -6,6 +6,7 @@ const serverPort: number = Number(process.env.SERVER_PORT) || 5005; // ngrok por
 import { run } from "./server";
 import { selectPipeline } from "./state";
 import { PipelineType } from "./pipelines";
+import VerifierTestPipeline from './pipelines/verifierTestPipeline';
 
 import { Express } from "express";
 const app: Express = express();
@@ -19,7 +20,20 @@ app.get("/api/dag", (req, res) => {
   res.json({ dag: state?.dag?.serialize() });
 });
 
-app.get("/api/run", (req, res) => {
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "healthy", 
+    timestamp: new Date().toISOString(),
+    agent: state.agent ? "initialized" : "not initialized",
+    pipeline: state.pipeline ? "selected" : "none"
+  });
+});
+
+app.post("/api/run", (req, res) => {
+  // Accept parameters from the request body
+  const params = req.body;
+  console.log("[API] Received run request with params:", params);
+
   // Send response immediately
   res.json({ message: "Pipeline kickoff initiated" });
 
@@ -27,7 +41,7 @@ app.get("/api/run", (req, res) => {
   // Run the pipeline asynchronously in the background
   (async () => {
     try {
-      await run(); // Ensure that the run function is awaited to handle errors properly
+      await run(params); // Pass params to run
       console.log("Pipeline execution completed");
     } catch (error) {
       console.error("Error during pipeline execution:", error);

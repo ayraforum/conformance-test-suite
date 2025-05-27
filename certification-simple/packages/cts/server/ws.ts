@@ -29,26 +29,26 @@ export const emitDAGUpdate = () => {
   const sequence = ++updateSequence;
   
   // Detailed DAG state logging for debugging
-  console.log('WebSocket - Emitting DAG State:', {
-    sequence,
-    dagState: serializedDag?.status,
-    connectedClients: io.engine.clientsCount,
-    nodeStates: serializedDag?.nodes?.map(n => ({
-      name: n.name,
-      state: n.state,
-      finished: n.finished,
-      taskStatus: n.task?.state?.status,
-      taskRunState: n.task?.state?.runState
-    }))
-  });
-  
+//  console.log('WebSocket - Emitting DAG State:', {
+//    sequence,
+//    dagState: serializedDag?.status,
+//    connectedClients: io.engine.clientsCount,
+//    nodeStates: serializedDag?.nodes?.map(n => ({
+//      name: n.name,
+//      state: n.state,
+//      finished: n.finished,
+//      taskStatus: n.task?.state?.status,
+//      taskRunState: n.task?.state?.runState
+//    }))
+//  });
+//  
   const emitData = { sequence, dag: serializedDag };
   
   // Use the working event name only
   io.emit("dag-state-update", emitData);
   
   // Log successful emission
-  console.log(`WebSocket - Broadcasted dag-state-update ${sequence} to ${io.engine.clientsCount} clients`);
+//  console.log(`WebSocket - Broadcasted dag-state-update ${sequence} to ${io.engine.clientsCount} clients`);
 };
 
 eventEmitter.on("invitation", (event: OutOfBandRecord) => {
@@ -83,21 +83,6 @@ io.on("connection", (socket: Socket) => {
   
   socket.emit("dag-state-update", initialData);
 
-  // Add heartbeat test - send a simple message every 2 seconds
-  let heartbeatCount = 0;
-  const heartbeatInterval = setInterval(() => {
-    heartbeatCount++;
-    const heartbeatMessage = {
-      type: 'heartbeat',
-      count: heartbeatCount,
-      timestamp: new Date().toISOString(),
-      socketId: socket.id
-    };
-    
-    console.log(`Heartbeat ${heartbeatCount} sent to client ${socket.id}`);
-    socket.emit('heartbeat', heartbeatMessage);
-  }, 2000);
-
   // Handle acknowledgment (keep for debugging)
   socket.on("dag-update-ack", (ack: { sequence: number }) => {
     if (ack && ack.sequence) {
@@ -110,21 +95,12 @@ io.on("connection", (socket: Socket) => {
     }
   });
 
-  // Handle heartbeat responses
-  socket.on('heartbeat-response', (data: any) => {
-    console.log(`Heartbeat response received from ${socket.id}:`, data);
-  });
-
   socket.on("disconnect", (reason: string) => {
     console.log("User disconnected:", socket.id, "Reason:", reason);
     console.log("Remaining connected clients:", io.engine.clientsCount);
-    // Clean up heartbeat interval
-    clearInterval(heartbeatInterval);
   });
 
   socket.on("error", (error: Error) => {
     console.error("Socket error for client", socket.id, ":", error);
-    // Clean up heartbeat interval on error
-    clearInterval(heartbeatInterval);
   });
 });

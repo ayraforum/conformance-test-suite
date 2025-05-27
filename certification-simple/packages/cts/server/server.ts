@@ -1,5 +1,10 @@
 // server.ts
 import 'dotenv/config';
+import express, { Request, Response } from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import { state } from './state';
+import VerifierTestPipeline from './pipelines/verifierTestPipeline';
 
 import {
   SetupConnectionTask,
@@ -11,7 +16,7 @@ import ngrok from "ngrok";
 
 import { v4 as uuidv4 } from "uuid";
 import { BaseAgent } from "@demo/core/agent/core";
-import { setDAG, setPipeline, setConfig, state, setAgent } from "./state";
+import { setDAG, setPipeline, setConfig, setAgent } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
@@ -78,9 +83,9 @@ export const reset = async () => {};
 /**
  * Main function to set up and run the task pipeline.
  */
-export const run = async () => {
+export const run = async (params?: any) => {
   try {
-    console.log("initializing agent...");
+    console.log("[RUN] Starting pipeline execution with params:", params);
     const agent = state.agent;
     console.log("Agent initialized successfully.");
     if (!agent) {
@@ -88,7 +93,13 @@ export const run = async () => {
     }
     const pipeline = state.pipeline;
     if (!pipeline) {
-      throw new Error("pipline doesn't exist");
+      throw new Error("pipeline doesn't exist");
+    }
+
+    // If we have an OOB URL and this is a VerifierTestPipeline, update it
+    if (params?.oobUrl && 'setOobUrl' in pipeline && typeof pipeline.setOobUrl === 'function') {
+      console.log("[RUN] Updating VerifierTestPipeline with OOB URL:", params.oobUrl);
+      (pipeline as any).setOobUrl(params.oobUrl);
     }
 
     await pipeline.init();
@@ -105,8 +116,10 @@ export const run = async () => {
     await dag.start();
     emitDAGUpdate();
   } catch (error) {
-    console.error("An error occurred during execution:", error);
-    process.exit(1); // Exit with an error code if something failed
+    console.error("An error occurred during pipeline execution:", error);
+    // Don't exit the process - just log the error and allow the server to continue
+    // This allows other tests to still run even if one fails
+    emitDAGUpdate(); // Still emit update to show error state
   }
 };
 
@@ -114,7 +127,7 @@ console.log("initializing");
 try {
   init().then(() => {
     try {
-      selectPipeline(PipelineType.VERIFIER_TEST);
+      selectPipeline(PipelineType.HOLDER_TEST);
     } catch (e) {
       console.error(e);
     }
