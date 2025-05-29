@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -30,6 +31,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # env files (can opt-in for committing if needed)
+!.env.example
 .env*
 
 # vercel
@@ -38,3 +40,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.pnpm-store
+.next

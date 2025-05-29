@@ -1,0 +1,40 @@
+name: Run Setup Script
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - ask/*
+      - feature/*
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      # ✅ Step 1: Check out the repository containing setup.sh
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # ✅ Step 2: Install Dependencies (pnpm, Docker, Maven)
+      - name: Install pnpm
+        run: |
+          npm install -g pnpm
+          pnpm --version
+
+      - name: Install Maven
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y maven
+          mvn -version
+
+      # ✅ Step 3: Ensure setup.sh is executable
+      - name: Make setup.sh executable
+        run: chmod +x setup.sh
+
+      # ✅ Step 4: Run setup.sh in Non-Interactive Mode
+      - name: Run setup.sh in Non-Interactive Mode
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }} # Pass repository name dynamically
+        run: ./setup.sh --non-interactive

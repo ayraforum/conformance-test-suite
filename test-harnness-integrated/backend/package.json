@@ -1,0 +1,52 @@
+{
+    "name": "@conformance-test-suite/backend",
+    "version": "1.0.0",
+    "private": true,
+    "packageManager": "pnpm@9.15.3",
+    "dependencies": {
+        "@conformance-test-suite/shared": "workspace:*",
+        "@fastify/cors": "^10.0.1",
+        "@hey-api/client-fetch": "^0.5.0",
+        "@prisma/client": "^5.22.0",
+        "@ts-rest/core": "^3.51.0",
+        "@ts-rest/express": "^3.51.0",
+        "@ts-rest/open-api": "^3.51.0",
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.0",
+        "@types/node": "^22.9.1",
+        "@types/socket.io": "^3.0.2",
+        "@types/swagger-ui-express": "^4.1.7",
+        "cors": "^2.8.5",
+        "dockerode": "^4.0.2",
+        "dotenv": "^16.4.5",
+        "express": "^4.21.1",
+        "fastify": "^5.1.0",
+        "fastify-socket.io": "^5.1.0",
+        "prisma": "^5.22.0",
+        "socket.io": "^4.8.1",
+        "swagger-ui-express": "^5.0.1",
+        "typescript": "^5.6.3",
+        "uuid": "^11.0.3"
+    },
+    "main": "index.js",
+    "scripts": {
+        "dev": "dotenv -e .env.local -- nodemon --watch src --ext ts,js --exec ts-node src/server.ts",
+        "prisma-migrate": "prisma migrate dev",
+        "build": "tsc",
+        "start": "node dist/server.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "description": "",
+    "devDependencies": {
+        "@fastify/type-provider-typebox": "^5.0.1",
+        "@hey-api/openapi-ts": "^0.58.0",
+        "@types/dockerode": "^3.3.32",
+        "@types/node": "^22.9.1",
+        "dotenv-cli": "^8.0.0",
+        "nodemon": "^3.1.9",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.6.3"
+    }
+}

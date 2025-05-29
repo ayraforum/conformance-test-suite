@@ -1,0 +1,12 @@
+{
+  "overrides": [
+    {
+      "files": ["**/gen/**"],
+      "rules": {
+        "no-undef": "off",
+        "no-unused-vars": "off",
+        "all": "off"
+      }
+    }
+  ]
+}

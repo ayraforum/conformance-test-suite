@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "./build",
+    "lib": ["ES6", "dom"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "skipDefaultLibCheck": true
+  },
+  "exclude": ["node_modules", "**/build/**", "gen"]
+}
