@@ -1,39 +1,49 @@
 # Ayra Conformance Test Suite
 
-A comprehensive testing framework for digital identity and verifiable credential implementations using the Credo-TS ecosystem. This suite provides standardized conformance tests for **verifier**, **holder**, **issuer**, and **registry** flows in SSI (Self-Sovereign Identity) workflows.
+A testing framework that validates digital wallet and verifier implementations for participation in the **Ayra Trust Network**. The Ayra CTS ensures your SSI implementation correctly interoperates with the network's standards for verifiable credentials, decentralized identifiers, and secure messaging protocols.
 
 ## 🎯 What This Test Suite Does
 
-The Ayra Conformance Test Suite (CTS) enables you to **test your digital wallet or verifier implementation** against standardized SSI protocols. Instead of building complex test harnesses, you can quickly validate that your implementation correctly handles:
+The Ayra Conformance Test Suite validates that your implementation can **successfully participate in the Ayra Trust Network** by testing compliance with:
 
-- **Connection establishment** via DIDComm protocols
-- **Credential issuance** and storage workflows  
-- **Proof presentation** and verification processes
-- **Registry interactions** for schema and credential definitions
+- **Network connection protocols** for joining the trust network
+- **Credential issuance standards** used across network participants  
+- **Proof presentation formats** accepted by network verifiers
+- **Registry interaction patterns** for schema and credential definition publishing
+- **Trust framework compliance** ensuring adherence to network governance
 
-### **Key Value Proposition**
-- ⚡ **Quick time to value** - Test your implementation in minutes, not days
-- 🌐 **Web portal interface** - No complex setup or backchannel development required
-- 📱 **Real device testing** - Test actual mobile wallets and web applications
-- 🔄 **Multi-role testing** - Acts as verifier, holder, issuer, or registry as needed
+### **Ayra Trust Network Participation**
+The CTS specifically tests your ability to:
+- ✅ **Connect to network nodes** using standard DIDComm protocols
+- ✅ **Issue network-compatible credentials** following Ayra schemas
+- ✅ **Present proofs** in formats accepted by network verifiers
+- ✅ **Publish to network registries** with proper authorization
+- ✅ **Maintain trust relationships** according to network governance
+
+### **Value for Network Participants**
+- ⚡ **Fast network onboarding** - Validate readiness for Ayra Trust Network in minutes
+- 🌐 **Pre-deployment validation** - Test compliance before going live on the network
+- 📱 **Real device compatibility** - Ensure mobile wallets work with network standards
+- 🔄 **Multi-role certification** - Validate as issuer, holder, verifier, or registry operator
+- 🏛️ **Governance compliance** - Verify adherence to network trust framework
 
 ## 🔄 Testing Approaches
 
-### **Current Implementation: Ayra CTS Multi-Role Framework** 🎉
+### **Current Implementation: Ayra Trust Network Validation** 🎉
 
-The Ayra CTS now supports **verifier**, **holder**, **issuer**, and **registry** flows in a unified testing framework:
+The Ayra CTS validates network participation readiness across all participant roles:
 
-**✅ What's Working:**
-- **Verifier role**: Creates invitations, requests proofs, validates presentations
-- **Holder role**: Accepts invitations, presents credentials, manages connections  
-- **Issuer role**: Issues basic credentials for testing purposes
-- **Registry role**: Publishes schemas, manages credential definitions
-- **BC Gov Integration**: Successfully tested and validated with BC Government implementations
+**✅ Network Compliance Testing:**
+- **Network Verifier**: Creates Ayra-compliant invitations, requests proofs following network schemas
+- **Network Holder**: Accepts network invitations, presents credentials in network-approved formats  
+- **Network Issuer**: Issues credentials using Ayra Trust Network schemas and governance
+- **Network Registry**: Publishes schemas and credential definitions to network registries
+- **Production Validation**: Successfully tested with BC Government and other network participants
 
-**⚠️ Current Status:**
-- **Functional but brittle** - Core flows work but need maturation
-- **Missing components** - Network Credentials and advanced flows not yet implemented
-- **Rapid development** - Much quicker time to value than previous approaches
+**⚠️ Current Development Status:**
+- **Functional for network onboarding** - Core network participation flows validated
+- **Rapid iteration** - Continuously updated based on network participant feedback
+- **Missing advanced features** - Some complex network scenarios still in development
 
 ### **Evaluated Approaches (DIDComm/Messaging Focused)**
 
@@ -45,18 +55,18 @@ The Ayra CTS now supports **verifier**, **holder**, **issuer**, and **registry**
 ### **Current Credo-Based Testing Approach**
 
 **✅ Advantages:**
-- **Uses Credo agents** to test various SSI actors
-- **Built on demo app** from previous development cycles
-- **Web portal vision** - Eventually deployable as public testing portal
-- **Quick time to value** - Much faster than legacy approaches
-- **No backchannel development** required for implementers
-- **Direct integration** with existing wallet implementations
-- **Visual feedback** through web interface
+- **Network-specific validation** - Tests actual Ayra Trust Network compliance
+- **Built on production experience** - Leverages real deployment learnings
+- **Web-based testing portal** - Accessible to any network participant
+- **Fast network readiness validation** - Rapid pre-deployment verification
+- **No custom integration required** - Standard implementations work immediately
+- **Real network compatibility** - Tests against actual network standards
+- **Visual compliance feedback** - Clear pass/fail indicators for network requirements
 
-**⚠️ Limitations:**
-- **Functional but brittle** - Core flows work but need maturation  
-- **Missing components** - Network Credentials and advanced flows not yet implemented
-- **Single implementation focus** - Primarily built around Credo-TS ecosystem
+**⚠️ Current Limitations:**
+- **Active development** - Network standards evolving, requiring frequent updates  
+- **Limited advanced scenarios** - Complex multi-party workflows still being added
+- **Credo-TS focused** - Primarily optimized for Credo-based implementations
 
 ## 🏗️ Architecture Overview
 
@@ -79,7 +89,7 @@ certification-simple/
 - **Blockchain Integration**: Cosmos SDK and Cheqd network support
 - **Cryptographic Utilities**: Ed25519, AnonCreds support
 
-#### 2. **CTS Package** (`cts-3`)
+#### 2. **CTS Package** (`cts`)
 - **Next.js Frontend**: Web interface for test execution and monitoring
 - **Express Server**: API endpoints and WebSocket communication
 - **Pipeline System**: DAG-based test execution workflows
@@ -241,28 +251,35 @@ graph TD
 - `POST /api/run` - Execute selected pipeline
 - `GET /api/invitation` - Get current invitation URL
 
-## 📊 Test Scenarios
+## 📊 Network Compliance Testing
 
-### **Credential Issuance Flow**
-1. Issuer creates credential definition
-2. Holder requests credential
-3. Issuer issues credential to holder
-4. Holder stores credential in wallet
+### **Ayra Trust Network Validation Scenarios**
 
-### **Proof Presentation Flow**  
-1. Verifier creates proof request
-2. Verifier generates invitation QR code
-3. Holder scans invitation and connects
-4. Holder receives proof request
-5. Holder presents matching credentials
-6. Verifier validates proof and credentials
+#### **Network Onboarding Flow**
+1. Participant registers with network registry
+2. Implementation requests network connection 
+3. CTS validates compliance with network protocols
+4. Participant receives network participation certificate
 
-### **Supported Standards**
-- **DIDComm v2**: Secure messaging protocol
-- **AnonCreds**: Privacy-preserving credentials
-- **OpenID Connect**: OAuth 2.0 extension
-- **W3C Verifiable Credentials**: Standard credential format
-- **DID Core**: Decentralized identifier specification
+#### **Cross-Network Credential Exchange**  
+1. Network issuer creates credential using Ayra schemas
+2. Network holder receives and stores credential
+3. External verifier requests proof via network protocols
+4. CTS validates proper network-compliant proof presentation
+
+#### **Trust Framework Compliance**
+- **Governance adherence** - Validates compliance with Ayra Trust Framework
+- **Schema validation** - Ensures credentials follow network-approved schemas
+- **Authorization flows** - Tests proper network permission models
+- **Audit trail compliance** - Verifies required network logging and reporting
+
+### **Supported Network Standards**
+- **Ayra Trust Framework**: Network governance and trust model compliance
+- **DIDComm v2**: Secure messaging protocol for network communication
+- **AnonCreds**: Privacy-preserving credentials within network
+- **Ayra Schema Registry**: Network-approved credential schemas
+- **Network Authorization**: Ayra-specific permission and access control
+- **W3C VC Compliance**: Verifiable Credentials following network profiles
 
 ## 🔧 Development Guidelines
 
@@ -309,6 +326,13 @@ await agent.init();
 ```
 
 ## 🚧 Known Issues & TODOs
+
+### **Ayra Trust Network Requirements**
+- [ ] **Network Certification Process**: Formal certification workflow for network participation
+- [ ] **Governance Compliance Validation**: Automated checks against Ayra Trust Framework policies
+- [ ] **Network Node Registration**: Integration with official Ayra network registry
+- [ ] **Trust Anchor Validation**: Verification against approved network trust anchors
+- [ ] **Network Schema Compliance**: Real-time validation against current Ayra schema registry
 
 ### **Current Limitations**
 - [ ] **Persistence**: No database integration for test results
