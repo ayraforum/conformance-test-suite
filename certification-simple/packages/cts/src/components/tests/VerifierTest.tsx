@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { TestRunner, TestStep, TestStepStatus, TaskNode } from "@/components/TestRunner";
+import { DetailedReport } from "@/components/common/DetailedReport";
 import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
 import { startTest, resetTest, addMessage } from "@/store/testSlice";
@@ -202,20 +203,11 @@ function ReportStep({ isActive, onRestart, dagData }: { isActive: boolean; onRes
   if (!isActive) return null;
 
   return (
-    <div className="space-y-6">
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-        <h4 className="font-semibold text-green-900 mb-2">Verifier Test Complete!</h4>
-        <p className="text-green-800 text-sm">
-          Your verifier has successfully completed the conformance test.
-        </p>
-      </div>
-      
-      <div className="text-center">
-        <button onClick={onRestart} className="btn btn-blue">
-          Run Another Test
-        </button>
-      </div>
-    </div>
+    <DetailedReport 
+      dagData={dagData}
+      testType="Verifier"
+      onRestart={onRestart}
+    />
   );
 }
 
@@ -246,19 +238,20 @@ export function VerifierTest() {
   // Initialize steps
   useEffect(() => {
     const stepDefinitions = [
-      { name: "Setup Connection", description: "Process OOB URL and establish connection with verifier" },
+      { name: "Self-Issue Credential", description: "Create test credential with schema and credential definition" },
+      { name: "Establish Connection", description: "Receive invitation and establish connection with verifier" },
+      { name: "Combine Data", description: "Combine credential information with connection for presentation" },
       { name: "Send Presentation", description: "Send the requested presentation to the verifier" },
-      { name: "Wait for Verification", description: "Wait for the verifier to process and verify the presentation" },
       { name: "Evaluate Results", description: "Evaluate verifier's conformance based on test results" }
     ];
 
     const initialSteps: TestStep[] = [];
 
-    // Add the connection step (special handling)
+    // Add the connection step (uses OOB URL input)
     initialSteps.push({
       id: 1,
-      name: stepDefinitions[0].name,
-      description: stepDefinitions[0].description,
+      name: "Setup Test",
+      description: "Process OOB URL and initialize verifier test",
       status: currentStep > 0 ? "passed" : currentStep === 0 ? "running" : "pending",
       component: (
         <VerifierConnectionStep
@@ -270,52 +263,71 @@ export function VerifierTest() {
       taskData: dag?.nodes?.[0]
     });
 
-    // Add steps 1-5 (generic steps)
-    for (let i = 1; i < 4; i++) {
+    // Add backend pipeline steps (6 steps from our verifier pipeline)
+    for (let i = 0; i < stepDefinitions.length; i++) {
+      const stepNum = i + 1;
       initialSteps.push({
-        id: i + 1,
+        id: stepNum + 1,
         name: stepDefinitions[i].name,
         description: stepDefinitions[i].description,
-        status: currentStep > i ? "passed" : currentStep === i ? "running" : "pending",
+        status: currentStep > stepNum ? "passed" : currentStep === stepNum ? "running" : "pending",
         component: (
           <GenericVerifierStep
-            isActive={currentStep === i}
-            stepIndex={i}
+            isActive={currentStep === stepNum}
+            stepIndex={stepNum}
             title={stepDefinitions[i].name}
             description={stepDefinitions[i].description}
             taskData={dag?.nodes?.[i]}
           />
         ),
-        isActive: currentStep === i,
+        isActive: currentStep === stepNum,
         taskData: dag?.nodes?.[i]
       });
     }
 
-    // Add report step
+    // Add report step (after all 6 backend steps)
+    const reportStepIndex = stepDefinitions.length + 1;
     initialSteps.push({
-      id: 7,
+      id: reportStepIndex + 1,
       name: "Report",
-      description: "Review the complete test results",
-      status: currentStep === 6 ? "passed" : "pending",
+      description: "Review the complete test results and conformance report",
+      status: currentStep === reportStepIndex ? "passed" : "pending",
       component: (
         <ReportStep
-          isActive={currentStep === 6}
+          isActive={currentStep === reportStepIndex}
           onRestart={handleRestart}
           dagData={dag}
         />
       ),
-      isActive: currentStep === 6
+      isActive: currentStep === reportStepIndex
     });
 
     // Update step statuses based on DAG data
     if (dag?.nodes) {
       dag.nodes.forEach((node, index) => {
-        if (initialSteps[index]) {
+        // Offset by 1 because first step is the setup step
+        const stepIndex = index + 1;
+        if (initialSteps[stepIndex]) {
           const status = getStepStatusFromNode(node);
-          initialSteps[index].status = status;
-          initialSteps[index].taskData = node;
+          initialSteps[stepIndex].status = status;
+          initialSteps[stepIndex].taskData = node;
         }
       });
+      
+      // Check if all backend steps are complete to show report
+      const allNodesComplete = dag.nodes.every(node => 
+        node.task.state.status === 'Accepted' || 
+        node.task.state.status === 'Completed' ||
+        node.task.state.status === 'Failed' ||
+        node.task.state.status === 'Error'
+      );
+      
+      if (allNodesComplete && currentStep < reportStepIndex) {
+        // Auto-advance to report step when all backend steps are done
+        console.log('All verifier pipeline steps complete, showing report');
+        // Note: In a real app, you might dispatch an action to advance the step
+        // For now, we'll rely on the Redux middleware to handle step progression
+      }
     }
 
     setSteps(initialSteps);

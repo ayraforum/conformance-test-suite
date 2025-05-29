@@ -6,13 +6,20 @@ import {
   CredentialIssuanceOptions,
 } from "./issue-credential";
 
+import {
+  SelfIssueCredentialTask,
+  SelfIssueCredentialOptions,
+} from "./self-issue-credential";
+
 export {
   SetupConnectionTask,
   RequestProofTask,
   IssueCredentialTask,
+  SelfIssueCredentialTask,
 };
 
 export type {
   RequestProofOptions,
   CredentialIssuanceOptions,
+  SelfIssueCredentialOptions,
 };
