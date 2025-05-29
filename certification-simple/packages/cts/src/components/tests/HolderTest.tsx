@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { TestRunner, TestStep, TestStepStatus, TaskNode } from "@/components/TestRunner";
+import { DetailedReport } from "@/components/common/DetailedReport";
 import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
 import { startTest, resetTest, addMessage } from "@/store/testSlice";

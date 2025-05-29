@@ -164,26 +164,26 @@ export class RequestProofTask extends BaseRunnableTask {
             `Checking if issuer ${issuerDID} is listed in GAN Registry under GAN EGF and Authorization Namespace`
           );
 
-          const client = new TRQPClient(configuration);
-          client.registryAPI
-            .entitiesEntityVIDAuthorizationGet(
-              "did:web:samplenetwork.foundation"
-            )
-            .then((resp) => {
-              console.log(resp.data);
-            });
+  //        const client = new TRQPClient(configuration);
+  //        client.registryAPI
+  //          .entitiesEntityVIDAuthorizationGet(
+  //            "did:web:samplenetwork.foundation"
+  //          )
+  //          .then((resp) => {
+  //            console.log(resp.data);
+  //          });
 
-          const resp =
-            await client.registryAPI.entitiesEntityVIDAuthorizationGet(
-              issuerDID
-            );
-          if (resp.status === 200) {
-            console.log("Listed in GAN Registry", resp.data);
-            this.addMessage("Found listing in GAN Registry");
-          } else {
-            console.log("Not listed in GAN Registry!", resp.data);
-            throw new Error("Not listed in GAN Registry!");
-          }
+  //        const resp =
+  //          await client.registryAPI.entitiesEntityVIDAuthorizationGet(
+  //            issuerDID
+  //          );
+//          if (resp.status === 200) {
+//            console.log("Listed in GAN Registry", resp.data);
+//            this.addMessage("Found listing in GAN Registry");
+//          } else {
+//            console.log("Not listed in GAN Registry!", resp.data);
+//            throw new Error("Not listed in GAN Registry!");
+//          }
         } catch (e) {
           console.error(e.code);
         }
