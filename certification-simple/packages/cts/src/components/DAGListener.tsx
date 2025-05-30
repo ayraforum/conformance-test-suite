@@ -1,20 +1,18 @@
 import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../store";
+import { useDispatch } from "react-redux";
+import { useAppSelector } from "../store";
 import { setDAG } from "../store/dagSlice";
 import NodeCard from "./dag/NodeCard";
-
-import { DAG } from "../types/DAGNode";
+import { DAG, TaskNode } from "../types/DAGNode";
 import { getSocket } from "../utils/socketManager";
+
 const DAGListener: React.FC = () => {
   const dispatch = useDispatch();
-  const connectionStatus = useSelector(
-    (state: RootState) => state.socket.connectionStatus
-  );
+  const connectionStatus = useAppSelector(state => state.socket.connectionStatus);
   const [color, setColor] = useState<string>("");
 
-  const dag = useSelector((state: RootState) => state.dag.dag);
-  const error = useSelector((state: RootState) => state.socket.error);
+  const dag = useAppSelector(state => state.dag.dag);
+  const error = useAppSelector(state => state.socket.error);
 
   useEffect(() => {
     const socket = getSocket();
@@ -74,14 +72,13 @@ const DAGListener: React.FC = () => {
   };
 
   useEffect(() => {
-    var allPassed = dag?.nodes.every((node) => {
+    var allPassed = dag?.nodes.every((node: TaskNode) => {
       return node.task.state.status === "Accepted";
     });
     if (allPassed) {
       setColor("bg-green-900");
-      return;
     }
-    var hasFailure = dag?.nodes.some((node) => {
+    var hasFailure = dag?.nodes.some((node: TaskNode) => {
       return node.task.state.status === "Failed";
     });
     if (hasFailure) {
@@ -96,12 +93,12 @@ const DAGListener: React.FC = () => {
         <h2 className="text-4xl mb-4">{dag?.metadata.name}</h2>
         {dag ? (
           <div className="dag-nodes">
-            {dag.nodes.map((node, index) => (
+            {dag.nodes.map((node: TaskNode, index: number) => (
               <NodeCard node={node} key={index} />
             ))}
           </div>
         ) : (
-          <p>No DAG data available.</p>
+          <div>No DAG data available</div>
         )}
         {error && (
           <div className="error">

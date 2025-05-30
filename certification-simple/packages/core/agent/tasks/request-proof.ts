@@ -73,6 +73,7 @@ export type RequestProofOptions = {
   checkTrustRegistry: boolean;
   trqpURL?: string;
   proof: RequestProofOptionsWithoutConnectionId;
+  checkGANTR?: boolean;
 };
 
 export class RequestProofTask extends BaseRunnableTask {

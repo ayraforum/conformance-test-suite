@@ -1,5 +1,5 @@
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
-import { BaseAgent } from "@demo/core/agent/core";
+import { BaseAgent } from "@demo/core";
 import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
 import { Results, RunnableState } from "@demo/core/pipeline/src/types";
 import { DAG } from "@demo/core/pipeline/src/dag";

@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { TestRunner, TestStep, TestStepStatus, TaskNode } from "@/components/TestRunner";
+import { TestRunner, TestStep, TestStepStatus } from "@/components/TestRunner";
+import { TaskNode } from "@/types/DAGNode";
 import { DetailedReport } from "@/components/common/DetailedReport";
 import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
@@ -341,28 +342,45 @@ function ReportStep({
   dagData?: DAGData;
 }) {
   const [showFullReport, setShowFullReport] = useState(false);
+  const [testResults, setTestResults] = useState({
+    passed: 0,
+    failed: 0,
+    total: 0
+  });
 
-  if (!isActive) return null;
+  useEffect(() => {
+    if (dagData) {
+      const passed = dagData.nodes.filter(n => n.task.state.status === "passed").length;
+      const failed = dagData.nodes.filter(n => n.task.state.status === "failed").length;
+      setTestResults({
+        passed,
+        failed,
+        total: dagData.nodes.length
+      });
+    }
+  }, [dagData]);
 
   const formatTimestamp = (timestamp: string) => {
     return new Date(timestamp).toLocaleString();
   };
 
   const getStatusColor = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'accepted':
-      case 'completed':
-        return 'text-green-600';
-      case 'failed':
-      case 'error':
-        return 'text-red-600';
-      case 'running':
-      case 'started':
-        return 'text-blue-600';
+    switch (status.toLowerCase()) {
+      case "passed":
+      case "completed":
+        return "text-green-600";
+      case "failed":
+      case "error":
+        return "text-red-600";
+      case "running":
+      case "started":
+        return "text-blue-600";
       default:
-        return 'text-gray-600';
+        return "text-gray-600";
     }
   };
+
+  if (!isActive) return null;
 
   return (
     <div className="space-y-6">
@@ -449,50 +467,49 @@ function ReportStep({
                 {dagData.nodes.map((node, index) => (
                   <div key={node.id} className="border rounded p-3 bg-gray-50">
                     <div className="flex justify-between items-start mb-2">
-                      <h7 className="font-medium">{node.name}</h7>
+                      <h6 className="font-medium">{node.name}</h6>
                       <span className={`text-sm ${getStatusColor(node.task.state.status)}`}>
                         {node.task.state.status}
                       </span>
                     </div>
                     
-                    <div className="text-sm space-y-1">
-                      <p><strong>Description:</strong> {node.description || 'No description'}</p>
-                      <p><strong>State:</strong> {node.state}</p>
-                      <p><strong>Run State:</strong> {node.task.state.runState}</p>
-                      <p><strong>Finished:</strong> {node.finished ? 'Yes' : 'No'}</p>
-                      
-                      {node.task.state.messages.length > 0 && (
-                        <div>
-                          <strong>Messages:</strong>
-                          <ul className="list-disc list-inside ml-2 mt-1 max-h-32 overflow-y-auto">
-                            {node.task.state.messages.map((msg, idx) => (
-                              <li key={idx} className="text-gray-600 text-xs">{msg}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {node.task.state.warnings.length > 0 && (
-                        <div>
-                          <strong className="text-yellow-600">Warnings:</strong>
-                          <ul className="list-disc list-inside ml-2 mt-1">
-                            {node.task.state.warnings.map((warn, idx) => (
-                              <li key={idx} className="text-yellow-600 text-xs">{warn}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {node.task.state.errors.length > 0 && (
-                        <div>
-                          <strong className="text-red-600">Errors:</strong>
-                          <ul className="list-disc list-inside ml-2 mt-1">
-                            {node.task.state.errors.map((err, idx) => (
-                              <li key={idx} className="text-red-600 text-xs">{err}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                    <div className="mt-4">
+                      <h6 className="font-medium text-gray-700 mb-2">Task Details</h6>
+                      <div className="text-sm space-y-1">
+                        <p><strong>Status:</strong> {node.task.state.status}</p>
+                        <p><strong>Run State:</strong> {node.task.state.runState}</p>
+                        <p><strong>Finished:</strong> {node.finished ? 'Yes' : 'No'}</p>
+                        {node.task.state.messages.length > 0 && (
+                          <div>
+                            <strong>Messages:</strong>
+                            <ul className="list-disc list-inside ml-2 mt-1">
+                              {node.task.state.messages.map((msg, idx) => (
+                                <li key={idx} className="text-gray-600">{msg}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {node.task.state.warnings.length > 0 && (
+                          <div>
+                            <strong className="text-yellow-600">Warnings:</strong>
+                            <ul className="list-disc list-inside ml-2 mt-1">
+                              {node.task.state.warnings.map((warn, idx) => (
+                                <li key={idx} className="text-yellow-600">{warn}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {node.task.state.errors.length > 0 && (
+                          <div>
+                            <strong className="text-red-600">Errors:</strong>
+                            <ul className="list-disc list-inside ml-2 mt-1">
+                              {node.task.state.errors.map((err, idx) => (
+                                <li key={idx} className="text-red-600">{err}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -549,118 +566,75 @@ function ReportStep({
           Run Another Test
         </button>
       </div>
+
+      <div className="mt-4">
+        <h6 className="font-medium text-gray-700 mb-2">Test Results</h6>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h6 className="text-sm font-medium text-gray-500">Total Tests</h6>
+            <p className="text-2xl font-bold text-gray-900">{testResults.total}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h6 className="text-sm font-medium text-gray-500">Passed</h6>
+            <p className="text-2xl font-bold text-green-600">{testResults.passed}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h6 className="text-sm font-medium text-gray-500">Failed</h6>
+            <p className="text-2xl font-bold text-red-600">{testResults.failed}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 export function HolderTest() {
-  const dispatch = useDispatch();
-  const { socket } = useSocket();
-  const { currentStep, testCompleted } = useSelector((state: RootState) => state.test);
-  const { dag } = useSelector((state: RootState) => state.dag);
-  const [steps, setSteps] = useState<TestStep[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [testStatus, setTestStatus] = useState<TestStepStatus>("pending");
+  const [dagData, setDagData] = useState<DAGData | null>(null);
+  const [taskData, setTaskData] = useState<TaskNode[]>([]);
+  const [messages, setMessages] = useState<string[][]>([[], [], []]);
+  const [showDetailedReport, setShowDetailedReport] = useState(false);
+  const [testStartTime, setTestStartTime] = useState<Date | null>(null);
+  const [testEndTime, setTestEndTime] = useState<Date | null>(null);
+  const [testDuration, setTestDuration] = useState<number | null>(null);
 
-  // Listen for DAG updates from your existing backend
-  useEffect(() => {
-    console.log('HolderTest - Component mounted, currentStep:', currentStep);
-  }, [currentStep]);
-
-  // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
-    // Check for completed states
-    if (node.task.state.status === 'Accepted' || 
-        node.task.state.runState === 'completed' || 
-        node.task.state.status === 'Completed') {
-      return 'passed';
-    }
-    
-    // Check for running states
-    if (node.task.state.runState === 'running' || 
-        node.task.state.status === 'Running' ||
-        node.task.state.status === 'Started' ||
-        node.task.state.runState === 'Started') {
-      return 'running';
-    }
-    
-    // Check for failed states
-    if (node.task.state.status === 'Failed' || 
-        node.task.state.runState === 'failed' ||
-        node.task.state.status === 'Error') {
-      return 'failed';
-    }
-    
-    // Default to pending for all other states
-    return 'pending';
+    if (!node) return "pending";
+    if (node.task.state.status === "passed") return "passed";
+    if (node.task.state.status === "failed") return "failed";
+    if (node.task.state.status === "running") return "running";
+    return "pending";
   };
 
-  const handleRestart = useCallback(() => {
-    dispatch(resetTest());
-  }, [dispatch]);
-
-  // Initialize steps
-  useEffect(() => {
-    const initialSteps: TestStep[] = [
-      {
-        id: 1,
-        name: "Setup Connection",
-        description: "Establish connection with the holder wallet",
-        status: currentStep > 0 ? "passed" : currentStep === 0 ? "running" : "pending",
-        component: (
-          <ConnectionStep
-            context={{}}
-            isActive={currentStep === 0}
-            onNext={() => {}} // Navigation handled by Redux middleware
-            taskData={dag?.nodes?.[0]}
-          />
-        ),
-        isActive: currentStep === 0,
-        taskData: dag?.nodes?.[0]
-      },
-      {
-        id: 2,
-        name: "Request Proof",
-        description: "Request presentation of credentials",
-        status: currentStep > 1 ? "passed" : currentStep === 1 ? "running" : "pending",
-        component: (
-          <PresentationStep
-            context={{}}
-            isActive={currentStep === 1}
-            taskData={dag?.nodes?.[1]}
-          />
-        ),
-        isActive: currentStep === 1,
-        taskData: dag?.nodes?.[1]
-      },
-      {
-        id: 3,
-        name: "Report",
-        description: "Review the test results",
-        status: currentStep === 2 ? "passed" : "pending",
-        component: (
-          <ReportStep
-            context={{}}
-            isActive={currentStep === 2}
-            onRestart={handleRestart}
-            dagData={dag}
-          />
-        ),
-        isActive: currentStep === 2
-      }
-    ];
-
-    // Update step statuses based on DAG data
-    if (dag?.nodes) {
-      dag.nodes.forEach((node, index) => {
-        if (initialSteps[index]) {
-          const status = getStepStatusFromNode(node);
-          initialSteps[index].status = status;
-          initialSteps[index].taskData = node;
-        }
-      });
+  const steps: (TestStep & { taskData?: TaskNode })[] = [
+    {
+      id: 0,
+      name: "Connection",
+      description: "Establish a connection with your holder wallet",
+      status: "pending",
+      component: <ConnectionStep context={{}} isActive={currentStep === 0} onNext={() => setCurrentStep(1)} taskData={taskData[0]} />,
+      isActive: currentStep === 0,
+      taskData: taskData[0]
+    },
+    {
+      id: 1,
+      name: "Presentation",
+      description: "Present your credentials to the verifier",
+      status: "pending",
+      component: <PresentationStep context={{}} isActive={currentStep === 1} taskData={taskData[1]} />,
+      isActive: currentStep === 1,
+      taskData: taskData[1]
+    },
+    {
+      id: 2,
+      name: "Report",
+      description: "View the test results and detailed report",
+      status: "pending",
+      component: <ReportStep context={{}} isActive={currentStep === 2} onRestart={() => setCurrentStep(0)} dagData={dagData || undefined} />,
+      isActive: currentStep === 2
     }
-
-    setSteps(initialSteps);
-  }, [currentStep, dag, handleRestart]);
+  ];
 
   return (
     <div>
@@ -669,7 +643,7 @@ export function HolderTest() {
         description="This test verifies if a Holder Wallet can establish a connection and present a credential that was previously issued."
         steps={steps}
         currentStep={currentStep}
-        onRestart={handleRestart}
+        onRestart={() => setCurrentStep(0)}
       />
     </div>
   );

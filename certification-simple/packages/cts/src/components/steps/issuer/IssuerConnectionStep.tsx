@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useSocket } from "../../../contexts/SocketContext";
-import { TestStepStatus } from "../../../contexts/BaseTestContext";
+import { TestStepStatus } from "../../../services/BaseTestContext";
 import RenderQRCode from "../../RenderQRCode";
 
 interface IssuerConnectionStepProps {
@@ -8,7 +8,7 @@ interface IssuerConnectionStepProps {
 }
 
 export function IssuerConnectionStep({ onStatusChange }: IssuerConnectionStepProps) {
-  const { socket } = useSocket();
+  const socket = useSocket();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [invitationUrl, setInvitationUrl] = useState<string | null>(null);

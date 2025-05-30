@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { TestRunner, TestStep, TestStepStatus, TaskNode } from "@/components/TestRunner";
+import { TestRunner, TestStep, TestStepStatus } from "@/components/TestRunner";
+import { TaskNode } from "@/types/DAGNode";
 import { DetailedReport } from "@/components/common/DetailedReport";
 import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
@@ -219,16 +220,33 @@ export function VerifierTest() {
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
-    if (node.task.state.status === 'Accepted' || node.task.state.status === 'Completed') {
-      return 'passed';
+    switch (node.task.state.status) {
+      case "passed":
+        return "passed";
+      case "failed":
+        return "failed";
+      case "running":
+        return "running";
+      case "waiting":
+        return "waiting";
+      default:
+        return "pending";
     }
-    if (node.task.state.status === 'Running' || node.task.state.status === 'Started') {
-      return 'running';
-    }
-    if (node.task.state.status === 'Failed' || node.task.state.status === 'Error') {
-      return 'failed';
-    }
-    return 'pending';
+  };
+
+  const updateStepStatus = (node: TaskNode, index: number): void => {
+    const status = getStepStatusFromNode(node);
+    setSteps(prevSteps => {
+      const newSteps = [...prevSteps];
+      if (newSteps[index]) {
+        newSteps[index] = {
+          ...newSteps[index],
+          status,
+          taskData: node
+        };
+      }
+      return newSteps;
+    });
   };
 
   const handleRestart = useCallback(() => {
@@ -304,18 +322,16 @@ export function VerifierTest() {
 
     // Update step statuses based on DAG data
     if (dag?.nodes) {
-      dag.nodes.forEach((node, index) => {
+      dag.nodes.forEach((node: TaskNode, index: number) => {
         // Offset by 1 because first step is the setup step
         const stepIndex = index + 1;
         if (initialSteps[stepIndex]) {
-          const status = getStepStatusFromNode(node);
-          initialSteps[stepIndex].status = status;
-          initialSteps[stepIndex].taskData = node;
+          updateStepStatus(node, stepIndex);
         }
       });
       
       // Check if all backend steps are complete to show report
-      const allNodesComplete = dag.nodes.every(node => 
+      const allNodesComplete = dag.nodes.every((node: TaskNode) => 
         node.task.state.status === 'Accepted' || 
         node.task.state.status === 'Completed' ||
         node.task.state.status === 'Failed' ||

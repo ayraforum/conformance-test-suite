@@ -4,14 +4,14 @@ import { setCurrentStep, completeTest, addMessage } from './testSlice';
 import { DAG } from '@/types/DAGNode';
 
 // Middleware to handle automatic test progression based on DAG state
-export const testProgressionMiddleware: Middleware<{}, RootState> = 
+export const testProgressionMiddleware: Middleware = 
   (store) => (next) => (action) => {
     const result = next(action);
     
     // Only react to DAG updates
-    if (action.type === 'dag/setDAG') {
-      const state = store.getState();
-      const dag: DAG = action.payload;
+    if ((action as { type: string }).type === 'dag/setDAG') {
+      const state = store.getState() as RootState;
+      const dag: DAG = (action as { payload: DAG }).payload;
       const { isTestRunning, currentStep } = state.test;
       
       // Only process if test is running

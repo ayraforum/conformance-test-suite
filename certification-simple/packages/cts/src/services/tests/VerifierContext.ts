@@ -20,9 +20,9 @@ export interface VerifierContext extends BaseTestContext {
   
   // Specific errors
   errors?: {
-    connection?: string | null;
-    request?: string | null;
-    verification?: string | null;
+    connection: string | null;
+    request: string | null;
+    verification: string | null;
     [key: string]: string | null;
   };
 }

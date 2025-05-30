@@ -3,6 +3,15 @@
   "compilerOptions": {
     "types": ["jest"],
     "moduleResolution": "node",
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+    "outDir": "build",
+    "rootDir": ".",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": "."
+  },
+  "include": ["agent/**/*", "src/**/*"],
+  "exclude": ["node_modules", "build", "tests"]
 }

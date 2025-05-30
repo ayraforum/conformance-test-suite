@@ -4,8 +4,18 @@
     "types": [
       "jest"
     ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@demo/core": ["../core/build/agent"],
+      "@demo/core/*": ["../core/build/agent/*"],
+      "@demo/core/agent/core": ["../core/build/agent/core"],
+      "@demo/core/agent/core/*": ["../core/build/agent/core/*"],
+      "@demo/core/pipeline/src/types": ["../core/build/pipeline/src/types"],
+      "@demo/core/pipeline/src/nodes": ["../core/build/pipeline/src/nodes"],
+      "@demo/core/pipeline/src/tasks": ["../core/build/pipeline/src/tasks"],
+      "@demo/core/pipeline/src/tasks/*": ["../core/build/pipeline/src/tasks/*"],
+      "@demo/core/pipeline/src/dag": ["../core/build/pipeline/src/dag"]
     },
     "moduleResolution": "node",
     "resolveJsonModule": true,
@@ -25,5 +35,9 @@
     ".next/types/**/*.ts",
     "**/*.ts",
     "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "scripts/**/*"
   ]
 }

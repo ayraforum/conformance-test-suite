@@ -71,6 +71,7 @@ const run = async () => {
   const requestProofOptions: RequestProofOptions = {
     proof: proof,
     checkGANTR: false,
+    checkTrustRegistry: false
   };
   const requestProof = new RequestProofTask(
     agent,

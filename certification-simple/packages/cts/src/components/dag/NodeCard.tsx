@@ -1,12 +1,12 @@
 // src/components/NodeCard.tsx
 
 import React from "react";
-import { Node } from "../../types/DAGNode";
+import { TaskNode } from "../../types/DAGNode";
 import { GreenCheckIcon, FailedCheckIcon } from "../common/icons/Checks";
 import { DefaultSpinner } from "../common/icons/Spinner";
 
 interface NodeCardProps {
-  node: Node;
+  node: TaskNode;
 }
 
 const NodeCard: React.FC<NodeCardProps> = ({ node }) => {

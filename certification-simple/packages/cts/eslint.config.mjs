@@ -1,16 +1,1 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-];
-
-export default eslintConfig;
+import { dirname } from \"path\";\nimport { fileURLToPath } from \"url\";\n\nconst __filename = fileURLToPath(import.meta.url);\nconst __dirname = dirname(__filename);\n\n/** @type {import('eslint').Linter.Config[]} */\nconst config = [\n  {\n    ignores: ['node_modules/**', '.next/**', 'build/**', 'dist/**'],\n  },\n  {\n    files: ['**/*.{js,jsx,ts,tsx}'],\n    languageOptions: {\n      ecmaVersion: 'latest',\n      sourceType: 'module',\n    },\n    rules: {\n      '@typescript-eslint/no-explicit-any': 'warn',\n      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],\n      'react-hooks/exhaustive-deps': 'warn',\n    },\n  },\n];\n\nexport default config;\n

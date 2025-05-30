@@ -4,7 +4,7 @@
  */
 
 import { EventEmitter } from "events";
-import { createOutOfBandInvitation, getNgrokUrl, getBaseUrl } from "./agentService";
+import { createOutOfBandInvitation, getNgrokUrl, getBaseUrl } from "./agentService.server";
 
 // Create an event emitter for connection events
 export const connectionEventEmitter = new EventEmitter();

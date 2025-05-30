@@ -19,6 +19,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Ayra Certification Lab",
   description: "Ayra Certification Lab",
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({

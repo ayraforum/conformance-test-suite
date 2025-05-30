@@ -10,30 +10,26 @@ export default function InvitationDemo() {
 
   // Fetch the URLs on client-side
   useEffect(() => {
-    setBaseUrl(getBaseUrl());
-    setNgrokUrl(getNgrokUrl());
-    
-    // Also check server-side ngrok status
-    const checkServerNgrokStatus = async () => {
-      try {
-        const response = await fetch('/api/ngrok-status');
-        const data = await response.json();
-        setServerNgrokStatus(data);
-        
-        // Update local ngrok URL if it's available from server but not in client state
-        if (data.ngrokActive && data.ngrokUrl && !getNgrokUrl()) {
-          console.log(`Updating local ngrok URL from server: ${data.ngrokUrl}`);
-          setNgrokUrl(data.ngrokUrl);
-        }
-      } catch (error) {
-        console.error('Error fetching ngrok status:', error);
-      }
+    const fetchUrls = async () => {
+      const baseUrlResult = await getBaseUrl();
+      const ngrokUrlResult = await getNgrokUrl();
+      setBaseUrl(baseUrlResult);
+      setNgrokUrl(ngrokUrlResult);
     };
     
-    checkServerNgrokStatus();
-    // Check periodically
-    const interval = setInterval(checkServerNgrokStatus, 5000);
-    return () => clearInterval(interval);
+    fetchUrls();
+    
+    // Also check server-side ngrok status
+    fetch('/api/diagnostics')
+      .then(response => response.json())
+      .then(data => {
+        if (data.diagnostics?.connections?.ngrokActive) {
+          setNgrokUrl(data.diagnostics.connections.ngrokUrl);
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching diagnostics:', error);
+      });
   }, []);
 
   // Determine if ngrok is active using either local state or server state

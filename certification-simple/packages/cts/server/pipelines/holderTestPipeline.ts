@@ -1,5 +1,5 @@
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
-import { BaseAgent } from "@demo/core/agent/core";
+import { BaseAgent } from "@demo/core";
 import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
 import { Results } from "@demo/core/pipeline/src/types";
 
@@ -7,7 +7,7 @@ import {
   SetupConnectionTask,
   RequestProofTask,
   RequestProofOptions,
-} from "@demo/core/agent/tasks";
+} from "@demo/core";
 
 import { DAG } from "@demo/core/pipeline/src/dag";
 

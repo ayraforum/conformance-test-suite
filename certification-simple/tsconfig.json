@@ -6,7 +6,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@demo/*": ["packages/*/src"]
+      "@demo/*": ["packages/*/build"]
     },
     "types": ["jest", "node"]
   },

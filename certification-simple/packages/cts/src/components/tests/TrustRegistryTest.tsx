@@ -11,6 +11,8 @@ import { AuthorizationEntryStep } from "@/components/steps/AuthorizationEntrySte
 import { AuthorizationVerificationStep } from "@/components/steps/AuthorizationVerificationStep";
 import { ReportStep } from "@/components/steps/ReportStep";
 
+type TrustRegistryErrors = { didResolution: string | null; apiTest: string | null; authVerification: string | null };
+
 export function TrustRegistryTest() {
   const [context, setContext] = useState<TrustRegistryContext>(createEmptyTrustRegistryContext());
   const [currentStep, setCurrentStep] = useState(0);
@@ -27,15 +29,23 @@ export function TrustRegistryTest() {
   }, [currentStep]);
   
   // Update context
-  const updateContext = (updates: Partial<TrustRegistryContext>) => {
-    setContext(prevContext => ({
-      ...prevContext,
-      ...updates,
-      errors: {
+  const updateContext = (updates: Omit<TrustRegistryContext, 'errors'> & { errors: TrustRegistryErrors }) => {
+    setContext(prevContext => {
+      const mergedErrors = {
         ...prevContext.errors,
-        ...(updates.errors || {})
-      }
-    }));
+        ...updates.errors,
+      };
+      return {
+        ...prevContext,
+        ...updates,
+        errors: {
+          ...mergedErrors,
+          didResolution: mergedErrors.didResolution ?? null,
+          apiTest: mergedErrors.apiTest ?? null,
+          authVerification: mergedErrors.authVerification ?? null,
+        } as TrustRegistryErrors
+      };
+    });
   };
   
   // Update step status
@@ -78,9 +88,15 @@ export function TrustRegistryTest() {
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(0, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, didResolution: error } }),
+              setError: (error) => updateContext({
+                errors: {
+                  didResolution: error,
+                  apiTest: context.errors?.apiTest ?? null,
+                  authVerification: context.errors?.authVerification ?? null,
+                } as TrustRegistryErrors
+              }),
               complete: (success) => {},
-              updateContext: updateContext,
+              updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(1)
             }}
             isActive={currentStep === 0}
@@ -98,9 +114,15 @@ export function TrustRegistryTest() {
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(1, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, didResolution: error } }),
+              setError: (error) => updateContext({
+                errors: {
+                  didResolution: error,
+                  apiTest: context.errors?.apiTest ?? null,
+                  authVerification: context.errors?.authVerification ?? null,
+                } as TrustRegistryErrors
+              }),
               complete: (success) => {},
-              updateContext: updateContext,
+              updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(2)
             }}
             isActive={currentStep === 1}
@@ -118,9 +140,15 @@ export function TrustRegistryTest() {
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(2, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, apiTest: error } }),
+              setError: (error) => updateContext({
+                errors: {
+                  didResolution: context.errors?.didResolution ?? null,
+                  apiTest: error,
+                  authVerification: context.errors?.authVerification ?? null,
+                } as TrustRegistryErrors
+              }),
               complete: (success) => {},
-              updateContext: updateContext,
+              updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(3)
             }}
             isActive={currentStep === 2}
@@ -138,9 +166,15 @@ export function TrustRegistryTest() {
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(3, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, authVerification: error } }),
+              setError: (error) => updateContext({
+                errors: {
+                  didResolution: context.errors?.didResolution ?? null,
+                  apiTest: context.errors?.apiTest ?? null,
+                  authVerification: error,
+                } as TrustRegistryErrors
+              }),
               complete: (success) => {},
-              updateContext: updateContext,
+              updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(4)
             }}
             isActive={currentStep === 3}
@@ -158,9 +192,15 @@ export function TrustRegistryTest() {
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(4, status),
-              setError: (error) => updateContext({ errors: { ...context.errors, authVerification: error } }),
+              setError: (error) => updateContext({
+                errors: {
+                  didResolution: context.errors?.didResolution ?? null,
+                  apiTest: context.errors?.apiTest ?? null,
+                  authVerification: error,
+                } as TrustRegistryErrors
+              }),
               complete: (success) => {},
-              updateContext: updateContext,
+              updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(5)
             }}
             isActive={currentStep === 4}
@@ -180,7 +220,7 @@ export function TrustRegistryTest() {
               setStatus: (status) => updateStepStatus(5, status),
               setError: () => {},
               complete: (success) => {},
-              updateContext: updateContext,
+              updateContext: updateContext as any,
               goToNextStep: () => {}
             }}
             isActive={currentStep === 5}

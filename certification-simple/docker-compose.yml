@@ -1,0 +1,69 @@
+name: conformance-test-suite
+
+services:
+  # Backend server
+  backend:
+    build:
+      context: .
+      dockerfile: packages/Dockerfile
+      target: production
+    container_name: cts-server
+    ports:
+      - "5005:5005"  # API server
+      - "5006:5006"  # Agent port
+    environment:
+      - NODE_ENV=production
+      - SERVER_PORT=5005
+      - AGENT_PORT=5006
+      - API_URL=http://backend:5005
+      - LOG_LEVEL=info
+      - DEBUG=false
+      - USE_NGROK=true
+      - NGROK_AUTH_TOKEN=${NGROK_AUTH_TOKEN}
+      - INDY_NETWORK=bcovrin:test
+      - INDY_GENESIS_URL=http://test.bcovrin.vonx.io/genesis
+      - MAX_CONNECTIONS=100
+      - TIMEOUT_MS=30000
+      - RETRY_ATTEMPTS=3
+      - GZIP_COMPRESSION=true
+      - CACHE_DURATION=3600
+    volumes:
+      - ./data/wallets:/app/data/wallets
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    networks:
+      - conformance-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Frontend application
+  ui:
+    build:
+      context: .
+      dockerfile: packages/Dockerfile
+      target: frontend
+    container_name: cts-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:5005
+      - NEXT_PUBLIC_WS_URL=ws://localhost:5005
+    networks:
+      - conformance-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# Network configuration
+networks:
+  conformance-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

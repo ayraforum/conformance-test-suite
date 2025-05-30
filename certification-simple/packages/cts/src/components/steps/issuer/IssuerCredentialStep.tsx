@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { useSocket } from "../../../contexts/SocketContext";
-import { TestStepStatus } from "../../../contexts/BaseTestContext";
+import { TestStepStatus } from "../../../services/BaseTestContext";
 
 interface IssuerCredentialStepProps {
   onStatusChange: (status: TestStepStatus) => void;
 }
 
 export function IssuerCredentialStep({ onStatusChange }: IssuerCredentialStepProps) {
-  const { socket } = useSocket();
+  const socket = useSocket();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [credentialStatus, setCredentialStatus] = useState<string | null>(null);
   const [credentialIssued, setCredentialIssued] = useState(false);
+  const [debug, setDebug] = useState<{message: string, timestamp: string}[]>([]);
 
   useEffect(() => {
     if (!socket) return;

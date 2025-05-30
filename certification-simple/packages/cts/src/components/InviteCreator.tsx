@@ -1,7 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import RenderQRCode from './RenderQRCode';
 import { createHolderInvitation, createVerifierInvitation, getCurrentInvitation, getNgrokUrl } from '@/services/agentService';
-import { CopyIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { CheckIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon as CopyIcon } from '@heroicons/react/24/outline';
+
+declare global {
+  interface Window {
+    clipboard: {
+      writeText(text: string): Promise<void>;
+    };
+  }
+}
+
+interface NgrokStatus {
+  ngrokActive: boolean;
+  ngrokUrl?: string;
+}
 
 interface InviteCreatorProps {
   type: 'holder' | 'verifier';
@@ -23,15 +37,16 @@ const InviteCreator: React.FC<InviteCreatorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [ngrokUrl, setNgrokUrl] = useState<string | null>(null);
-  const [serverNgrokStatus, setServerNgrokStatus] = useState<any>(null);
+  const [serverNgrokStatus, setServerNgrokStatus] = useState<NgrokStatus | null>(null);
   const [debug, setDebug] = useState<{message: string, timestamp: string}[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Check server-side ngrok status
   useEffect(() => {
     const checkServerNgrokStatus = async () => {
       try {
         const response = await fetch('/api/ngrok-status');
-        const data = await response.json();
+        const data = await response.json() as NgrokStatus;
         setServerNgrokStatus(data);
         
         // Update local ngrok URL if it's available from server but not in client state
@@ -67,13 +82,13 @@ const InviteCreator: React.FC<InviteCreatorProps> = ({
         addDebug("Creating invitation...");
         
         // Get ngrok URL for display
-        const currentNgrokUrl = getNgrokUrl();
+        const currentNgrokUrl = await getNgrokUrl();
         setNgrokUrl(currentNgrokUrl);
         
         // Get server-side ngrok status
         try {
           const response = await fetch('/api/ngrok-status');
-          const data = await response.json();
+          const data = await response.json() as NgrokStatus;
           setServerNgrokStatus(data);
           addDebug(`Server ngrok status: ${JSON.stringify(data)}`);
           
@@ -111,15 +126,15 @@ const InviteCreator: React.FC<InviteCreatorProps> = ({
   }, [type, label]);
 
   const handleCopyClick = () => {
-    if (invitation?.invitationUrl) {
-      navigator.clipboard.writeText(invitation.invitationUrl)
-        .then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        })
-        .catch(err => {
-          console.error('Failed to copy:', err);
-        });
+    if (!invitation?.invitationUrl || !inputRef.current) return;
+
+    try {
+      inputRef.current.select();
+      document.execCommand('copy');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
@@ -182,6 +197,7 @@ const InviteCreator: React.FC<InviteCreatorProps> = ({
           </label>
           <div className="flex items-center">
             <input
+              ref={inputRef}
               type="text"
               readOnly
               value={invitation.invitationUrl}
