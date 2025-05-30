@@ -367,7 +367,7 @@ export function DetailedReport({
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
                       {getStatusIcon(node.task.state.status)}
-                      <h7 className="font-medium">{node.name}</h7>
+                      <h6 className="font-medium">{node.name}</h6>
                     </div>
                     <span className={`text-sm ${getStatusColor(node.task.state.status)}`}>
                       {node.task.state.status}

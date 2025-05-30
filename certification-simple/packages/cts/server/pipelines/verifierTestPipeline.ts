@@ -1,11 +1,11 @@
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
-import { BaseAgent } from "@demo/core/agent/core";
+import { BaseAgent } from "@demo/core";
 import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
 import { Results } from "@demo/core/pipeline/src/types";
 import { DAG } from "@demo/core/pipeline/src/dag";
-import { ReceiveConnectionTask } from "@demo/core/agent/tasks/receive-connection";
-import { ProposeProofTask } from "@demo/core/agent/tasks/propose-proof";
-import { SelfIssueCredentialTask } from "@demo/core/agent/tasks/self-issue-credential";
+import { ReceiveConnectionTask } from "@demo/core";
+import { ProposeProofTask } from "@demo/core";
+import { SelfIssueCredentialTask } from "@demo/core";
 import { ConnectionRecord } from "@credo-ts/core";
 
 export class CombineCredentialAndConnectionTask extends BaseRunnableTask {

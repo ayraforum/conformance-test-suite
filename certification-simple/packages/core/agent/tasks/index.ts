@@ -1,5 +1,7 @@
 import { SetupConnectionTask } from "./setup-connection";
 import { RequestProofTask, RequestProofOptions } from "./request-proof";
+import { ProposeProofTask, ProposeProofOptions } from "./propose-proof";
+import { ReceiveConnectionTask } from "./receive-connection";
 
 import {
   IssueCredentialTask,
@@ -14,12 +16,15 @@ import {
 export {
   SetupConnectionTask,
   RequestProofTask,
+  ProposeProofTask,
+  ReceiveConnectionTask,
   IssueCredentialTask,
   SelfIssueCredentialTask,
 };
 
 export type {
   RequestProofOptions,
+  ProposeProofOptions,
   CredentialIssuanceOptions,
   SelfIssueCredentialOptions,
 };

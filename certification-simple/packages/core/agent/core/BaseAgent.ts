@@ -9,6 +9,7 @@ import {
   ProofsModule,
   V2CredentialProtocol,
   V2ProofProtocol,
+  OutOfBandModule,
 } from "@credo-ts/core";
 import {
   CheqdDidRegistrar,
@@ -199,6 +200,7 @@ export class BaseAgent {
           ],
         })
       ),
+      outOfBand: new OutOfBandModule(),
       dids: new DidsModule({
         registrars: [new IndyVdrIndyDidRegistrar(), new CheqdDidRegistrar()],
         resolvers: [new IndyVdrIndyDidResolver(), new CheqdDidResolver()],

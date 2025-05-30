@@ -13,16 +13,15 @@
       "@demo/core/pipeline/src/types": ["../core/build/pipeline/src/types"],
       "@demo/core/pipeline/src/nodes": ["../core/build/pipeline/src/nodes"],
       "@demo/core/pipeline/src/tasks": ["../core/build/pipeline/src/tasks"],
-      "@demo/core/pipeline/src/tasks/*": ["../core/build/pipeline/src/tasks/*"],
-      "@demo/core/pipeline/src/dag": ["../core/build/pipeline/src/dag"]
+      "@demo/core/pipeline/src/tasks/*": ["../core/build/pipeline/src/tasks/*"]
     }
   },
   "include": [
-    "server/**/*.ts"
+    "scripts/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "src/**/*",
-    "scripts/**/*"
+    "server/**/*"
   ]
 }

@@ -21,10 +21,10 @@ export interface TrustRegistryContext extends BaseTestContext {
   authResult?: { authorized: boolean; details?: any } | null;
   
   // Specific errors
-  errors?: {
-    didResolution?: string | null;
-    apiTest?: string | null;
-    authVerification?: string | null;
+  errors: {
+    didResolution: string | null;
+    apiTest: string | null;
+    authVerification: string | null;
     [key: string]: string | null;
   };
 }

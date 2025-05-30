@@ -42,7 +42,7 @@ export function BaseTask({
             // Simulate asynchronous execution by updating each step randomly
             const updatedSteps = steps.map((step) => {
                 const passed = Math.random() > 0.5;
-                return { ...step, status: passed ? "passed" : "failed" };
+                return { ...step, status: passed ? "passed" as StepStatus : "failed" as StepStatus };
             });
             setSteps(updatedSteps);
             setState("Done");

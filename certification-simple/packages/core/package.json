@@ -1,11 +1,30 @@
 {
   "name": "@demo/core",
-  "main": "src/index",
-  "types": "src/index",
-  "version": "0.5.11",
+  "version": "0.0.0",
+  "private": true,
+  "main": "build/agent/index.js",
+  "types": "build/agent/index.d.ts",
   "files": [
     "build"
   ],
+  "exports": {
+    ".": {
+      "types": "./build/agent/index.d.ts",
+      "default": "./build/agent/index.js"
+    },
+    "./agent/core": {
+      "types": "./build/agent/core/index.d.ts",
+      "default": "./build/agent/core/index.js"
+    },
+    "./agent/utils": {
+      "types": "./build/agent/utils/index.d.ts",
+      "default": "./build/agent/utils/index.js"
+    },
+    "./pipeline/src/types": {
+      "types": "./build/pipeline/src/types/index.d.ts",
+      "default": "./build/pipeline/src/types/index.js"
+    }
+  },
   "license": "Apache-2.0",
   "publishConfig": {
     "main": "build/index",

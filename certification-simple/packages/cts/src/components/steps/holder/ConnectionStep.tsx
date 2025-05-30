@@ -47,7 +47,7 @@ export function ConnectionStep({ context, controller, isActive }: ConnectionStep
   useEffect(() => {
     if (isActive) {
       controller.setStatus("waiting");
-      setBaseUrl(getBaseUrl());
+      getBaseUrl().then(url => setBaseUrl(url));
     }
   }, [isActive, controller]);
   
@@ -70,8 +70,8 @@ export function ConnectionStep({ context, controller, isActive }: ConnectionStep
         
         try {          
           // Show the base URL being used
-          const currentBaseUrl = getBaseUrl();
-          const ngrokUrl = getNgrokUrl();
+          const currentBaseUrl = await getBaseUrl();
+          const ngrokUrl = await getNgrokUrl();
           addDebug(`Base URL: ${currentBaseUrl}`);
           
           // Add client-side check for ngrok URL

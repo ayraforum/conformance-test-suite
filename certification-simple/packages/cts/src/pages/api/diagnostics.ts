@@ -85,8 +85,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const ngrokVersion = getNgrokVersion();
     
     // Get current connection status
-    const ngrokUrl = getNgrokUrl();
-    const baseUrl = getBaseUrl();
+    const ngrokUrl = await getNgrokUrl();
+    const baseUrl = await getBaseUrl();
     
     // Check active tunnels
     const tunnelInfo = await checkNgrokTunnels();

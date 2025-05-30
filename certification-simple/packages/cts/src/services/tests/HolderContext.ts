@@ -21,9 +21,9 @@ export interface HolderContext extends BaseTestContext {
   
   // Specific errors
   errors?: {
-    connection?: string | null;
-    credential?: string | null;
-    presentation?: string | null;
+    connection: string | null;
+    credential: string | null;
+    presentation: string | null;
     [key: string]: string | null;
   };
 }

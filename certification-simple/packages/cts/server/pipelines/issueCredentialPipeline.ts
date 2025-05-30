@@ -1,4 +1,4 @@
-import { BaseAgent, indyNetworkConfig } from "@demo/core/agent/core";
+import { BaseAgent, indyNetworkConfig } from "@demo/core";
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
 import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
 import { Results } from "@demo/core/pipeline/src/types";
@@ -7,7 +7,7 @@ import {
   CredentialIssuanceOptions,
   IssueCredentialTask,
   SetupConnectionTask,
-} from "@demo/core/agent/tasks";
+} from "@demo/core";
 
 import {
   PeerDidNumAlgo1CreateOptions,

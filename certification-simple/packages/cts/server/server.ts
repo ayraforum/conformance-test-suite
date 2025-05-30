@@ -10,12 +10,10 @@ import {
   SetupConnectionTask,
   RequestProofTask,
   RequestProofOptions,
-} from "@demo/core/agent/tasks";
-import { createAgentConfig } from "@demo/core/agent/utils";
+} from "@demo/core";
+import { createAgentConfig, BaseAgent } from "@demo/core";
 import ngrok from "ngrok";
-
 import { v4 as uuidv4 } from "uuid";
-import { BaseAgent } from "@demo/core/agent/core";
 import { setDAG, setPipeline, setConfig, setAgent } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";

@@ -13,8 +13,7 @@
  * Usage: npm run test-verifier
  */
 
-import { BaseAgent } from '@demo/core/agent/core';
-import { createAgentConfig } from '@demo/core/agent/utils';
+import { BaseAgent, createAgentConfig } from '@demo/core';
 import readline from 'readline';
 import { v4 as uuidv4 } from 'uuid';
 

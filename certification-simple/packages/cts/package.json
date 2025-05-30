@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start:server": "ts-node server/server.ts",
+    "start:server": "ts-node --project tsconfig.server.json server/server.ts",
     "build:server": "tsc --project tsconfig.server.json",
     "start:frontend": "cd frontend && npm run dev",
     "setup:frontend": "cd frontend && npm install",
@@ -12,9 +12,9 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "next lint",
-    "test-holder": "ts-node scripts/test-holder.ts",
-    "test-verifier": "ts-node scripts/test-verifier.ts",
-    "test-integration": "ts-node scripts/test-integration.ts",
+    "test-holder": "ts-node --project tsconfig.scripts.json scripts/test-holder.ts",
+    "test-verifier": "ts-node --project tsconfig.scripts.json scripts/test-verifier.ts",
+    "test-integration": "ts-node --project tsconfig.scripts.json scripts/test-integration.ts",
     "test-all": "npm run test-integration"
   },
   "dependencies": {
@@ -34,8 +34,10 @@
     "@heroicons/react": "^2.1.5",
     "@hyperledger/anoncreds-nodejs": "^0.2.4",
     "@hyperledger/indy-vdr-nodejs": "^0.2.2",
+    "@ngrok/ngrok": "^1.5.1",
     "@reduxjs/toolkit": "^2.2.8",
     "@stablelib/ed25519": "^1.0.3",
+    "ajv": "^8.12.0",
     "axios": "^1.7.7",
     "cheqd": "link:@credo-ts/core @credo-ts/cheqd",
     "class-transformer": "^0.5.1",
@@ -59,18 +61,19 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.0",
     "socket.io-client": "^4.8.0",
-    "solid": "link:@heroicons/react/24/solid",
-    "ajv": "^8.12.0"
+    "solid": "link:@heroicons/react/24/solid"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.1.8",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.3.2",
-    "tailwindcss": "^4",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^4.1.8",
     "typescript": "^5"
   }
 }

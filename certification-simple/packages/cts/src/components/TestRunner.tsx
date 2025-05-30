@@ -1,6 +1,7 @@
 import React from "react";
+import { TaskNode } from "@/types/DAGNode";
 
-export type TestStepStatus = "pending" | "running" | "passed" | "failed";
+export type TestStepStatus = "pending" | "running" | "passed" | "failed" | "waiting";
 
 export interface TestStep {
   id: number;
@@ -9,6 +10,7 @@ export interface TestStep {
   status: TestStepStatus;
   component: React.ReactNode;
   isActive: boolean;
+  taskData?: TaskNode;
 }
 
 interface TestRunnerProps {
