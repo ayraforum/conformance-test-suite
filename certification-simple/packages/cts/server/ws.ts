@@ -1,11 +1,12 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
 import { state } from "./state";
-import { server } from "./api";
+import { server, app } from "./api";
 import eventEmitter from "@demo/core/agent/utils/eventEmitter";
 import { OutOfBandRecord } from "@credo-ts/core";
 
 console.log("Initializing Socket.IO server...");
 
+// Create Socket.IO server with proper configuration to coexist with Express
 export const io = new SocketIOServer(server, {
   cors: {
     origin: ["http://localhost:3000", "http://localhost:3001"],
@@ -13,12 +14,15 @@ export const io = new SocketIOServer(server, {
     credentials: true
   },
   transports: ["websocket", "polling"],
-  pingTimeout: 120000,     // Increased timeout
+  pingTimeout: 120000,
   pingInterval: 25000,
   connectTimeout: 45000,
   allowEIO3: true,
-  maxHttpBufferSize: 1e8,  // Increase buffer size
-  httpCompression: false,   // Disable compression for faster delivery
+  maxHttpBufferSize: 1e8,
+  httpCompression: false,
+  // CRITICAL: This tells Socket.IO to only handle Socket.IO requests
+  path: "/socket.io/",
+  serveClient: false  // Don't serve the Socket.IO client script
 });
 
 let updateSequence = 0;

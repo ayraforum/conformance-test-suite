@@ -20,9 +20,25 @@
       "types": "./build/agent/utils/index.d.ts",
       "default": "./build/agent/utils/index.js"
     },
+    "./agent/utils/eventEmitter": {
+      "types": "./build/agent/utils/eventEmitter.d.ts",
+      "default": "./build/agent/utils/eventEmitter.js"
+    },
     "./pipeline/src/types": {
       "types": "./build/pipeline/src/types/index.d.ts",
       "default": "./build/pipeline/src/types/index.js"
+    },
+    "./pipeline/src/nodes": {
+      "types": "./build/pipeline/src/nodes/index.d.ts",
+      "default": "./build/pipeline/src/nodes/index.js"
+    },
+    "./pipeline/src/tasks/baseRunnableTask": {
+      "types": "./build/pipeline/src/tasks/baseRunnableTask.d.ts",
+      "default": "./build/pipeline/src/tasks/baseRunnableTask.js"
+    },
+    "./pipeline/src/dag": {
+      "types": "./build/pipeline/src/dag/index.d.ts",
+      "default": "./build/pipeline/src/dag/index.js"
     }
   },
   "license": "Apache-2.0",
@@ -66,7 +82,8 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.0",
     "socket.io-client": "^4.8.0",
-    "tsyringe": "^4.8.0"
+    "tsyringe": "^4.8.0",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
     "@types/qrcode-terminal": "^0.12.2",

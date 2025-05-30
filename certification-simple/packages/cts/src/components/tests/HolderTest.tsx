@@ -154,15 +154,17 @@ function ConnectionStep({
     dispatch(startTest()); // Start the test in Redux
     
     try {
-      // Select the holder pipeline first
-      await fetch('http://localhost:5005/api/select/pipeline?pipeline=HOLDER_TEST');
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      console.log('baseUrl', baseUrl);
+      const url = `${baseUrl}/api/select/pipeline?pipeline=HOLDER_TEST`;
       console.log('Holder pipeline selected');
       dispatch(addMessage({ stepIndex: 0, message: 'Holder pipeline selected' }));
       
       // Small delay to ensure pipeline is selected
       setTimeout(async () => {
+        const url = `${baseUrl}/api/run`;
         // Start the pipeline execution
-        await fetch('http://localhost:5005/api/run', {
+        const response = await fetch(url, {
           method: 'POST'
         });
         console.log('Pipeline started');

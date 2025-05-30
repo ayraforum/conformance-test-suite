@@ -54,14 +54,17 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
     dispatch(startTest());
     
     try {
-      const pipelineResponse = await fetch('http://localhost:5005/api/select/pipeline?pipeline=VERIFIER_TEST');
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const url = `${baseUrl}/api/select/pipeline?pipeline=VERIFIER_TEST`;
+      const pipelineResponse = await fetch(url);
       if (!pipelineResponse.ok) {
         throw new Error(`Failed to select pipeline: ${pipelineResponse.statusText}`);
       }
       dispatch(addMessage({ stepIndex: 0, message: 'Verifier pipeline selected' }));
       
       setTimeout(async () => {
-        const runResponse = await fetch('http://localhost:5005/api/run', {
+        const url = `${baseUrl}/api/run`;
+        const runResponse = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ oobUrl }),

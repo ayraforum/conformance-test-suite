@@ -1,0 +1,31 @@
+FROM node:20-slim
+
+# Install dependencies needed for native modules
+RUN apt-get update && apt-get install -y \
+    curl \
+    dumb-init \
+    python3 \
+    python3-pip \
+    make \
+    g++ \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python environment for node-gyp
+ENV PYTHON=/usr/bin/python3
+
+WORKDIR /app
+
+# Install pnpm and ts-node
+RUN npm install -g pnpm@9.1.0 ts-node
+
+# Copy everything and install dependencies
+COPY . .
+RUN pnpm install --frozen-lockfile
+
+# Build core package
+RUN pnpm --filter @demo/core run build
+
+EXPOSE 5005 5006
+
+ENTRYPOINT ["sh", "-c", "cd packages/cts && pnpm start:server"]
