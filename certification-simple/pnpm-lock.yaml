@@ -194,6 +194,9 @@ importers:
       tsyringe:
         specifier: ^4.8.0
         version: 4.8.0
+      uuid:
+        specifier: ^10.0.0
+        version: 10.0.0
     devDependencies:
       '@types/qrcode-terminal':
         specifier: ^0.12.2
@@ -342,6 +345,9 @@ importers:
       solid:
         specifier: link:@heroicons/react/24/solid
         version: link:@heroicons/react/24/solid
+      uuid:
+        specifier: ^10.0.0
+        version: 10.0.0
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3

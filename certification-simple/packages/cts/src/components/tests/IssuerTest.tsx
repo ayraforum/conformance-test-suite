@@ -92,15 +92,17 @@ function ConnectionStep({
     setMessages(['Starting connection setup...']);
     
     try {
-      // Select the issuer pipeline first
-      await fetch('http://localhost:5005/api/select/pipeline?pipeline=ISSUER_TEST');
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const url = `${baseUrl}/api/select/pipeline?pipeline=ISSUER_TEST`;
+      await fetch(url);
       console.log('Issuer pipeline selected');
       setMessages(prev => [...prev, 'Issuer pipeline selected']);
       
       // Small delay to ensure pipeline is selected
       setTimeout(async () => {
         // Start the pipeline execution
-        await fetch('http://localhost:5005/api/run', {
+        const url = `${baseUrl}/api/run`;
+        await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -417,7 +419,7 @@ export function IssuerTest() {
   return (
     <div>
       <TestRunner
-        title="Issuer Conformance Test"
+        title="Issue A Credential"
         description="This test verifies if an Issuer can establish a connection and issue a credential to a holder."
         steps={steps}
         currentStep={currentStep}

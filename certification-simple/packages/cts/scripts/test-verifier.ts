@@ -23,15 +23,25 @@ class VerifierTestAgent {
   private agentPort: number;
   private connectionId: string | null = null;
   private invitationUrl: string | null = null;
+  private serviceEndpoint: string;
 
   constructor() {
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
-    // Use different port from main server
-    this.agentPort = 5008 + Math.floor(Math.random() * 1000);
-    console.log('🔧 VerifierTestAgent initialized with port:', this.agentPort);
+    
+    // Configure port - use environment variable or default
+    this.agentPort = parseInt(process.env.VERIFIER_AGENT_PORT || '5008') + Math.floor(Math.random() * 100);
+    
+    // Configure service endpoint - use environment variable or default
+    const endpointPrefix = process.env.VERIFIER_ENDPOINT_PREFIX || process.env.SERVICE_ENDPOINT || 'localhost';
+    this.serviceEndpoint = `http://${endpointPrefix}:${this.agentPort}`;
+    
+    console.log('🔧 VerifierTestAgent initialized:');
+    console.log('   • Port:', this.agentPort);
+    console.log('   • Service Endpoint:', this.serviceEndpoint);
+    console.log('   • Endpoint Prefix:', endpointPrefix);
   }
 
   async runTest(): Promise<void> {
@@ -76,12 +86,13 @@ class VerifierTestAgent {
     
     try {
       const agentId = uuidv4();
-      const baseUrl = `http://localhost:${this.agentPort}`;
+      const baseUrl = this.serviceEndpoint;
       
       console.log('\n💻 Verifier configuration:');
       console.log('   • Name: Test Verifier Agent');
       console.log('   • Port:', this.agentPort);
       console.log('   • Base URL:', baseUrl);
+      console.log('   • Service Endpoint:', this.serviceEndpoint);
       console.log('   • Agent ID:', agentId);
       
       // Create agent configuration
@@ -194,7 +205,7 @@ class VerifierTestAgent {
       });
       
       this.invitationUrl = outOfBandRecord.outOfBandInvitation.toUrl({
-        domain: `http://localhost:${this.agentPort}`
+        domain: this.serviceEndpoint
       });
       
       console.log('\n✅ Invitation created successfully!');
@@ -227,17 +238,12 @@ class VerifierTestAgent {
 
   private async waitForConnection(): Promise<void> {
     console.log('\n⏳ Waiting for holder to connect...');
-    console.log('   • Timeout: 60 seconds');
+    console.log('   • No timeout - will wait indefinitely');
+    console.log('   • Press Ctrl+C to cancel');
     
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        console.error('\n❌ Connection timeout - no holder connected within 60 seconds');
-        reject(new Error('Connection timeout - no holder connected within 60 seconds'));
-      }, 60000);
-
+    return new Promise((resolve) => {
       const checkConnection = () => {
         if (this.connectionId) {
-          clearTimeout(timeout);
           console.log('\n🎉 Holder connected!');
           console.log('   • Connection ID:', this.connectionId);
           console.log('   • Ready to send proof request');
@@ -326,18 +332,30 @@ class VerifierTestAgent {
 
   private async waitForPresentation(): Promise<void> {
     console.log('\n⏳ Waiting for holder to send presentation...');
-    console.log('   • Timeout: 60 seconds');
+    console.log('   • No timeout - will wait indefinitely');
+    console.log('   • Press Ctrl+C to cancel');
     
     return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log('\n⏱️ Presentation timeout reached (60s)');
-        console.log('📊 Test completed - holder may not have sent presentation');
-        resolve();
-      }, 60000);
-
-      // Presentation will be handled by event listener
+      // Set up a completion flag that gets set when presentation is processed
+      let presentationCompleted = false;
+      
+      // Store original handler
+      const originalHandler = this.handlePresentationReceived.bind(this);
+      
+      // Override handler to set completion flag
+      this.handlePresentationReceived = async (proofRecord: any) => {
+        await originalHandler(proofRecord);
+        presentationCompleted = true;
+      };
+      
+      // Check for completion periodically
       const checkForCompletion = () => {
-        setTimeout(checkForCompletion, 5000);
+        if (presentationCompleted) {
+          console.log('\n📊 Test completed successfully!');
+          resolve();
+        } else {
+          setTimeout(checkForCompletion, 1000);
+        }
       };
       
       checkForCompletion();

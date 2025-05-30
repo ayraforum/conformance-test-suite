@@ -59,7 +59,7 @@ services:
       - SERVER_HOST=server
       - SERVER_PORT=5005
       - VERIFIER_PORT=5008
-      - TEST_SCRIPT=${TEST_SCRIPT:-test-verifier}
+      - TEST_SCRIPT=${TEST_SCRIPT:-test-verifier}  # Allow override
       - VERIFIER_ENDPOINT_PREFIX=${VERIFIER_ENDPOINT_PREFIX:-test-verifier}
       - SERVICE_ENDPOINT=${SERVICE_ENDPOINT:-test-verifier}
     depends_on:
@@ -71,6 +71,55 @@ services:
       - test_logs:/app/logs
     networks:
       - cts-network
+
+  # Optional: Additional test services for parallel execution
+  test-holder:
+    build:
+      context: .
+      dockerfile: packages/Dockerfile.test-verifier
+    environment:
+      - NODE_ENV=development
+      - SERVER_HOST=server
+      - SERVER_PORT=5005
+      - VERIFIER_PORT=5009
+      - TEST_SCRIPT=test-holder
+      - VERIFIER_ENDPOINT_PREFIX=${VERIFIER_ENDPOINT_PREFIX:-test-holder}
+      - SERVICE_ENDPOINT=${SERVICE_ENDPOINT:-test-holder}
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - test_wallet_data:/app/data/test-wallets
+      - test_logs:/app/logs
+    networks:
+      - cts-network
+    profiles:
+      - testing  # Only start when explicitly requested
+
+  test-integration:
+    build:
+      context: .
+      dockerfile: packages/Dockerfile.test-verifier
+    environment:
+      - NODE_ENV=development
+      - SERVER_HOST=server
+      - SERVER_PORT=5005
+      - VERIFIER_PORT=5010
+      - TEST_SCRIPT=test-integration
+      - VERIFIER_ENDPOINT_PREFIX=${VERIFIER_ENDPOINT_PREFIX:-test-integration}
+      - SERVICE_ENDPOINT=${SERVICE_ENDPOINT:-test-integration}
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - test_wallet_data:/app/data/test-wallets
+      - test_logs:/app/logs
+    networks:
+      - cts-network
+    profiles:
+      - testing
 
 volumes:
   wallet_data:

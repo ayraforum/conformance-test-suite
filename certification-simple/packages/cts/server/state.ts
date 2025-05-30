@@ -1,5 +1,5 @@
 import { DAG } from "@demo/core/pipeline/src/dag";
-import { BaseAgent, AgentConfiguration } from "@demo/core/agent/core";
+import { BaseAgent, AgentConfiguration } from "@demo/core";
 import {
   HolderTestPipeline,
   VerifierTestPipeline,

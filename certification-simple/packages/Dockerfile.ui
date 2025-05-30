@@ -1,0 +1,42 @@
+# Simple Next.js UI Dockerfile
+FROM node:20-alpine
+
+# Install dependencies needed for native modules
+RUN apk add --no-cache \
+    curl \
+    dumb-init \
+    python3 \
+    py3-pip \
+    make \
+    g++ \
+    git
+
+# Set Python environment for node-gyp
+ENV PYTHON=/usr/bin/python3
+
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm@9.1.0
+
+# Copy everything and install
+COPY . .
+RUN pnpm install --frozen-lockfile
+
+# Build core and then UI
+RUN pnpm --filter @demo/core run build
+RUN cd packages/cts && pnpm run build
+
+# Create user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+USER nextjs
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["sh", "-c", "cd packages/cts && npm start"]

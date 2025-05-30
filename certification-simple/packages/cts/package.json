@@ -61,7 +61,8 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.0",
     "socket.io-client": "^4.8.0",
-    "solid": "link:@heroicons/react/24/solid"
+    "solid": "link:@heroicons/react/24/solid",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
