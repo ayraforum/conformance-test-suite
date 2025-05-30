@@ -591,21 +591,105 @@ function ReportStep({
 }
 
 export function HolderTest() {
+  const dispatch = useDispatch();
   const [currentStep, setCurrentStep] = useState(0);
   const [testStatus, setTestStatus] = useState<TestStepStatus>("pending");
-  const [dagData, setDagData] = useState<DAGData | null>(null);
-  const [taskData, setTaskData] = useState<TaskNode[]>([]);
-  const [messages, setMessages] = useState<string[][]>([[], [], []]);
   const [showDetailedReport, setShowDetailedReport] = useState(false);
   const [testStartTime, setTestStartTime] = useState<Date | null>(null);
   const [testEndTime, setTestEndTime] = useState<Date | null>(null);
   const [testDuration, setTestDuration] = useState<number | null>(null);
+  
+  // Get DAG state from Redux
+  const dagState = useSelector((state: RootState) => state.dag.dag);
+  const invitationUrl = useSelector((state: RootState) => state.test.invitationUrl);
+  
+  // Extract task data and DAG data from Redux state
+  const dagData = dagState;
+  const taskData = dagState?.nodes || [];
+  
+  // Simple step progression based on task completion
+  useEffect(() => {
+    if (!dagData || !dagData.nodes) return;
+    
+    // Find the highest completed task to determine current step
+    let highestCompletedTask = -1;
+    let hasRunningTask = false;
+    
+    for (let i = 0; i < dagData.nodes.length; i++) {
+      const node = dagData.nodes[i];
+      const taskStatus = node.task.state.status;
+      const taskRunState = node.task.state.runState;
+      
+      // Check if task is running
+      if (taskRunState === 'Running' || taskStatus === 'Running' || taskStatus === 'Started') {
+        hasRunningTask = true;
+      }
+      
+      // Check if task is completed
+      if (taskRunState === 'Completed' || taskStatus === 'Completed' || taskStatus === 'Accepted' || node.finished) {
+        highestCompletedTask = i;
+      }
+    }
+    
+    // Determine current step - be more conservative about advancing
+    let newStep = currentStep;
+    
+    // If all tasks completed, show report
+    if (highestCompletedTask >= 2 || (dagData.status.runState === 'Completed' && dagData.nodes.every(n => n.finished))) {
+      newStep = 2;
+    }
+    // Only advance to presentation step if proof task (task 1) is actually running or completed
+    else if (highestCompletedTask >= 1) {
+      newStep = 1;
+    }
+    // OR if task 1 (proof task) is running
+    else if (dagData.nodes[1] && (
+      dagData.nodes[1].task.state.runState === 'Running' ||
+      dagData.nodes[1].task.state.status === 'Running' ||
+      dagData.nodes[1].task.state.status === 'Started'
+    )) {
+      newStep = 1;
+    }
+    // Stay on connection step even if we have invitation URL - let user see QR first
+    
+    if (newStep !== currentStep) {
+      setCurrentStep(newStep);
+    }
+    
+  }, [dagData, currentStep]);
+  
+  // Add messages to Redux when DAG updates
+  useEffect(() => {
+    if (!taskData || taskData.length === 0) return;
+    
+    taskData.forEach((node, index) => {
+      if (node.task.state.messages && node.task.state.messages.length > 0) {
+        node.task.state.messages.forEach(message => {
+          dispatch(addMessage({ stepIndex: index, message }));
+        });
+      }
+    });
+  }, [taskData, dispatch]);
 
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
     if (!node) return "pending";
-    if (node.task.state.status === "passed") return "passed";
-    if (node.task.state.status === "failed") return "failed";
-    if (node.task.state.status === "running") return "running";
+    
+    const status = node.task.state.status;
+    const runState = node.task.state.runState;
+    
+    // Handle various status combinations
+    if (runState === 'Running' || status === 'Running' || status === 'Started') {
+      return "running";
+    }
+    
+    if (runState === 'Completed' || status === 'Completed' || status === 'Accepted' || node.finished) {
+      return "passed";
+    }
+    
+    if (status === 'Failed' || status === 'Error' || runState === 'Failed') {
+      return "failed";
+    }
+    
     return "pending";
   };
 
@@ -614,7 +698,7 @@ export function HolderTest() {
       id: 0,
       name: "Connection",
       description: "Establish a connection with your holder wallet",
-      status: "pending",
+      status: taskData[0] ? getStepStatusFromNode(taskData[0]) : "pending",
       component: <ConnectionStep context={{}} isActive={currentStep === 0} onNext={() => setCurrentStep(1)} taskData={taskData[0]} />,
       isActive: currentStep === 0,
       taskData: taskData[0]
@@ -623,7 +707,7 @@ export function HolderTest() {
       id: 1,
       name: "Presentation",
       description: "Present your credentials to the verifier",
-      status: "pending",
+      status: taskData[1] ? getStepStatusFromNode(taskData[1]) : "pending",
       component: <PresentationStep context={{}} isActive={currentStep === 1} taskData={taskData[1]} />,
       isActive: currentStep === 1,
       taskData: taskData[1]
@@ -632,8 +716,16 @@ export function HolderTest() {
       id: 2,
       name: "Report",
       description: "View the test results and detailed report",
-      status: "pending",
-      component: <ReportStep context={{}} isActive={currentStep === 2} onRestart={() => setCurrentStep(0)} dagData={dagData || undefined} />,
+      status: dagData && dagData.status.runState === 'Completed' ? "passed" : "pending",
+      component: <ReportStep 
+        context={{}} 
+        isActive={currentStep === 2} 
+        onRestart={() => {
+          setCurrentStep(0);
+          dispatch(resetTest());
+        }} 
+        dagData={dagData || undefined} 
+      />,
       isActive: currentStep === 2
     }
   ];
@@ -645,7 +737,10 @@ export function HolderTest() {
         description="This test verifies if a Holder Wallet can establish a connection and present a credential that was previously issued."
         steps={steps}
         currentStep={currentStep}
-        onRestart={() => setCurrentStep(0)}
+        onRestart={() => {
+          setCurrentStep(0);
+          dispatch(resetTest());
+        }}
       />
     </div>
   );
