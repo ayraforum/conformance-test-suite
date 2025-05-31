@@ -122,9 +122,10 @@ cd conformance-test-suite/certification-simple
 # Install dependencies
 pnpm install
 
-# Set up environment
-cp .env.example .env
-# Edit .env with your NGROK_AUTH_TOKEN
+# Set up required environment variables
+export USE_NGROK=true
+export NGROK_AUTH_TOKEN=your_token_here
+# Get your NGROK token from: https://dashboard.ngrok.com/get-started/your-authtoken
 
 # Start development environment
 pnpm run dev
@@ -133,10 +134,21 @@ pnpm run dev
 docker-compose up --build
 ```
 
-**Access Points**:
+**Required Environment Variables:**
+```bash
+USE_NGROK=true                    # Enable NGROK tunneling for external connectivity
+NGROK_AUTH_TOKEN=your_token_here   # Your NGROK authentication token (REQUIRED)
+```
+
+**Access Points:**
 - Frontend: http://localhost:3000
 - API Server: http://localhost:5005
 - Test Interfaces: http://localhost:3000/holder, /verifier, /issuer, /registry
+
+**Compatible Wallets Tested:**
+- ✅ **BC Government Wallet** - Successfully tested with holder conformance flows
+- 🧪 Other Credo-TS based wallets (experimental support)
+- 📱 Mobile wallets supporting DIDComm v1/v2 protocols
 
 ### Development Disclaimer
 
