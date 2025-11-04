@@ -1,6 +1,6 @@
 import { BaseAgent } from "../core";
 import qrcord from "qrcode-terminal";
-import ngrok from "ngrok";
+import * as ngrok from "@ngrok/ngrok";
 
 import { createAgentConfig } from "../utils";
 import {
@@ -19,11 +19,15 @@ const port: number = Number(process.env.PORT) || 3033;
 
 const run = async () => {
   try {
-    const ngrokUrl = await ngrok.connect({
+    const listener = await ngrok.connect({
       addr: port, // The port to tunnel
       proto: "http", // http or https
       authtoken: process.env.NGROK_AUTH_TOKEN, // If you have an ngrok account
     });
+    const ngrokUrl = listener.url();
+    if (!ngrokUrl) {
+      throw new Error("ngrok failed to provide a public url");
+    }
     // Start ngrok
     // Use the ngrok URL in the config
     const config = createAgentConfig("Agent", port, agentId, ngrokUrl, [

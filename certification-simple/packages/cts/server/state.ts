@@ -28,6 +28,7 @@ const setDAG = (dag: DAG) => {
 };
 
 const setPipeline = (pipeline: Pipeline) => {
+  console.log("[STATE] Setting pipeline:", pipeline?.constructor?.name);
   _state.pipeline = pipeline;
 };
 
@@ -42,6 +43,7 @@ export const setConfig = (config: AgentConfiguration) => {
 export { _state as state, setDAG, setPipeline };
 
 export const selectPipeline = (type: PipelineType): Pipeline => {
+  console.log("[STATE] Selecting pipeline type:", type);
   var pipe: Pipeline;
   switch (type) {
     case PipelineType.HOLDER_TEST:

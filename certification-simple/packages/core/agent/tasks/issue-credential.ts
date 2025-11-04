@@ -150,6 +150,13 @@ export class IssueCredentialTask extends BaseRunnableTask {
       const credentialDefinition = credentialDefinitionState;
       console.log("Credential Definition State", credentialDefinition);
 
+      // Persist the identifiers for downstream pipelines (e.g. holder proof requests)
+      process.env.LATEST_SCHEMA_ID =
+        schemaResult.schemaState.schemaId ?? process.env.LATEST_SCHEMA_ID;
+      process.env.LATEST_CRED_DEF_ID =
+        credentialDefinition.credentialDefinitionId ??
+        process.env.LATEST_CRED_DEF_ID;
+
       // Offer Credential with Correct Type Parameters
       const offerCredState =
         await this._agent.agent.credentials.offerCredential({

@@ -29,3 +29,9 @@ This **certification-simple** approach is:
 - ❌ Bad for: Production, customer demos, security-sensitive operations, reliable testing
 
 See the main repository README for detailed comparisons and full documentation.
+
+## NGROK Setup Overview
+
+- Configure tunnels by editing `certification-simple/.env`.
+- Free-plan users must alternate issuer and verifier tunnels; follow the docker compose steps in [`NGROK_SETUP.md`](./NGROK_SETUP.md) to start and stop the services on the host.
+- Paid-plan users can reserve domains and run both tunnels in parallel; instructions and example `.env` values are also in [`NGROK_SETUP.md`](./NGROK_SETUP.md).

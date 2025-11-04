@@ -1,0 +1,35 @@
+{
+  "name": "CTS Dev",
+  "dockerComposeFile": ["../docker-compose.yml"],
+  "service": "dev",
+  "workspaceFolder": "/workspaces/conformance-test-suite",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "18",
+      "pnpm": "9.1.0"
+    }
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "corepack enable && pnpm --version",
+  "postStartCommand": "bash -lc 'cd certification-simple && pnpm install && pnpm run dev &'",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.eol": "\n",
+        "editor.formatOnSave": true
+      },
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "forwardPorts": [3000, 5005],
+  "portsAttributes": {
+    "3000": { "label": "Frontend" },
+    "5005": { "label": "API" }
+  }
+}

@@ -16,6 +16,8 @@
 import { BaseAgent, createAgentConfig } from '@demo/core';
 import readline from 'readline';
 import { v4 as uuidv4 } from 'uuid';
+import ngrok from '@ngrok/ngrok';
+import type { Config as NgrokConfig } from '@ngrok/ngrok';
 
 class VerifierTestAgent {
   private agent: BaseAgent | null = null;
@@ -24,6 +26,12 @@ class VerifierTestAgent {
   private connectionId: string | null = null;
   private invitationUrl: string | null = null;
   private serviceEndpoint: string;
+  private endpointPrefix: string;
+  private useNgrok: boolean;
+  private explicitEndpoint: string | null;
+  private ngrokListener: ngrok.Listener | null = null;
+  private enableNgrokPooling: boolean;
+  private ngrokDomain: string | null;
 
   constructor() {
     this.rl = readline.createInterface({
@@ -34,14 +42,24 @@ class VerifierTestAgent {
     // Configure port - use environment variable or default
     this.agentPort = parseInt(process.env.VERIFIER_AGENT_PORT || '5008') + Math.floor(Math.random() * 100);
     
-    // Configure service endpoint - use environment variable or default
-    const endpointPrefix = process.env.VERIFIER_ENDPOINT_PREFIX || process.env.SERVICE_ENDPOINT || 'localhost';
-    this.serviceEndpoint = `http://${endpointPrefix}:${this.agentPort}`;
+    // Configure service endpoint preferences
+    this.endpointPrefix = process.env.VERIFIER_ENDPOINT_PREFIX || process.env.SERVICE_ENDPOINT || 'localhost';
+    this.useNgrok = ((process.env.VERIFIER_USE_NGROK ?? process.env.USE_NGROK ?? 'false').toLowerCase() === 'true');
+    this.explicitEndpoint = process.env.VERIFIER_PUBLIC_ENDPOINT || process.env.PUBLIC_ENDPOINT || process.env.NGROK_TUNNEL_URL || null;
+    this.enableNgrokPooling = ((process.env.NGROK_POOLING_ENABLED ?? 'true').toLowerCase() === 'true');
+    this.ngrokDomain = process.env.VERIFIER_NGROK_DOMAIN || process.env.NGROK_VERIFIER_DOMAIN || null;
+    this.serviceEndpoint = `http://${this.endpointPrefix}:${this.agentPort}`;
     
     console.log('🔧 VerifierTestAgent initialized:');
     console.log('   • Port:', this.agentPort);
-    console.log('   • Service Endpoint:', this.serviceEndpoint);
-    console.log('   • Endpoint Prefix:', endpointPrefix);
+    console.log('   • Local Endpoint:', this.serviceEndpoint);
+    console.log('   • Ngrok enabled:', this.useNgrok ? 'yes' : 'no');
+    if (this.explicitEndpoint) {
+      console.log('   • Explicit public endpoint override:', this.explicitEndpoint);
+    }
+    if (this.ngrokDomain) {
+      console.log('   • Requested ngrok domain:', this.ngrokDomain);
+    }
   }
 
   async runTest(): Promise<void> {
@@ -86,6 +104,8 @@ class VerifierTestAgent {
     
     try {
       const agentId = uuidv4();
+
+      await this.configureServiceEndpoint();
       const baseUrl = this.serviceEndpoint;
       
       console.log('\n💻 Verifier configuration:');
@@ -94,6 +114,9 @@ class VerifierTestAgent {
       console.log('   • Base URL:', baseUrl);
       console.log('   • Service Endpoint:', this.serviceEndpoint);
       console.log('   • Agent ID:', agentId);
+      if (this.useNgrok || this.explicitEndpoint) {
+        console.log('   • Public Endpoint Active:', this.serviceEndpoint);
+      }
       
       // Create agent configuration
       const config = createAgentConfig(
@@ -226,6 +249,37 @@ class VerifierTestAgent {
       console.error('Error:', error.message);
       console.error('Stack trace:', error.stack);
       throw error;
+    }
+  }
+
+  private async configureServiceEndpoint(): Promise<void> {
+    if (this.explicitEndpoint) {
+      this.serviceEndpoint = this.explicitEndpoint;
+      console.log('\n🌐 Using explicit public endpoint override:', this.serviceEndpoint);
+      return;
+    }
+
+    if (this.useNgrok) {
+      console.log('\n🌐 Establishing ngrok tunnel for verifier agent...');
+      try {
+        this.ngrokListener = await this.establishNgrokListener();
+      } catch (error) {
+        console.error('\n❌ Failed to establish ngrok tunnel:');
+        const message = (error as Error)?.message ?? String(error);
+        console.error('Error:', message);
+        throw error;
+      }
+
+      const url = this.ngrokListener.url();
+      if (!url) {
+        throw new Error('ngrok tunnel did not return a public url');
+      }
+
+      this.serviceEndpoint = url;
+      console.log('🌐 ngrok tunnel established at:', this.serviceEndpoint);
+    } else {
+      this.serviceEndpoint = `http://${this.endpointPrefix}:${this.agentPort}`;
+      console.log('\n🌐 Using local endpoint:', this.serviceEndpoint);
     }
   }
 
@@ -397,9 +451,100 @@ class VerifierTestAgent {
     } else {
       console.log('⚠️ No agent to shut down');
     }
+
+    await this.teardownNetworking();
     
     this.rl.close();
     console.log('✅ Cleanup completed');
+  }
+
+  private async teardownNetworking(): Promise<void> {
+    if (this.ngrokListener) {
+      try {
+        await this.ngrokListener.close();
+      } catch (error) {
+        console.warn('⚠️ Error closing ngrok listener:', (error as Error)?.message ?? error);
+      }
+      this.ngrokListener = null;
+    }
+
+    if (this.useNgrok && !this.explicitEndpoint) {
+      try {
+        await ngrok.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await ngrok.kill();
+      } catch (error) {
+        console.warn('⚠️ Error cleaning up ngrok process:', (error as Error)?.message ?? error);
+      }
+    }
+  }
+
+  private async establishNgrokListener(): Promise<ngrok.Listener> {
+    try {
+      return await this.createNgrokListener(this.enableNgrokPooling);
+    } catch (error: any) {
+      const retryListener = await this.handleNgrokListenerError(error);
+      if (retryListener) {
+        return retryListener;
+      }
+      throw error;
+    }
+  }
+
+  private async createNgrokListener(poolingEnabled = false): Promise<ngrok.Listener> {
+    const config: NgrokConfig & { pooling_enabled?: boolean } = {
+      addr: this.agentPort,
+      proto: 'http',
+      authtoken: process.env.NGROK_AUTH_TOKEN,
+      region: process.env.NGROK_REGION || 'us',
+    };
+
+    if (poolingEnabled) {
+      config.pooling_enabled = true;
+    }
+
+    if (this.ngrokDomain) {
+      config.domain = this.ngrokDomain;
+    }
+
+    return await ngrok.connect(config);
+  }
+
+  private async handleNgrokListenerError(error: any): Promise<ngrok.Listener | null> {
+    const message: string = error?.message ?? '';
+    const errorCode: string | undefined = error?.error_code ?? error?.code;
+
+    if (errorCode === 'ERR_NGROK_334' || message.includes('ERR_NGROK_334')) {
+      const endpointMatch = message.match(/'(https?:\/\/[^']+)'/i);
+      const existingEndpoint = endpointMatch?.[1];
+
+      console.warn('\n⚠️ Existing ngrok endpoint detected.', existingEndpoint ? `(${existingEndpoint})` : '');
+      console.warn('   Attempting cleanup before retrying with pooling enabled...');
+
+      try {
+        if (existingEndpoint) {
+          await ngrok.disconnect(existingEndpoint);
+        } else {
+          await ngrok.disconnect();
+        }
+      } catch (disconnectError) {
+        console.warn('⚠️ Could not disconnect existing ngrok endpoint automatically:', (disconnectError as Error)?.message ?? disconnectError);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      try {
+        return await this.createNgrokListener(true);
+      } catch (retryError) {
+        console.error('❌ Retry after cleanup failed:', (retryError as Error)?.message ?? retryError);
+        if (!this.ngrokDomain) {
+          console.error('💡 Tip: Configure a dedicated domain for the verifier tunnel via VERIFIER_NGROK_DOMAIN to avoid clashes with other services using the same authtoken.');
+        }
+        throw retryError;
+      }
+    }
+
+    return null;
   }
 }
 

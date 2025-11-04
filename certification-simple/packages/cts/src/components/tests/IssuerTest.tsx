@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { TestRunner, TestStep, TestStepStatus } from "@/components/TestRunner";
 import { useSocket } from "@/providers/SocketProvider";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
+
 // Types matching your existing backend
 interface TaskNode {
   id: string;
@@ -92,7 +94,7 @@ function ConnectionStep({
     setMessages(['Starting connection setup...']);
     
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const baseUrl = API_BASE_URL;
       const url = `${baseUrl}/api/select/pipeline?pipeline=ISSUER_TEST`;
       await fetch(url);
       console.log('Issuer pipeline selected');
@@ -106,7 +108,8 @@ function ConnectionStep({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify({ pipelineType: 'ISSUER_TEST' })
         });
         console.log('Pipeline started');
         setMessages(prev => [...prev, 'Pipeline started']);

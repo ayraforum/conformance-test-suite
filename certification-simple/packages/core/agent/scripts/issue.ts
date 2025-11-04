@@ -3,14 +3,18 @@ import { BaseAgent } from "../core";
 import { v4 } from "uuid";
 const agentId = v4();
 const port: number = Number(process.env.PORT) || 3033;
-import ngrok from "ngrok";
+import * as ngrok from "@ngrok/ngrok";
 
 const run = async () => {
-  const ngrokUrl = await ngrok.connect({
+  const listener = await ngrok.connect({
     addr: port,
     proto: "http",
     authtoken: process.env.NGROK_AUTH_TOKEN, // If you have an ngrok account
   });
+  const ngrokUrl = listener.url();
+  if (!ngrokUrl) {
+    throw new Error("ngrok failed to provide a public url");
+  }
   const config = createAgentConfig("Agent", port, agentId, ngrokUrl, [
     ngrokUrl,
   ]);
