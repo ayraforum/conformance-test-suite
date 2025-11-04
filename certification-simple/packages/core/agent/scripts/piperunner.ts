@@ -4,7 +4,7 @@ import {
   RequestProofOptions,
 } from "../tasks";
 import { createAgentConfig } from "../utils";
-import ngrok from "ngrok";
+import * as ngrok from "@ngrok/ngrok";
 import { DAG } from "../../pipeline/src/dag";
 import { TaskNode } from "../../pipeline/src/nodes";
 
@@ -28,11 +28,15 @@ const dag = new DAG("Posted Worker Pipeline");
 
 const run = async () => {
   const dag = new DAG("Pipeline");
-  const ngrokUrl = await ngrok.connect({
+  const listener = await ngrok.connect({
     addr: serverPort,
     proto: "http",
     authtoken: process.env.NGROK_AUTH_TOKEN, // If you have an ngrok account
   });
+  const ngrokUrl = listener.url();
+  if (!ngrokUrl) {
+    throw new Error("ngrok failed to provide a public url");
+  }
   const config = createAgentConfig("Agent", serverPort, agentId, ngrokUrl, [
     ngrokUrl,
   ]);

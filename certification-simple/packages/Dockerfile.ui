@@ -27,9 +27,14 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @demo/core run build
 RUN cd packages/cts && pnpm run build
 
+# Precreate Next.js cache dir so runtime mkdir calls succeed as non-root
+RUN mkdir -p /app/packages/cts/.next/cache/images
+
 # Create user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nextjs -u 1001
+
+RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 

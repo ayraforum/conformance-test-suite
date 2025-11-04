@@ -119,6 +119,8 @@ function TaskDetailsRenderer({
     </>
   );
 }
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
+
 function ConnectionStep({ 
   context, 
   isActive, 
@@ -134,9 +136,40 @@ function ConnectionStep({
   const { socket, isConnected } = useSocket();
   const { invitationUrl, messages } = useSelector((state: RootState) => state.test);
   const [hasStarted, setHasStarted] = useState(false);
+  const hasInitializedPipelineRef = useRef(false);
   
   // Get messages for this step (step 0)
   const stepMessages = messages[0] || [];
+
+  useEffect(() => {
+    if (!socket || !isConnected || hasInitializedPipelineRef.current) {
+      return;
+    }
+
+    const prepareHolderPipeline = async () => {
+      try {
+        const baseUrl = API_BASE_URL;
+        const selectUrl = `${baseUrl}/api/select/pipeline?pipeline=HOLDER_TEST`;
+        const response = await fetch(selectUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to prepare holder pipeline: ${response.statusText}`);
+        }
+        dispatch(resetTest());
+        hasInitializedPipelineRef.current = true;
+        console.log('Holder pipeline prepared');
+      } catch (error) {
+        hasInitializedPipelineRef.current = false;
+        console.error('Error preparing holder pipeline:', error);
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Failed to prepare holder pipeline.';
+        dispatch(addMessage({ stepIndex: 0, message: `Error: ${message}` }));
+      }
+    };
+
+    prepareHolderPipeline();
+  }, [socket, isConnected, dispatch]);
 
   useEffect(() => {
     // No longer need to handle socket events here since they're handled in SocketProvider
@@ -154,26 +187,48 @@ function ConnectionStep({
     dispatch(startTest()); // Start the test in Redux
     
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
-      console.log('baseUrl', baseUrl);
-      const url = `${baseUrl}/api/select/pipeline?pipeline=HOLDER_TEST`;
+      const baseUrl = API_BASE_URL;
+      const selectUrl = `${baseUrl}/api/select/pipeline?pipeline=HOLDER_TEST`;
+      const pipelineResponse = await fetch(selectUrl);
+      if (!pipelineResponse.ok) {
+        throw new Error(`Failed to select pipeline: ${pipelineResponse.statusText}`);
+      }
       console.log('Holder pipeline selected');
       dispatch(addMessage({ stepIndex: 0, message: 'Holder pipeline selected' }));
       
       // Small delay to ensure pipeline is selected
       setTimeout(async () => {
-        const url = `${baseUrl}/api/run`;
-        // Start the pipeline execution
-        const response = await fetch(url, {
-          method: 'POST'
-        });
-        console.log('Pipeline started');
-        dispatch(addMessage({ stepIndex: 0, message: 'Pipeline started' }));
+        try {
+          const runUrl = `${baseUrl}/api/run`;
+          // Start the pipeline execution
+          const response = await fetch(runUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pipelineType: 'HOLDER_TEST' }),
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to start pipeline: ${response.statusText}`);
+          }
+          console.log('Pipeline started');
+          dispatch(addMessage({ stepIndex: 0, message: 'Pipeline started' }));
+        } catch (innerError) {
+          console.error('Error starting holder pipeline run:', innerError);
+          const message =
+            innerError instanceof Error
+              ? innerError.message
+              : 'Failed to start holder pipeline.';
+          dispatch(addMessage({ stepIndex: 0, message: `Error: ${message}` }));
+          setHasStarted(false);
+        }
       }, 500);
     } catch (error) {
       console.error('Error starting holder test:', error);
-      console.error('Failed to start test. Please try again.');
-      dispatch(addMessage({ stepIndex: 0, message: 'Error: Failed to start test. Please try again.' }));
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to start test. Please try again.';
+      dispatch(addMessage({ stepIndex: 0, message: `Error: ${message}` }));
+      setHasStarted(false);
     }
   };
 

@@ -102,6 +102,7 @@ The conformance test suite project contains **two distinct architectural approac
 - **Node.js 18+**
 - **pnpm 9.1.0+**
 - **NGROK Account** (for external connectivity)
+- For docker-compose and `.env` based NGROK configuration, refer to [`../NGROK_SETUP.md`](../NGROK_SETUP.md).
 
 ### **Installation & Setup**
 ```bash
@@ -265,6 +266,8 @@ socket.on('invitation', (url) => {
 
 ### **Environment Variables**
 
+Set these values in `certification-simple/.env` (preferred) or export them in your shell before running docker compose/npm scripts:
+
 ```bash
 # Required
 NGROK_AUTH_TOKEN=your_ngrok_token_here   # NGROK authentication
@@ -310,6 +313,7 @@ await agent.init();
 - ❌ **Socket Timeout**: Check WebSocket connection and server logs
 - ❌ **Invalid Invitations**: Verify invitation URL format and content
 - ❌ **Agent Initialization**: Check wallet configuration and dependencies
+- ❌ **NGROK Tunnel Conflicts**: Follow the troubleshooting steps in [`../NGROK_SETUP.md`](../NGROK_SETUP.md) when you encounter `ERR_NGROK_334` or duplicate tunnel errors.
 
 ## 🛠️ Development Guidelines
 

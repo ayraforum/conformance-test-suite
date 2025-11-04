@@ -39,9 +39,24 @@ export default class HolderTestPipeline {
       "Establish a connection with the holder wallet"
     );
 
-    // Schema ID for test credential - adapt as needed
-      const schemaId =
-      "did:indy:bcovrin:test:HYfhCRaKhccZtr7v8CHTe8/anoncreds/v0/CLAIM_DEF/2815242/latest"
+    // Determine the credential definition identifier to request in the proof
+    const fallbackCredDefId =
+      "did:indy:bcovrin:test:HYfhCRaKhccZtr7v8CHTe8/anoncreds/v0/CLAIM_DEF/2815242/latest";
+    const credDefId =
+      process.env.LATEST_CRED_DEF_ID ??
+      process.env.HOLDER_TEST_CRED_DEF_ID ??
+      fallbackCredDefId;
+
+    if (!process.env.LATEST_CRED_DEF_ID && !process.env.HOLDER_TEST_CRED_DEF_ID) {
+      console.warn(
+        `[HolderTestPipeline] Using fallback credential definition id ${fallbackCredDefId}. ` +
+          "Issue a credential in this session or set HOLDER_TEST_CRED_DEF_ID to target a specific credential."
+      );
+    } else {
+      console.log(
+        `[HolderTestPipeline] Using credential definition id ${credDefId} for holder proof request.`
+      );
+    }
 
     // Define proof request structure for credential presentation
     const proof = {
@@ -55,7 +70,7 @@ export default class HolderTestPipeline {
               name: "type",
               restrictions: [
                 {
-                  cred_def_id: schemaId,
+                  cred_def_id: credDefId,
                 },
               ],
             },

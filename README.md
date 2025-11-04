@@ -140,6 +140,8 @@ USE_NGROK=true                    # Enable NGROK tunneling for external connecti
 NGROK_AUTH_TOKEN=your_token_here   # Your NGROK authentication token (REQUIRED)
 ```
 
+For NGROK-specific setup (including editing `certification-simple/.env`, free-plan tunnel rotation, and docker compose commands for starting/stopping issuer and verifier flows), see `certification-simple/NGROK_SETUP.md`.
+
 **Access Points:**
 - Frontend: http://localhost:3000
 - API Server: http://localhost:5005

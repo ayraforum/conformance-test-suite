@@ -1,0 +1,8 @@
+# Dev container image for Node 18 + pnpm 9
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
+
+# Node 18 via Node feature (handled by devcontainer.json), but we’ll ensure corepack for pnpm.
+RUN apt-get update && apt-get install -y git bash ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+# Optional: speed up file watching in Docker on macOS
+ENV CHOKIDAR_USEPOLLING=true

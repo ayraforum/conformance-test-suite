@@ -1,6 +1,6 @@
 import { SetupConnectionTask } from "../tasks";
 import { createAgentConfig } from "../utils";
-import ngrok from "ngrok";
+import * as ngrok from "@ngrok/ngrok";
 
 import { v4 } from "uuid";
 import { BaseAgent } from "../core";
@@ -8,14 +8,31 @@ const agentId = v4();
 const port: number = Number(process.env.PORT) || 3033;
 
 const run = async () => {
-  const ngrokUrl = await ngrok.connect({
-    addr: port,
-    proto: "http",
-    authtoken: "2RmkCPC2twjpR4AxhxPwksLWBZh_6DMgZzSgqf9qgxRYKMEy1", // process.env.NGROK_AUTH_TOKEN, // If you have an ngrok account
-  });
-  const config = createAgentConfig("Agent", port, agentId, ngrokUrl, [
-    ngrokUrl,
-  ]);
+  const skipAgentNgrok = process.env.SKIP_AGENT_NGROK === "true";
+  const token = process.env.NGROK_AUTH_TOKEN;
+
+  let ngrokUrl: string;
+
+  if (skipAgentNgrok) {
+    console.log("[agent/connect] SKIP_AGENT_NGROK=true → not creating ngrok tunnel for agent");
+    ngrokUrl = `http://localhost:${port}`;
+  } else {
+    if (!token) {
+      throw new Error("NGROK_AUTH_TOKEN not set for agent ngrok connection");
+    }
+    const listener = await ngrok.connect({
+      addr: port,
+      proto: "http",
+      authtoken: token,
+    });
+    const url = listener.url();
+    if (!url) {
+      throw new Error("ngrok failed to provide a public url for agent connection");
+    }
+    ngrokUrl = url;
+  }
+
+  const config = createAgentConfig("Agent", port, agentId, ngrokUrl, [ngrokUrl]);
   const agent = new BaseAgent(config);
   await agent.init();
   const task = new SetupConnectionTask(agent, "Setup Agent Example");

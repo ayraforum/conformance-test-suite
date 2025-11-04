@@ -6,7 +6,6 @@ const serverPort: number = Number(process.env.SERVER_PORT) || 5005;
 import { run } from "./server";
 import { selectPipeline } from "./state";
 import { PipelineType } from "./pipelines";
-import VerifierTestPipeline from './pipelines/verifierTestPipeline';
 
 import { Express } from "express";
 const app: Express = express();
@@ -54,10 +53,16 @@ app.post("/api/run", (req, res) => {
   })();
 });
 
-app.get("/api/select/pipeline", (req, res) => {
+app.get("/api/select/pipeline", async (req, res) => {
   const pipelineName = req.query.pipeline as string;
   console.log("Selecting pipeline", pipelineName);
   selectPipeline(pipelineName as PipelineType);
+  try {
+    const { emitDAGUpdate } = await import("./ws");
+    emitDAGUpdate();
+  } catch (error) {
+    console.error("Failed to emit DAG update after pipeline selection:", error);
+  }
   res.json({ message: "Pipeline selected" });
 });
 

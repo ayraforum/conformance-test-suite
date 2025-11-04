@@ -36,6 +36,7 @@ services:
       - AGENT_PORT=5006
       - USE_NGROK=${USE_NGROK:-false}
       - NGROK_AUTH_TOKEN=${NGROK_AUTH_TOKEN}
+      - SERVER_NGROK_DOMAIN=${SERVER_NGROK_DOMAIN:-}
       - API_URL=http://localhost:5005
     restart: unless-stopped
     healthcheck:
@@ -62,6 +63,11 @@ services:
       - TEST_SCRIPT=${TEST_SCRIPT:-test-verifier}
       - VERIFIER_ENDPOINT_PREFIX=${VERIFIER_ENDPOINT_PREFIX:-test-verifier}
       - SERVICE_ENDPOINT=${SERVICE_ENDPOINT:-test-verifier}
+      - VERIFIER_USE_NGROK=${VERIFIER_USE_NGROK:-false}
+      - USE_NGROK=${USE_NGROK:-false}
+      - NGROK_AUTH_TOKEN=${NGROK_AUTH_TOKEN}
+      - NGROK_REGION=${NGROK_REGION:-us}
+      - VERIFIER_NGROK_DOMAIN=${VERIFIER_NGROK_DOMAIN:-}
     depends_on:
       server:
         condition: service_healthy

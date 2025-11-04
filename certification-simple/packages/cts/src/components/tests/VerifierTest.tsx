@@ -9,6 +9,8 @@ import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
 import { startTest, resetTest, addMessage } from "@/store/testSlice";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
+
 // Simple Message Renderer Component
 function MessageRenderer({ messages, title = "Step Log" }: { messages: string[]; title?: string; }) {
   if (messages.length === 0) return null;
@@ -54,7 +56,7 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
     dispatch(startTest());
     
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      const baseUrl = API_BASE_URL;
       const url = `${baseUrl}/api/select/pipeline?pipeline=VERIFIER_TEST`;
       const pipelineResponse = await fetch(url);
       if (!pipelineResponse.ok) {
@@ -67,7 +69,7 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
         const runResponse = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ oobUrl }),
+          body: JSON.stringify({ oobUrl, pipelineType: 'VERIFIER_TEST' }),
         });
         if (!runResponse.ok) {
           throw new Error(`Failed to start pipeline: ${runResponse.statusText}`);
