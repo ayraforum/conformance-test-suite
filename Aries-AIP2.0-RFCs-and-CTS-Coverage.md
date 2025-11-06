@@ -9,6 +9,12 @@
 | Trust Ping | RFC 0048 – Trust Ping Protocol | Used for connection health checks, verifying trusted channel continuity. | https://identity.foundation/aries-rfcs/latest/aip2/0048-trust-ping/ | Minor |
 | Problem Reporting | RFC 0035 – Report Problem Protocol | Ensures consistent error handling, critical for Ayra CTS diagnostics and canonical test validation. | https://identity.foundation/aries-rfcs/latest/aip2/0035-report-problem/ | Minor |
 
+Conformance Test Suite Major & Minor:
+
+* Major items mean the requirements are mandatory and a failure is considered a failure of the test.
+* Minor items mean the requirement is optional and a failure will be noted but will not results in a failure of the test.
+
+
 ```mermaid
 graph LR
   %% =====================
