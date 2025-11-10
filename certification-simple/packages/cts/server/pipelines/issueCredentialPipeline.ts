@@ -1,4 +1,9 @@
-import { BaseAgent, indyNetworkConfig } from "@demo/core";
+import {
+  AgentController,
+  BaseAgent,
+  CredoAgentAdapter,
+  indyNetworkConfig,
+} from "@demo/core";
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
 import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
 import { Results } from "@demo/core/pipeline/src/types";
@@ -63,8 +68,10 @@ export default class IssueCredentialPipeline {
   _make(agent: BaseAgent, did: string): DAG {
     const dag = new DAG("Issue GAN Credential Pipeline");
 
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+
     const setupConnectionTask = new SetupConnectionTask(
-      agent,
+      controller,
       "Scan To Connect",
       "Set a DIDComm connection between GAN Verifier App and Holder"
     );

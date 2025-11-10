@@ -10,6 +10,7 @@ import { TaskNode } from "../../pipeline/src/nodes";
 
 import { v4 } from "uuid";
 import { BaseAgent } from "../core";
+import { AgentController, CredoAgentAdapter } from "../controller";
 import { RunnableState } from "../../pipeline/src/types";
 const agentId = v4();
 import { Server as SocketIOServer } from "socket.io";
@@ -44,8 +45,10 @@ const run = async () => {
   const agent = new BaseAgent(config);
   await agent.init();
 
+  const controller = new AgentController(new CredoAgentAdapter(agent));
+
   const task = new SetupConnectionTask(
-    agent,
+    controller,
     "Setup Connection Example",
     "Set a didcomm connection between GAN Verifier App and Holder"
   );
@@ -78,21 +81,21 @@ const run = async () => {
     checkTrustRegistry: false
   };
   const requestProof = new RequestProofTask(
-    agent,
+    controller,
     { ...requestProofOptions, checkGANTR: true },
     "Request Posted Worker Notification",
     "Request Posted Worker Notification"
   );
 
   const requestRightToWorkProof = new RequestProofTask(
-    agent,
+    controller,
     requestProofOptions,
     "Request Right To Work",
     "Request Right To Work"
   );
 
   const requestRightToWorkInCountry = new RequestProofTask(
-    agent,
+    controller,
     requestProofOptions,
     "Request Right To Work In Country",
     "Request Right To Work In Country"

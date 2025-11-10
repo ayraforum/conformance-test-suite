@@ -1,5 +1,5 @@
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
-import { BaseAgent } from "@demo/core";
+import { AgentController, BaseAgent, CredoAgentAdapter } from "@demo/core";
 import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
 import { Results } from "@demo/core/pipeline/src/types";
 
@@ -32,9 +32,11 @@ export default class HolderTestPipeline {
   _make(agent: BaseAgent): DAG {
     const dag = new DAG("Holder Conformance Test");
 
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+
     // Create setup connection task
     const setupConnectionTask = new SetupConnectionTask(
-      agent,
+      controller,
       "Setup Connection",
       "Establish a connection with the holder wallet"
     );
@@ -88,7 +90,7 @@ export default class HolderTestPipeline {
 
     // Create request proof task
     const requestProofTask = new RequestProofTask(
-      agent,
+      controller,
       requestProofOptions,
       "Request Proof",
       "Request a presentation from the holder and verify it"

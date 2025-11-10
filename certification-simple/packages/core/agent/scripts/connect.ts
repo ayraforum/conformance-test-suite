@@ -4,6 +4,7 @@ import * as ngrok from "@ngrok/ngrok";
 
 import { v4 } from "uuid";
 import { BaseAgent } from "../core";
+import { AgentController, CredoAgentAdapter } from "../controller";
 const agentId = v4();
 const port: number = Number(process.env.PORT) || 3033;
 
@@ -35,7 +36,8 @@ const run = async () => {
   const config = createAgentConfig("Agent", port, agentId, ngrokUrl, [ngrokUrl]);
   const agent = new BaseAgent(config);
   await agent.init();
-  const task = new SetupConnectionTask(agent, "Setup Agent Example");
+  const controller = new AgentController(new CredoAgentAdapter(agent));
+  const task = new SetupConnectionTask(controller, "Setup Agent Example");
   await task.prepare();
   console.log("prepared");
   await task.run();

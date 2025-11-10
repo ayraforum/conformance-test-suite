@@ -1,5 +1,6 @@
 import { SetupConnectionTask } from "./setup-connection";
 import { BaseAgent } from "../core";
+import { AgentController, CredoAgentAdapter } from "../controller";
 import { v4 } from "uuid";
 import { createAgentConfig } from "../utils";
 
@@ -52,8 +53,9 @@ describe("SetupConnection", () => {
       );
     };
 
+    const controller = new AgentController(new CredoAgentAdapter(verifierAgent));
     const setupConnectionTask = new SetupConnectionTask(
-      verifierAgent,
+      controller,
       "Setup Connection",
       "Setup Connection Task"
     );
