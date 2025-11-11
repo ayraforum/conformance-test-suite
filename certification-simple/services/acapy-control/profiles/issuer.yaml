@@ -1,0 +1,21 @@
+label: "CTS ACA-Py Issuer"
+wallet:
+  type: askar
+  name: cts-issuer-wallet
+  key: cts-issuer-wallet-key
+ports:
+  admin: 8031
+  http: 8041
+transport:
+  - http
+endpoints:
+  - http://host.docker.internal:8041
+genesis_file: "/app/profiles/local-genesis.txt"
+extra_args:
+  - "--no-ledger"
+  - "--auto-accept-requests"
+  - "--auto-store-credential"
+  - "--auto-respond-messages"
+  - "--auto-respond-credential-offer"
+  - "--auto-respond-credential-request"
+  - "--auto-respond-presentation-request"

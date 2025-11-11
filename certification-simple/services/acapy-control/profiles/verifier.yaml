@@ -1,0 +1,17 @@
+label: "CTS ACA-Py Verifier"
+wallet:
+  type: askar
+  name: cts-verifier-wallet
+  key: cts-verifier-wallet-key
+ports:
+  admin: 8032
+  http: 8042
+transport:
+  - http
+endpoints:
+  - http://host.docker.internal:8042
+genesis_file: "/app/profiles/local-genesis.txt"
+extra_args:
+  - "--no-ledger"
+  - "--auto-accept-requests"
+  - "--auto-respond-messages"
