@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+import time
 
 from .config import ProfileConfig, load_profile
 
@@ -94,6 +95,24 @@ class AcaPyProcessManager:
       )
       resp.raise_for_status()
       return resp.json()
+
+  async def wait_for_connection(self, connection_id: str, timeout_ms: int = 120000) -> dict:
+    deadline = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < deadline:
+      record = await self.get_connection(connection_id)
+      if record and record.get("state") in {"active", "completed"}:
+        return record
+      await asyncio.sleep(1)
+    raise RuntimeError(f"Connection {connection_id} did not become active in time")
+
+  async def get_connection(self, connection_id: str) -> dict:
+    if not self._profile:
+      raise RuntimeError("ACA-Py not started")
+    async with httpx.AsyncClient() as client:
+      resp = await client.get(f"{self.admin_url}/connections/{connection_id}")
+      resp.raise_for_status()
+      data = resp.json()
+      return data.get("result") or data.get("connection") or data
 
   async def _wait_for_admin(self) -> None:
     if not self._profile:

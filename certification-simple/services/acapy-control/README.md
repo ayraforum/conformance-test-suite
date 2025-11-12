@@ -31,6 +31,10 @@ The service exposes:
 * `POST /agent/start` – launch ACA-Py with a named profile.
 * `POST /agent/stop` – stop the managed ACA-Py instance.
 * `POST /connections/create-invitation` – create an out-of-band invitation.
+* `POST /proofs/request` – send a Present Proof v2 request.
+* `POST /credentials/offer` – issue a V2 credential offer.
+* `POST /connections/wait` – block until a given connection reaches `active`.
+* `GET /events/stream` – server-sent event stream for neutral events (agent start/stop, invitations, proofs, credentials).
 
 The FastAPI app is the integration point for CTS; the TypeScript controller will
 issue RPCs against these endpoints to drive ACA-Py in the same way it currently

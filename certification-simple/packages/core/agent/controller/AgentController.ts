@@ -1,7 +1,7 @@
-import type { ProofExchangeRecord } from "@credo-ts/core";
 import type {
   AgentAdapter,
   ConnectionInitResult,
+  ControllerConnectionRecord,
   ProofRequestPayload,
 } from "./types";
 
@@ -25,10 +25,8 @@ export class AgentController {
 
     const invitation = await this.adapter.createOutOfBandInvitation();
     const invitationUrl = this.adapter.buildInvitationUrl(invitation);
-    const connectionRecordPromise = (async () => {
-      const connectionRecord = await this.adapter.waitForConnection(
-        invitation.id
-      );
+    const connectionRecordPromise = (async (): Promise<ControllerConnectionRecord> => {
+      const connectionRecord = await this.adapter.waitForConnection(invitation);
       await this.adapter.waitUntilConnected(connectionRecord.id);
       return connectionRecord;
     })();
@@ -39,7 +37,7 @@ export class AgentController {
   async requestProof(
     connectionId: string,
     proof: ProofRequestPayload
-  ): Promise<ProofExchangeRecord> {
+  ): Promise<void> {
     if (!connectionId) {
       throw new Error("connectionId is required for requestProof");
     }

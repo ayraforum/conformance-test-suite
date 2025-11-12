@@ -1,14 +1,14 @@
 import BaseRunnableTask from "../../pipeline/src/tasks/baseRunnableTask";
-import { OutOfBandRecord, ConnectionRecord } from "@credo-ts/core";
 import { RunnableState, Results } from "../../pipeline/src/types";
 import { AgentController } from "../controller";
 import qrcord from "qrcode-terminal";
 import eventEmitter from "../utils/eventEmitter";
+import type { ControllerConnectionRecord, ControllerInvitation } from "../controller/types";
 
 export class SetupConnectionTask extends BaseRunnableTask {
   private controller: AgentController;
-  private _oobInvitation: OutOfBandRecord | undefined;
-  private _connectionRecord: ConnectionRecord | undefined;
+  private _oobInvitation: ControllerInvitation | undefined;
+  private _connectionRecord: ControllerConnectionRecord | undefined;
 
   constructor(controller: AgentController, name: string, description?: string) {
     super(name, description);
@@ -26,7 +26,7 @@ export class SetupConnectionTask extends BaseRunnableTask {
     }
   }
 
-  get invitation(): OutOfBandRecord | undefined {
+  get invitation(): ControllerInvitation | undefined {
     return this._oobInvitation;
   }
 
@@ -41,7 +41,7 @@ export class SetupConnectionTask extends BaseRunnableTask {
     const { invitation, invitationUrl, connectionRecordPromise } =
       await this.controller.establishConnection();
     this._oobInvitation = invitation;
-    eventEmitter.emit("invitation", invitation);
+    eventEmitter.emit("invitation", invitation.url);
     console.log("Verifier OOB Invitation URL:\n", invitationUrl);
     qrcord.generate(invitationUrl, { small: true });
 

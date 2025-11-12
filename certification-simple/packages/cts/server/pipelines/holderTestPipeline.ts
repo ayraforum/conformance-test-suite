@@ -1,5 +1,5 @@
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
-import { AgentController, BaseAgent, CredoAgentAdapter } from "@demo/core";
+import { AgentController } from "@demo/core";
 import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
 import { Results } from "@demo/core/pipeline/src/types";
 
@@ -13,11 +13,11 @@ import { DAG } from "@demo/core/pipeline/src/dag";
 
 export default class HolderTestPipeline {
   _dag: DAG;
-  _agent: BaseAgent;
+  _controller: AgentController;
 
-  constructor(agent: BaseAgent) {
-    this._dag = this._make(agent);
-    this._agent = agent;
+  constructor(controller: AgentController) {
+    this._controller = controller;
+    this._dag = this._make(controller);
   }
 
   dag(): DAG {
@@ -25,14 +25,12 @@ export default class HolderTestPipeline {
   }
 
   async init() {
-    const dag = this._make(this._agent);
+    const dag = this._make(this._controller);
     this._dag = dag;
   }
 
-  _make(agent: BaseAgent): DAG {
+  _make(controller: AgentController): DAG {
     const dag = new DAG("Holder Conformance Test");
-
-    const controller = new AgentController(new CredoAgentAdapter(agent));
 
     // Create setup connection task
     const setupConnectionTask = new SetupConnectionTask(

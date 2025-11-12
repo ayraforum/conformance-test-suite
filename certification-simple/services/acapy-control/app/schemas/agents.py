@@ -49,3 +49,14 @@ class CredentialOfferResponse(BaseModel):
   credential_exchange_id: str
   state: str
   record: dict
+
+
+class WaitForConnectionRequest(BaseModel):
+  connection_id: str
+  timeout_ms: Optional[int] = 120000
+
+
+class ConnectionRecordResponse(BaseModel):
+  connection_id: str
+  state: str
+  record: dict

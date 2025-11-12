@@ -4,16 +4,19 @@ import {
   type ConnectionRecord,
   type ConnectionStateChangedEvent,
   ProofEventTypes,
-  type ProofExchangeRecord,
   ProofState,
   type ProofStateChangedEvent,
 } from "@credo-ts/core";
 import { Observable, ReplaySubject, lastValueFrom } from "rxjs";
 import { catchError, filter, map, take, timeout } from "rxjs/operators";
-import type { OutOfBandRecord } from "@credo-ts/core";
 
 import { BaseAgent } from "../../core";
-import type { AgentAdapter, ProofRequestPayload } from "../types";
+import type {
+  AgentAdapter,
+  ControllerConnectionRecord,
+  ControllerInvitation,
+  ProofRequestPayload,
+} from "../types";
 
 export class CredoAgentAdapter implements AgentAdapter {
   constructor(private readonly agent: BaseAgent) {}
@@ -26,18 +29,27 @@ export class CredoAgentAdapter implements AgentAdapter {
     return this.agent.config?.label ?? "Credo Reference Agent";
   }
 
-  async createOutOfBandInvitation(): Promise<OutOfBandRecord> {
-    return this.agent.agent.oob.createInvitation();
+  async createOutOfBandInvitation(): Promise<ControllerInvitation> {
+    const record = await this.agent.agent.oob.createInvitation();
+    return {
+      id: record.id,
+      url: record.outOfBandInvitation.toUrl({
+        domain: this.agent.config?.domain ?? "",
+      }),
+      raw: record,
+    };
   }
 
-  buildInvitationUrl(invitation: OutOfBandRecord): string {
-    return invitation.outOfBandInvitation.toUrl({
-      domain: this.agent.config?.domain ?? "",
-    });
+  buildInvitationUrl(invitation: ControllerInvitation): string {
+    return invitation.url;
   }
 
-  async waitForConnection(outOfBandId: string): Promise<ConnectionRecord> {
-    return await new Promise<ConnectionRecord>((resolve, reject) => {
+  async waitForConnection(invitation: ControllerInvitation): Promise<ControllerConnectionRecord> {
+    const outOfBandId = invitation.id;
+    if (!outOfBandId) {
+      throw new Error("Out-of-band id missing for invitation");
+    }
+    const connectionRecord = await new Promise<ConnectionRecord>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         cleanup();
         reject(
@@ -81,6 +93,7 @@ export class CredoAgentAdapter implements AgentAdapter {
           reject(err);
         });
     });
+    return { id: connectionRecord.id, raw: connectionRecord };
   }
 
   async waitUntilConnected(connectionId: string): Promise<void> {
@@ -90,7 +103,7 @@ export class CredoAgentAdapter implements AgentAdapter {
   async requestProofAndAccept(
     connectionId: string,
     proof: ProofRequestPayload
-  ): Promise<ProofExchangeRecord> {
+  ): Promise<void> {
     const parentThreadId = uuidv4();
     const proofRecordPromise = this.waitForProofExchangeRecord({
       parentThreadId,
@@ -116,14 +129,14 @@ export class CredoAgentAdapter implements AgentAdapter {
       proofRecordId: proofRecord.id,
     });
 
-    return proofRecord;
+    return;
   }
 
   private waitForProofExchangeRecord(options: {
     parentThreadId: string;
     state: ProofState;
     timeoutMs?: number;
-  }): Promise<ProofExchangeRecord> {
+  }): Promise<any> {
     const observable = this.agent.agent.events.observable<ProofStateChangedEvent>(
       ProofEventTypes.ProofStateChanged
     );
@@ -142,7 +155,7 @@ export class CredoAgentAdapter implements AgentAdapter {
       state: ProofState;
       timeoutMs?: number;
     }
-  ): Promise<ProofExchangeRecord> {
+  ): Promise<any> {
     const observable: Observable<any> =
       subject instanceof ReplaySubject ? subject.asObservable() : subject;
 

@@ -16,9 +16,55 @@ services:
       PNPM_HOME: /pnpm
       USE_NGROK: ${USE_NGROK:-false}
       NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
+      REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
+      ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
     ports:
       - "3000:3000" # Frontend
       - "5005:5005" # API
+
+  app:
+    build:
+      context: ./.devcontainer
+      dockerfile: Dockerfile
+    depends_on:
+      - acapy-control
+    volumes:
+      - ./:/workspaces/conformance-test-suite:cached
+      - pnpm-store:/pnpm
+      - node-modules:/workspaces/conformance-test-suite/node_modules
+    working_dir: /workspaces/conformance-test-suite/certification-simple
+    command: >
+      bash -lc '
+        set -euo pipefail
+        corepack enable
+        pnpm install
+        pnpm --filter @demo/core run build
+        pnpm --filter cts-3 run start:server &
+        SERVER_PID=$!
+        pnpm --filter cts-3 dev &
+        CLIENT_PID=$!
+        trap "kill $SERVER_PID $CLIENT_PID" EXIT
+        wait
+      '
+    environment:
+      NODE_ENV: development
+      PNPM_HOME: /pnpm
+      USE_NGROK: ${USE_NGROK:-false}
+      NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
+      REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
+      ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
+      ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+    ports:
+      - "3000:3000"
+      - "5005:5005"
+
+  acapy-control:
+    build:
+      context: ./certification-simple/services/acapy-control
+    ports:
+      - "9001:9001"
+    environment:
+      PYTHONUNBUFFERED: "1"
 
   # Optional sidecar if you want ngrok in a container (otherwise the app can open its own tunnel)
   ngrok:

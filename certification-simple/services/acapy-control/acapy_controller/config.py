@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+import os
 
 import yaml
 
@@ -61,11 +62,50 @@ class ProfileConfig:
     elif self.genesis_url:
       args.extend(["--genesis-url", self.genesis_url])
 
-    for endpoint in self.endpoints:
+    effective_endpoints = list(self.endpoints or [])
+    env_endpoint = self._resolve_env_endpoint()
+    if env_endpoint:
+      effective_endpoints.append(env_endpoint)
+
+    for endpoint in effective_endpoints:
       args.extend(["--endpoint", endpoint])
+
+    if env_endpoint:
+      args.extend(["--invite-base-url", env_endpoint])
 
     args.extend(self.extra_args)
     return args
+
+  def _resolve_env_endpoint(self) -> Optional[str]:
+    label_key = self.label.upper().replace(" ", "_")
+    candidates = [
+      os.getenv(f"{label_key}_ENDPOINT"),
+    ]
+    if "ISSUER" in label_key:
+      candidates.insert(0, os.getenv("ISSUER_NGROK_DOMAIN"))
+    if "VERIFIER" in label_key:
+      candidates.insert(0, os.getenv("VERIFIER_NGROK_DOMAIN"))
+    candidates.extend([
+      os.getenv("ACAPY_ENDPOINT"),
+      os.getenv("ACAPY_INVITE_BASE_URL"),
+    ])
+
+    for candidate in candidates:
+      url = self._normalize_url(candidate)
+      if url:
+        return url
+    return None
+
+  @staticmethod
+  def _normalize_url(value: Optional[str]) -> Optional[str]:
+    if not value:
+      return None
+    value = value.strip()
+    if not value:
+      return None
+    if value.startswith("http://") or value.startswith("https://"):
+      return value
+    return f"https://{value}"
 
 
 def load_profile(path: Path) -> ProfileConfig:

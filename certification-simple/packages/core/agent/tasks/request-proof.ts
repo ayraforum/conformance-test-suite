@@ -1,12 +1,10 @@
 import BaseRunnableTask from "../../pipeline/src/tasks/baseRunnableTask";
 import { Configuration } from "@demo/trqp/gen/api-client";
-import type {
-  ConnectionRecord,
-  RequestProofOptions as CredoRequestProofOptions,
-} from "@credo-ts/core";
+import type { RequestProofOptions as CredoRequestProofOptions } from "@credo-ts/core";
 import { Results } from "../../pipeline/src/types";
 import { RunnableState } from "../../pipeline/src/types";
 import { AgentController } from "../controller";
+import type { ControllerConnectionRecord } from "../controller/types";
 
 type RequestProofOptionsWithoutConnectionId = Omit<
   CredoRequestProofOptions,
@@ -51,7 +49,7 @@ export class RequestProofTask extends BaseRunnableTask {
   async run(connectionRecord?: any): Promise<void> {
     super.run();
     try {
-      const record = connectionRecord as ConnectionRecord;
+      const record = connectionRecord as ControllerConnectionRecord;
       const connectionId = record.id;
 
       if (connectionId === undefined) {

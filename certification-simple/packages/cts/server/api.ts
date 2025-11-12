@@ -25,10 +25,15 @@ app.get("/api/dag", (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
+  const agentStatus = state.agent
+    ? "initialized"
+    : state.controller
+      ? "controller-only"
+      : "not initialized";
   res.json({ 
     status: "healthy", 
     timestamp: new Date().toISOString(),
-    agent: state.agent ? "initialized" : "not initialized",
+    agent: agentStatus,
     pipeline: state.pipeline ? "selected" : "none"
   });
 });
@@ -56,6 +61,11 @@ app.post("/api/run", (req, res) => {
 app.get("/api/select/pipeline", async (req, res) => {
   const pipelineName = req.query.pipeline as string;
   console.log("Selecting pipeline", pipelineName);
+  if (pipelineName === PipelineType.ISSUER_TEST || pipelineName === PipelineType.REGISTRY_TEST || pipelineName === PipelineType.VERIFIER_TEST) {
+    if (!state.agent) {
+      return res.status(400).json({ error: "Credo agent not available in ACA-Py mode" });
+    }
+  }
   selectPipeline(pipelineName as PipelineType);
   try {
     const { emitDAGUpdate } = await import("./ws");

@@ -2,24 +2,19 @@
 process.env.NGROK_CONFIG = process.env.NGROK_CONFIG || "/tmp/ngrok.yml";
 // server.ts
 import 'dotenv/config';
-import express, { Request, Response } from 'express';
+import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { state } from './state';
 import VerifierTestPipeline from './pipelines/verifierTestPipeline';
 
-import {
-  SetupConnectionTask,
-  RequestProofTask,
-  RequestProofOptions,
-} from "@demo/core";
-import { createAgentConfig, BaseAgent } from "@demo/core";
+import { createAgentConfig, BaseAgent, AgentController, CredoAgentAdapter, AcaPyAgentAdapter } from "@demo/core";
 import * as ngrok from "@ngrok/ngrok";
 import type { Config as NgrokConfig } from "@ngrok/ngrok";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from "uuid";
-import { setDAG, setPipeline, setConfig, setAgent } from "./state";
+import { setDAG, setPipeline, setConfig, setAgent, setController } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
@@ -55,8 +50,20 @@ function ensureNgrokConfig(): string {
 const agentId = uuidv4();
 const agentPort: number = Number(process.env.AGENT_PORT) || 5006; // ngrok port
 let activeNgrokListener: ngrok.Listener | null = null;
+let acapyAdapter: AcaPyAgentAdapter | null = null;
+const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
+console.log(`[CONFIG] Reference agent: ${referenceAgent}`);
 
 const init = async () => {
+  if (referenceAgent === "acapy") {
+    await initCredoAgent();
+    await initAcaPyController();
+    return;
+  }
+  await initCredoAgent();
+};
+
+const initCredoAgent = async () => {
   if (process.env.USE_NGROK === "true") {
     if (!process.env.NGROK_AUTH_TOKEN) {
       throw new Error("NGROK_AUTH_TOKEN not defined");
@@ -131,6 +138,8 @@ const init = async () => {
     await agent.init();
     console.log("setting agent");
     setAgent(agent);
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+    setController(controller);
     console.log("set agent and config");
   } else {
     const baseUrl = process.env.API_URL
@@ -150,11 +159,26 @@ const init = async () => {
     const agent = new BaseAgent(config);
     await agent.init();
     setAgent(agent);
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+    setController(controller);
   }
+};
+
+const initAcaPyController = async () => {
+  const baseUrl = process.env.ACAPY_CONTROL_URL ?? "http://localhost:9001";
+  const profile = (process.env.ACAPY_PROFILE ?? "issuer") as "issuer" | "verifier";
+  console.log(`[ACAPY] Connecting to control service at ${baseUrl} using profile ${profile}`);
+  acapyAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
+  const controller = new AgentController(acapyAdapter);
+  setController(controller);
+  console.log("[ACAPY] Controller initialized");
 };
 
 const shutdown = async () => {
   try {
+    if (referenceAgent === "acapy" && acapyAdapter) {
+      await acapyAdapter.shutdown();
+    }
     if (activeNgrokListener) {
       await activeNgrokListener.close();
       activeNgrokListener = null;
@@ -189,11 +213,6 @@ export const run = async (params?: any) => {
       } else {
         console.warn("[RUN] Ignoring unknown pipeline override:", params.pipelineType);
       }
-    }
-    const agent = state.agent;
-    console.log("Agent initialized successfully.");
-    if (!agent) {
-      throw Error("agent not defined");
     }
     const pipeline = state.pipeline;
     if (!pipeline) {
