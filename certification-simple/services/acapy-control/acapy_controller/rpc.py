@@ -18,6 +18,7 @@ from app.schemas.agents import (
   ConnectionRecordResponse,
   ProofExchangeResponse,
   ProofRequest,
+  ProofVerifyRequest,
   WaitForConnectionRequest,
 )
 
@@ -34,6 +35,7 @@ class RpcRouter:
     self.router.post("/agent/stop", response_model=AgentStopResponse)(self.stop_agent)
     self.router.post("/connections/create-invitation", response_model=InvitationResponse)(self.create_invitation)
     self.router.post("/proofs/request", response_model=ProofExchangeResponse)(self.request_proof)
+    self.router.post("/proofs/verify", response_model=ProofExchangeResponse)(self.verify_proof)
     self.router.post("/credentials/offer", response_model=CredentialOfferResponse)(self.offer_credential)
     self.router.get("/events/stream")(self.stream_events)
     self.router.post("/connections/wait", response_model=ConnectionRecordResponse)(self.wait_for_connection)
@@ -91,6 +93,26 @@ class RpcRouter:
       record=payload["cred_ex_record"],
     )
     await self.events.publish("credential_offer", response.dict())
+    return response
+
+  async def verify_proof(self, body: ProofVerifyRequest):
+    if not self.manager.is_running:
+      raise HTTPException(status_code=400, detail="Agent not started")
+    record = await self.manager.wait_for_proof(
+      body.proof_exchange_id,
+      body.timeout_ms or 120000,
+      body.connection_id,
+    )
+    resolved_id = record.get("proof_exchange_id", body.proof_exchange_id)
+    if (record.get("state") or record.get("presentation_state")) == "presentation-received":
+      await self.manager.verify_proof(resolved_id, body.connection_id)
+      record = await self.manager.get_proof(resolved_id, connection_id=body.connection_id)
+    response = ProofExchangeResponse(
+      proof_exchange_id=record.get("proof_exchange_id", resolved_id),
+      state=record.get("state") or record.get("presentation_state") or "unknown",
+      record=record,
+    )
+    await self.events.publish("proof_verified", response.dict())
     return response
 
   async def wait_for_connection(self, body: WaitForConnectionRequest):

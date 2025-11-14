@@ -3,7 +3,7 @@ import cors from "cors";
 import { state } from "./state";
 import http from "http";
 const serverPort: number = Number(process.env.SERVER_PORT) || 5005;
-import { run } from "./server";
+import { run, ensureInitialized } from "./server";
 import { selectPipeline } from "./state";
 import { PipelineType } from "./pipelines";
 
@@ -59,6 +59,12 @@ app.post("/api/run", (req, res) => {
 });
 
 app.get("/api/select/pipeline", async (req, res) => {
+  try {
+    await ensureInitialized();
+  } catch (error) {
+    console.error("Failed to initialize before selecting pipeline:", error);
+    return res.status(500).json({ error: "CTS server not initialized yet" });
+  }
   const pipelineName = req.query.pipeline as string;
   console.log("Selecting pipeline", pipelineName);
   if (pipelineName === PipelineType.ISSUER_TEST || pipelineName === PipelineType.REGISTRY_TEST || pipelineName === PipelineType.VERIFIER_TEST) {

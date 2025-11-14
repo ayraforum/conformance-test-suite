@@ -32,6 +32,7 @@ The service exposes:
 * `POST /agent/stop` – stop the managed ACA-Py instance.
 * `POST /connections/create-invitation` – create an out-of-band invitation.
 * `POST /proofs/request` – send a Present Proof v2 request.
+* `POST /proofs/verify` – wait for and verify a proof exchange.
 * `POST /credentials/offer` – issue a V2 credential offer.
 * `POST /connections/wait` – block until a given connection reaches `active`.
 * `GET /events/stream` – server-sent event stream for neutral events (agent start/stop, invitations, proofs, credentials).
@@ -39,3 +40,5 @@ The service exposes:
 The FastAPI app is the integration point for CTS; the TypeScript controller will
 issue RPCs against these endpoints to drive ACA-Py in the same way it currently
 drives Credo.
+
+> **Networking note:** ACA-Py still hosts its DIDComm HTTP inbound transport on ports `8041/8042`. The compose service now publishes those ports (`8041:8041`, `8042:8042`) so you can point ngrok (or another tunnel) at them. Set `ISSUER_NGROK_DOMAIN` / `VERIFIER_NGROK_DOMAIN` in your `.env` so invitations reference the reachable HTTPS URL.

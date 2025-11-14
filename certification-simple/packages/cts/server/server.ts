@@ -198,6 +198,7 @@ export const reset = async () => {};
  * Main function to set up and run the task pipeline.
  */
 export const run = async (params?: any) => {
+  await ensureInitialized();
   try {
     console.log("[RUN] Starting pipeline execution with params:", params);
     if (params?.pipelineType) {
@@ -247,17 +248,39 @@ export const run = async (params?: any) => {
   }
 };
 
-console.log("initializing");
-try {
-  init().then(() => {
+let initializationPromise: Promise<void> | null = null;
+let initialized = false;
+
+const ensureInitialized = async (): Promise<void> => {
+  if (initialized) {
+    return;
+  }
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+
+  initializationPromise = (async () => {
+    await init();
     try {
       selectPipeline(PipelineType.HOLDER_TEST);
     } catch (e) {
       console.error(e);
     }
+    initialized = true;
+  })().catch((error) => {
+    initializationPromise = null;
+    initialized = false;
+    throw error;
   });
-} catch (e) {
-  console.error(e);
-}
+
+  return initializationPromise;
+};
+
+console.log("initializing");
+ensureInitialized().catch((e) => {
+  console.error("Failed to initialize CTS server", e);
+});
 
 runServer();
+
+export { ensureInitialized };

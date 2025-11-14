@@ -114,6 +114,9 @@ Both tunnels retain their reserved domains, keeping QR codes and webhook targets
 | `VERIFIER_USE_NGROK` | Enables NGROK for the test-verifier container |
 | `VERIFIER_NGROK_DOMAIN` | Reserved domain for the verifier tunnel (paid plans) |
 | `NGROK_POOLING_ENABLED` | Set to `false` for one-to-one reserved domains; leave `true` for pooled listeners |
+| `ISSUER_NGROK_DOMAIN` | Reserved domain for the ACA-Py control service (holder flow) |
+
+> **ACA-Py Holder Flow:** When `REFERENCE_AGENT=acapy`, the compose stack automatically starts an `acapy-ngrok` sidecar that forwards the ACA-Py HTTP inbound port (8041) to NGROK. Set `ISSUER_NGROK_DOMAIN` in the root `.env` to the reserved domain you want the QR codes to use (e.g. `issuer-cts.ngrok.app`). The out-of-band invitations will advertise this URL automatically.
 
 ## 6. Troubleshooting
 

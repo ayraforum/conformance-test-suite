@@ -12,6 +12,15 @@ import { BaseAgent } from "../core";
 import { RunnableState } from "../../pipeline/src/types";
 import { ReplaySubject, Observable, firstValueFrom } from "rxjs";
 import { filter, timeout, catchError, take, map, tap } from "rxjs/operators";
+import {
+  getUnqualifiedSchemaId,
+  getUnqualifiedCredentialDefinitionId,
+  parseIndyDid,
+} from "@credo-ts/anoncreds";
+import type {
+  GetSchemaReturn,
+  GetCredentialDefinitionReturn,
+} from "@credo-ts/anoncreds";
 
 type EventReplaySubject = ReplaySubject<BaseEvent>;
 
@@ -25,6 +34,8 @@ import {
 
 export type CredentialIssuanceOptions = {
   did: string;
+  schemaId?: string;
+  credentialDefinitionId?: string;
 };
 
 function setupEventReplaySubjects(
@@ -96,66 +107,143 @@ export class IssueCredentialTask extends BaseRunnableTask {
         throw new Error("Agent is not defined");
       }
       this.addMessage("Initializing agent");
+      const { namespaceIdentifier } = parseIndyDid(this._options.did);
 
       // Register Schema
-      const schemaTemplate = {
-        name: "Certified GAN Employee Credential " + v4(),
-        version: "1.0.0",
-        attrNames: [
-          "type",
-        ],
-        issuerId: this._options.did,
-      };
-      const schemaResult =
-        await this._agent.agent.modules.anoncreds.registerSchema({
-          schema: schemaTemplate,
-          options: {
-            supportRevocation: false,
-            endorserMode: "internal",
-            endorserDid: this._options.did,
-          },
-        });
+      const schemaNameBase = "CertifiedGANEmployeeCredential";
+      let schemaSeqNo: number | undefined;
+      let schemaTemplate:
+        | {
+            name: string;
+            version: string;
+            attrNames: string[];
+            issuerId: string;
+          }
+        | undefined;
+      let schemaId = this._options.schemaId;
+      if (!schemaId) {
+        schemaTemplate = {
+          name: `${schemaNameBase}-${v4().replace(/-/g, "")}`,
+          version: "1.0.0",
+          attrNames: ["type"],
+          issuerId: this._options.did,
+        };
+        const schemaResult =
+          await this._agent.agent.modules.anoncreds.registerSchema({
+            schema: schemaTemplate,
+            options: {
+              supportRevocation: false,
+              endorserMode: "internal",
+              endorserDid: this._options.did,
+            },
+          });
 
-      if (schemaResult?.schemaState.state === "failed") {
-        throw new Error(
-          `Error creating schema: ${schemaResult.schemaState.reason}`
-        );
+        if (schemaResult?.schemaState.state === "failed") {
+          throw new Error(
+            `Error creating schema: ${schemaResult.schemaState.reason}`
+          );
+        }
+        schemaId = schemaResult.schemaState.schemaId;
+        console.log("Schema State", schemaResult);
+        if (!schemaId) {
+          throw new Error("Schema registration did not return an id");
+        }
+        const registeredSeqNo =
+          schemaResult.schemaMetadata?.indyLedgerSeqNo ??
+          schemaResult.schemaState?.schemaMetadata?.indyLedgerSeqNo;
+        if (typeof registeredSeqNo === "number") {
+          schemaSeqNo = registeredSeqNo;
+        }
+      } else {
+        console.log(`Using provided schema id ${schemaId}`);
       }
 
-      console.log("Schema State", schemaResult);
-      // Register Credential Definition
-      const { credentialDefinitionState } =
-        await this._agent.agent.modules.anoncreds.registerCredentialDefinition({
-          credentialDefinition: {
-            schemaId: schemaResult.schemaState.schemaId,
-            issuerId: this._options.did,
-            tag: "latest",
-          },
-          options: {
-            supportRevocation: false,
-            endorserMode: "internal",
-            endorserDid: this._options.did,
-          },
-        });
-
-      if (credentialDefinitionState.state !== "finished") {
-        throw new Error(
-          `Error registering credential definition: ${
-            credentialDefinitionState.state === "failed"
-              ? credentialDefinitionState.reason
-              : "Not Finished"
-          }}`
-        );
+      const schemaLedgerRecord = await this.waitForLedgerSchema(schemaId);
+      const schemaLedgerInfo = schemaLedgerRecord?.schema;
+      if (
+        typeof schemaLedgerRecord?.schemaMetadata?.indyLedgerSeqNo === "number"
+      ) {
+        schemaSeqNo = schemaLedgerRecord.schemaMetadata.indyLedgerSeqNo;
       }
-      const credentialDefinition = credentialDefinitionState;
-      console.log("Credential Definition State", credentialDefinition);
+      if (typeof schemaSeqNo !== "number") {
+        throw new Error("Unable to determine schema sequence number on ledger");
+      }
+      const legacySchemaId = schemaLedgerInfo
+        ? getUnqualifiedSchemaId(
+            namespaceIdentifier,
+            schemaLedgerInfo.name,
+            schemaLedgerInfo.version
+          )
+        : schemaTemplate
+          ? getUnqualifiedSchemaId(
+              namespaceIdentifier,
+              schemaTemplate.name,
+              schemaTemplate.version
+            )
+          : undefined;
+
+      const ensuredSchemaId = schemaId;
+      if (!ensuredSchemaId) {
+        throw new Error("Schema ID is not available after registration");
+      }
+
+      let credentialDefinitionId = this._options.credentialDefinitionId;
+      let legacyCredentialDefinitionId: string | undefined;
+      if (!credentialDefinitionId) {
+        const { credentialDefinitionState } =
+          await this._agent.agent.modules.anoncreds.registerCredentialDefinition({
+            credentialDefinition: {
+              schemaId: ensuredSchemaId,
+              issuerId: this._options.did,
+              tag: "latest",
+            },
+            options: {
+              supportRevocation: false,
+              endorserMode: "internal",
+              endorserDid: this._options.did,
+            },
+          });
+
+        if (credentialDefinitionState.state !== "finished") {
+          throw new Error(
+            `Error registering credential definition: ${
+              credentialDefinitionState.state === "failed"
+                ? credentialDefinitionState.reason
+                : "Not Finished"
+            }}`
+          );
+        }
+        credentialDefinitionId = credentialDefinitionState.credentialDefinitionId;
+        console.log("Credential Definition State", credentialDefinitionState);
+        if (!credentialDefinitionId) {
+          throw new Error("Credential definition registration did not return an id");
+        }
+        await this.waitForLedgerCredentialDefinition(credentialDefinitionId);
+        legacyCredentialDefinitionId = getUnqualifiedCredentialDefinitionId(
+          namespaceIdentifier,
+          schemaSeqNo,
+          "latest"
+        );
+      } else {
+        console.log(`Using provided credential definition id ${credentialDefinitionId}`);
+      }
+
+      const ensuredCredDefId = credentialDefinitionId;
+      if (!ensuredCredDefId) {
+        throw new Error("Credential definition ID is not available after registration");
+      }
+      const effectiveCredentialDefinitionId =
+        legacyCredentialDefinitionId ?? ensuredCredDefId;
 
       // Persist the identifiers for downstream pipelines (e.g. holder proof requests)
-      process.env.LATEST_SCHEMA_ID =
-        schemaResult.schemaState.schemaId ?? process.env.LATEST_SCHEMA_ID;
-      process.env.LATEST_CRED_DEF_ID =
-        credentialDefinition.credentialDefinitionId ??
-        process.env.LATEST_CRED_DEF_ID;
+      if (ensuredSchemaId) {
+        process.env.LATEST_SCHEMA_ID_DID_INDY = ensuredSchemaId;
+      }
+      if (legacySchemaId) {
+        process.env.LATEST_SCHEMA_ID = legacySchemaId;
+      }
+      process.env.LATEST_CRED_DEF_ID_DID_INDY = ensuredCredDefId;
+      process.env.LATEST_CRED_DEF_ID = effectiveCredentialDefinitionId;
 
       // Offer Credential with Correct Type Parameters
       const offerCredState =
@@ -171,8 +259,7 @@ export class IssueCredentialTask extends BaseRunnableTask {
                   value: "Certified GAN Employee Credential",
                 }
               ],
-              credentialDefinitionId:
-                credentialDefinition.credentialDefinitionId,
+              credentialDefinitionId: effectiveCredentialDefinitionId,
             },
           },
         });
@@ -264,5 +351,46 @@ export class IssueCredentialTask extends BaseRunnableTask {
         state: this.state,
       },
     };
+  }
+
+  private async waitForLedgerSchema(schemaId: string, timeoutMs = 30000) {
+    return this.pollLedger<GetSchemaReturn>(
+      () => this._agent.agent.modules.anoncreds.getSchema({ schemaId }),
+      `schema ${schemaId}`,
+      timeoutMs
+    );
+  }
+
+  private async waitForLedgerCredentialDefinition(credentialDefinitionId: string, timeoutMs = 30000) {
+    return this.pollLedger<GetCredentialDefinitionReturn>(
+      () =>
+        this._agent.agent.modules.anoncreds.getCredentialDefinition({
+          credentialDefinitionId,
+        }),
+      `credential definition ${credentialDefinitionId}`,
+      timeoutMs
+    );
+  }
+
+  private async pollLedger<T>(
+    fetcher: () => Promise<T>,
+    description: string,
+    timeoutMs: number
+  ): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    let attempt = 0;
+    while (Date.now() < deadline) {
+      attempt += 1;
+      try {
+        const result = await fetcher();
+        if (attempt > 1) {
+          console.log(`Retrieved ${description} from ledger after ${attempt} attempts`);
+        }
+        return result;
+      } catch (error) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+    throw new Error(`Timed out waiting for ${description} to be available on the ledger`);
   }
 }

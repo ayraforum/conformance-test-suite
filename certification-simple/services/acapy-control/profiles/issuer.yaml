@@ -8,11 +8,9 @@ ports:
   http: 8041
 transport:
   - http
-endpoints:
-  - http://host.docker.internal:8041
-genesis_file: "/app/profiles/local-genesis.txt"
+endpoints: []
+genesis_url: "https://test.bcovrin.vonx.io/genesis"
 extra_args:
-  - "--no-ledger"
   - "--auto-accept-requests"
   - "--auto-store-credential"
   - "--auto-respond-messages"

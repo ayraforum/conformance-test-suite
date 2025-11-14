@@ -29,13 +29,20 @@ class InvitationResponse(BaseModel):
 class ProofRequest(BaseModel):
   connection_id: str
   protocol_version: Literal["v2"] = "v2"
-  proof_formats: dict
+  proof_formats: Optional[dict] = None
+  presentation_request: Optional[dict] = None
+  comment: Optional[str] = None
 
 
 class ProofExchangeResponse(BaseModel):
   proof_exchange_id: str
   state: Literal["request-sent", "presentation-received", "done", "abandoned"]
   record: dict
+
+class ProofVerifyRequest(BaseModel):
+  proof_exchange_id: str
+  timeout_ms: Optional[int] = 120000
+  connection_id: Optional[str] = None
 
 
 class CredentialOfferRequest(BaseModel):

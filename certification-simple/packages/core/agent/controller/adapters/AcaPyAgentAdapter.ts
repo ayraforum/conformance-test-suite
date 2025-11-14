@@ -108,10 +108,17 @@ export class AcaPyAgentAdapter implements AgentAdapter {
     proof: ProofRequestPayload
   ): Promise<void> {
     const protocolVersion = proof.protocolVersion ?? "v2";
-    await this.post("/proofs/request", {
+    const response = await this.post<{ proof_exchange_id: string }>(
+      "/proofs/request",
+      {
+        connection_id: connectionId,
+        protocol_version: protocolVersion,
+        proof_formats: proof.proofFormats,
+      }
+    );
+    await this.post("/proofs/verify", {
+      proof_exchange_id: response.proof_exchange_id,
       connection_id: connectionId,
-      protocol_version: protocolVersion,
-      proof_formats: proof.proofFormats,
     });
   }
 

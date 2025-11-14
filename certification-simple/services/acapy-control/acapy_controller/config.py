@@ -57,7 +57,14 @@ class ProfileConfig:
     if self.seed:
       args.extend(["--seed", self.seed])
 
-    if self.genesis_file:
+    env_genesis_file = os.getenv("ACAPY_GENESIS_FILE")
+    env_genesis_url = os.getenv("ACAPY_GENESIS_URL")
+
+    if env_genesis_file:
+      args.extend(["--genesis-file", env_genesis_file])
+    elif env_genesis_url:
+      args.extend(["--genesis-url", env_genesis_url])
+    elif self.genesis_file:
       args.extend(["--genesis-file", self.genesis_file])
     elif self.genesis_url:
       args.extend(["--genesis-url", self.genesis_url])
@@ -72,6 +79,9 @@ class ProfileConfig:
 
     if env_endpoint:
       args.extend(["--invite-base-url", env_endpoint])
+
+    if os.getenv("ACAPY_NO_LEDGER", "").lower() == "true":
+      args.append("--no-ledger")
 
     args.extend(self.extra_args)
     return args
@@ -110,7 +120,7 @@ class ProfileConfig:
 
 def load_profile(path: Path) -> ProfileConfig:
   data = yaml.safe_load(path.read_text())
-  return ProfileConfig(
+  profile = ProfileConfig(
     label=data["label"],
     wallet_type=data["wallet"]["type"],
     wallet_name=data["wallet"]["name"],
@@ -125,3 +135,4 @@ def load_profile(path: Path) -> ProfileConfig:
     mediation=data.get("mediation"),
     extra_args=data.get("extra_args", []),
   )
+  return profile
