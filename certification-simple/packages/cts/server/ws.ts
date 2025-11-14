@@ -2,7 +2,6 @@ import { Server as SocketIOServer, Socket } from "socket.io";
 import { state } from "./state";
 import { server, app } from "./api";
 import eventEmitter from "@demo/core/agent/utils/eventEmitter";
-import { OutOfBandRecord } from "@credo-ts/core";
 
 console.log("Initializing Socket.IO server...");
 
@@ -55,15 +54,10 @@ export const emitDAGUpdate = () => {
 //  console.log(`WebSocket - Broadcasted dag-state-update ${sequence} to ${io.engine.clientsCount} clients`);
 };
 
-eventEmitter.on("invitation", (event: OutOfBandRecord) => {
-  if (state?.config?.domain) {
-    const url = event.outOfBandInvitation.toUrl({
-      domain: state!.config!.domain,
-    });
-    state.currentInvitation = url;
-    io.emit("invitation", url);
-    console.log("emitted invitation", url);
-  }
+eventEmitter.on("invitation", (invitationUrl: string) => {
+  state.currentInvitation = invitationUrl;
+  io.emit("invitation", invitationUrl);
+  console.log("emitted invitation", invitationUrl);
 });
 
 // Handle Socket.io connections

@@ -1,97 +1,56 @@
 import BaseRunnableTask from "../../pipeline/src/tasks/baseRunnableTask";
-import {
-  OutOfBandRecord,
-  ConnectionRecord,
-  ConnectionStateChangedEvent,
-  ConnectionEventTypes,
-} from "@credo-ts/core";
 import { RunnableState, Results } from "../../pipeline/src/types";
-import { BaseAgent } from "../core";
+import { AgentController } from "../controller";
 import qrcord from "qrcode-terminal";
 import eventEmitter from "../utils/eventEmitter";
+import type { ControllerConnectionRecord, ControllerInvitation } from "../controller/types";
 
 export class SetupConnectionTask extends BaseRunnableTask {
-  private _agent: BaseAgent;
-  private _oobInvitation: OutOfBandRecord | undefined;
-  private _connectionRecord: ConnectionRecord | undefined;
+  private controller: AgentController;
+  private _oobInvitation: ControllerInvitation | undefined;
+  private _connectionRecord: ControllerConnectionRecord | undefined;
 
-  constructor(agent: BaseAgent, name: string, description?: string) {
+  constructor(controller: AgentController, name: string, description?: string) {
     super(name, description);
-    this._agent = agent;
+    this.controller = controller;
   }
 
   async prepare(): Promise<void> {
     super.prepare();
-    if (!this._agent) {
-      super.addError("agent wasn't defined");
-      throw new Error("Agent is not defined");
+    if (!this.controller) {
+      super.addError("controller wasn't defined");
+      throw new Error("Agent controller is not defined");
     }
-    if (this._agent?.agent.isInitialized) {
+    if (this.controller.isReady()) {
       this.addMessage("Agent is initialized");
     }
   }
 
-  get invitation(): OutOfBandRecord | undefined {
+  get invitation(): ControllerInvitation | undefined {
     return this._oobInvitation;
   }
 
   async run(): Promise<void> {
     super.run();
-    if (!this._agent) {
-      super.addError("agent wasn't defined");
-      throw new Error("Agent is not defined");
+    if (!this.controller) {
+      super.addError("controller wasn't defined");
+      throw new Error("Agent controller is not defined");
     }
-    this.addMessage("Initializing agent");
+    this.addMessage("Initializing controller");
 
-    const outOfBandInvitation = await this._agent.agent.oob.createInvitation();
-    this._oobInvitation = outOfBandInvitation;
-    eventEmitter.emit("invitation", outOfBandInvitation);
-    const urlMessage = outOfBandInvitation.outOfBandInvitation.toUrl({
-      domain: this._agent!.config!.domain ? this._agent!.config!.domain : "",
-    });
-    console.log("Verifier OOB Invitation URL:\n", urlMessage);
-    qrcord.generate(urlMessage, { small: true });
+    const { invitation, invitationUrl, connectionRecordPromise } =
+      await this.controller.establishConnection();
+    this._oobInvitation = invitation;
+    eventEmitter.emit("invitation", invitation.url);
+    console.log("Verifier OOB Invitation URL:\n", invitationUrl);
+    qrcord.generate(invitationUrl, { small: true });
 
     this.setRunState(RunnableState.PENDING);
     this.setStatus(RunnableState.PENDING);
 
-    const getConnectionRecord = (outOfBandId: string) =>
-      new Promise<ConnectionRecord>((resolve, reject) => {
-        const timeoutId = setTimeout(
-          () => reject(new Error("missing connection record")),
-          30000000 //TODO: fix
-        );
-
-        this._agent.agent.events.on<ConnectionStateChangedEvent>(
-          ConnectionEventTypes.ConnectionStateChanged,
-          (e: ConnectionStateChangedEvent) => {
-            if (e.payload.connectionRecord.outOfBandId !== outOfBandId) return;
-            clearTimeout(timeoutId);
-            resolve(e.payload.connectionRecord);
-          }
-        );
-
-        // Also retrieve the connection record by invitation if the event has already fired
-        void this._agent.agent.connections
-          .findAllByOutOfBandId(outOfBandId)
-          .then(([connectionRecord]: ConnectionRecord[]) => {
-            if (connectionRecord) {
-              clearTimeout(timeoutId);
-              resolve(connectionRecord);
-            }
-          });
-      });
-
-    const connectionRecord = await getConnectionRecord(this._oobInvitation!.id);
-    try {
-      await this._agent.agent.connections.returnWhenIsConnected(
-        connectionRecord.id
-      );
-    } catch (e) {
-      console.error(e);
-      return;
-    }
+    const connectionRecord = await connectionRecordPromise;
     this._connectionRecord = connectionRecord;
+
     this.setCompleted();
     this.setAccepted();
     console.log("Connection established");
@@ -102,7 +61,7 @@ export class SetupConnectionTask extends BaseRunnableTask {
     return {
       value: this._connectionRecord,
       time: new Date(),
-      author: this._agent.config!.label,
+      author: this.controller.label,
     } as Results;
   }
 }

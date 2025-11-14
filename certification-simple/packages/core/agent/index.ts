@@ -2,6 +2,7 @@
 export * from './core';
 export * from './utils';
 export * from './tasks';
+export * from './controller';
 
 // Re-export commonly used task classes at the root level for easier imports
 export {

@@ -1,5 +1,5 @@
 import { DAG } from "@demo/core/pipeline/src/dag";
-import { BaseAgent, AgentConfiguration } from "@demo/core";
+import { BaseAgent, AgentConfiguration, AgentController } from "@demo/core";
 import {
   HolderTestPipeline,
   VerifierTestPipeline,
@@ -19,15 +19,16 @@ export type State = {
   pipeline?: Pipeline;
   currentInvitation?: string;
   agent?: BaseAgent;
+  controller?: AgentController;
 };
 
 const _state: State = {};
 
-const setDAG = (dag: DAG) => {
+export const setDAG = (dag: DAG) => {
   _state.dag = dag;
 };
 
-const setPipeline = (pipeline: Pipeline) => {
+export const setPipeline = (pipeline: Pipeline) => {
   console.log("[STATE] Setting pipeline:", pipeline?.constructor?.name);
   _state.pipeline = pipeline;
 };
@@ -36,21 +37,25 @@ export const setAgent = (agent: BaseAgent) => {
   _state.agent = agent;
 };
 
+export const setController = (controller: AgentController) => {
+  _state.controller = controller;
+};
+
 export const setConfig = (config: AgentConfiguration) => {
   _state.config = config;
 };
 
-export { _state as state, setDAG, setPipeline };
+export { _state as state };
 
 export const selectPipeline = (type: PipelineType): Pipeline => {
   console.log("[STATE] Selecting pipeline type:", type);
   var pipe: Pipeline;
   switch (type) {
     case PipelineType.HOLDER_TEST:
-      if (!_state.agent) {
-        throw new Error("agent not defined");
+      if (!_state.controller) {
+        throw new Error("agent controller not defined");
       }
-      pipe = new HolderTestPipeline(_state.agent);
+      pipe = new HolderTestPipeline(_state.controller);
       break;
     case PipelineType.ISSUER_TEST:
       if (!_state.agent) {

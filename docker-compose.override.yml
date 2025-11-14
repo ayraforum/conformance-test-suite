@@ -1,0 +1,7 @@
+services:
+  acapy-control:
+    environment:
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN}
+  acapy-ngrok:
+    environment:
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN}
