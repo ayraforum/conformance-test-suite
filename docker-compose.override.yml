@@ -2,6 +2,8 @@ services:
   acapy-control:
     environment:
       ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN}
+      #ACAPY_LOG_LEVEL: debug   # or trace, info, etc.
+      #ACAPY_TRACE: "true"      # optional, for full DIDComm traces
   acapy-ngrok:
     environment:
       ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN}

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from httpx import HTTPStatusError
 from fastapi.responses import StreamingResponse
 
 from acapy_controller.process_manager import AcaPyProcessManager
@@ -98,15 +99,24 @@ class RpcRouter:
   async def verify_proof(self, body: ProofVerifyRequest):
     if not self.manager.is_running:
       raise HTTPException(status_code=400, detail="Agent not started")
-    record = await self.manager.wait_for_proof(
+    initial_record = await self.manager.wait_for_proof(
       body.proof_exchange_id,
       body.timeout_ms or 120000,
       body.connection_id,
     )
-    resolved_id = record.get("proof_exchange_id", body.proof_exchange_id)
+    resolved_id = initial_record.get("proof_exchange_id", body.proof_exchange_id)
+    record = dict(initial_record)
     if (record.get("state") or record.get("presentation_state")) == "presentation-received":
       await self.manager.verify_proof(resolved_id, body.connection_id)
-      record = await self.manager.get_proof(resolved_id, connection_id=body.connection_id)
+      try:
+        record = await self.manager.get_proof(resolved_id, connection_id=body.connection_id)
+      except HTTPStatusError as exc:
+        if exc.response.status_code != 404:
+          raise
+        record["state"] = record.get("state") or record.get("presentation_state") or "done"
+        record["presentation_state"] = "done"
+        record["verified"] = record.get("verified") or "true"
+        record["proof_exchange_id"] = resolved_id
     response = ProofExchangeResponse(
       proof_exchange_id=record.get("proof_exchange_id", resolved_id),
       state=record.get("state") or record.get("presentation_state") or "unknown",

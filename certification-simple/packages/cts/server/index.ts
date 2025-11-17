@@ -17,11 +17,18 @@ const io = new Server(httpServer, {
 const agentId = uuidv4();
 const agentPort = Number(process.env.AGENT_PORT) || 3001;
 const baseUrl = process.env.BASE_URL || "http://localhost:3001";
+function deriveAgentLabel() {
+  const referenceAgent = (process.env.REFERENCE_AGENT || "credo").toLowerCase();
+  const agentType = referenceAgent === "acapy" ? "ACA-Py" : "Credo";
+  return `Ayra CTS Reference ${agentType} Agent`;
+}
+
+const agentLabel = deriveAgentLabel();
 
 // Initialize the server asynchronously
 async function initializeServer() {
   try {
-    const config = createAgentConfig("GAN Agent", agentPort, agentId, baseUrl, [baseUrl]);
+    const config = createAgentConfig(agentLabel, agentPort, agentId, baseUrl, [baseUrl]);
     const agent = new BaseAgent(config);
     await agent.init();
 

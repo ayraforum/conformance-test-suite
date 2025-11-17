@@ -18,6 +18,8 @@ services:
       NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
       REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
       ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
+      ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+      SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
     ports:
       - "3000:3000" # Frontend
       - "5005:5005" # API
@@ -54,6 +56,7 @@ services:
       REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
       ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
       ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+      SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
     ports:
       - "3000:3000"
       - "5005:5005"

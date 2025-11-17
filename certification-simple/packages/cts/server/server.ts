@@ -49,6 +49,13 @@ function ensureNgrokConfig(): string {
  */
 const agentId = uuidv4();
 const agentPort: number = Number(process.env.AGENT_PORT) || 5006; // ngrok port
+function deriveAgentLabel() {
+  const referenceAgent = (process.env.REFERENCE_AGENT || "credo").toLowerCase();
+  const agentType = referenceAgent === "acapy" ? "ACA-Py" : "Credo";
+  return `Ayra CTS Reference ${agentType} Agent`;
+}
+
+const agentLabel = deriveAgentLabel();
 let activeNgrokListener: ngrok.Listener | null = null;
 let acapyAdapter: AcaPyAgentAdapter | null = null;
 const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
@@ -123,7 +130,7 @@ const initCredoAgent = async () => {
     console.log(`ngrok tunnel established at ${ngrokUrl}`);
     activeNgrokListener = listener;
     const config = createAgentConfig(
-      "GAN Agent",
+      agentLabel,
       agentPort,
       agentId,
       ngrokUrl,
@@ -149,7 +156,7 @@ const initCredoAgent = async () => {
       throw new Error("BASE_URL not defined");
     }
     console.log("base url", baseUrl);
-    const config = createAgentConfig("GAN Agent", agentPort, agentId, baseUrl, [
+    const config = createAgentConfig(agentLabel, agentPort, agentId, baseUrl, [
       baseUrl,
     ]);
     setConfig(config);

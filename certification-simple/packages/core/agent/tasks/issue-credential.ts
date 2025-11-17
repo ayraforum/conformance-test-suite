@@ -57,6 +57,10 @@ function setupEventReplaySubjects(
   return replaySubjects;
 }
 
+const schemaNameBase = "AyraCard";
+const credentialDisplayName = "Ayra Card";
+const credentialDefinitionTag = "ayra-card";
+
 const isCredentialStateChangedEvent = (
   e: BaseEvent
 ): e is CredentialStateChangedEvent =>
@@ -110,7 +114,6 @@ export class IssueCredentialTask extends BaseRunnableTask {
       const { namespaceIdentifier } = parseIndyDid(this._options.did);
 
       // Register Schema
-      const schemaNameBase = "CertifiedGANEmployeeCredential";
       let schemaSeqNo: number | undefined;
       let schemaTemplate:
         | {
@@ -195,7 +198,7 @@ export class IssueCredentialTask extends BaseRunnableTask {
             credentialDefinition: {
               schemaId: ensuredSchemaId,
               issuerId: this._options.did,
-              tag: "latest",
+              tag: credentialDefinitionTag,
             },
             options: {
               supportRevocation: false,
@@ -222,7 +225,7 @@ export class IssueCredentialTask extends BaseRunnableTask {
         legacyCredentialDefinitionId = getUnqualifiedCredentialDefinitionId(
           namespaceIdentifier,
           schemaSeqNo,
-          "latest"
+          credentialDefinitionTag
         );
       } else {
         console.log(`Using provided credential definition id ${credentialDefinitionId}`);
@@ -256,7 +259,7 @@ export class IssueCredentialTask extends BaseRunnableTask {
               attributes: [
                 {
                   name: "type",
-                  value: "Certified GAN Employee Credential",
+                  value: credentialDisplayName,
                 }
               ],
               credentialDefinitionId: effectiveCredentialDefinitionId,
