@@ -1,7 +1,5 @@
-import { BaseAgent, indyNetworkConfig } from "@demo/core";
+import { AgentController, indyNetworkConfig } from "@demo/core";
 import { TaskNode } from "@demo/core/pipeline/src/nodes";
-import BaseRunnableTask from "@demo/core/pipeline/src/tasks/baseRunnableTask";
-import { Results } from "@demo/core/pipeline/src/types";
 
 import {
   CredentialIssuanceOptions,
@@ -9,25 +7,17 @@ import {
   SetupConnectionTask,
 } from "@demo/core";
 
-import {
-  PeerDidNumAlgo1CreateOptions,
-  PeerDidNumAlgo0CreateOptions,
-  PeerDidNumAlgo,
-  KeyType,
-  TypedArrayEncoder,
-} from "@credo-ts/core";
-
 import { DAG } from "@demo/core/pipeline/src/dag";
 
 export default class IssueCredentialPipeline {
   _dag: DAG;
-  _agent: BaseAgent;
+  _controller: AgentController;
   _did: string;
 
-  constructor(agent: BaseAgent) {
-    this._agent = agent;
+  constructor(controller: AgentController) {
+    this._controller = controller;
     this._did = this.getDefaultDid();
-    this._dag = this._make(agent, this._did);
+    this._dag = this._make(this._controller, this._did);
   }
 
   private getDefaultDid(): string {
@@ -41,39 +31,22 @@ export default class IssueCredentialPipeline {
   }
 
   async init() {
-    // Import the DID if not already imported
-    try {
-      await this._agent.agent.dids.import({
-        did: this._did,
-        overwrite: true,
-        privateKeys: [
-          {
-            keyType: KeyType.Ed25519,
-            privateKey: TypedArrayEncoder.fromString(
-              "afjd3mov1rysercure03020004000000"
-            ),
-          },
-        ],
-      });
-    } catch (error) {
-      console.error("Error importing DID:", error);
-    }
+    // Controller initialization handled upstream
   }
 
-  _make(agent: BaseAgent, did: string): DAG {
+  _make(controller: AgentController, did: string): DAG {
     const dag = new DAG("Issue GAN Credential Pipeline");
 
     const setupConnectionTask = new SetupConnectionTask(
-      agent,
+      controller,
       "Scan To Connect",
       "Set a DIDComm connection between GAN Verifier App and Holder"
     );
-    const issueCredentialOptions: CredentialIssuanceOptions = {
-      did: did,
-    };
+    const issueCredentialOptions: CredentialIssuanceOptions =
+      this.buildIssuanceOptions(did);
 
     const requestCredential = new IssueCredentialTask(
-      agent,
+      controller,
       {
         ...issueCredentialOptions,
       },
@@ -88,8 +61,41 @@ export default class IssueCredentialPipeline {
     const requestCredentialNode = new TaskNode(requestCredential);
     requestCredentialNode.addDependency(connectionNode);
     dag.addNode(requestCredentialNode);
-
     return dag;
   }
+
+  private buildIssuanceOptions(did: string): CredentialIssuanceOptions {
+    const options: CredentialIssuanceOptions = {
+      did,
+      didSeed: "afjd3mov1rysercure03020004000000",
+    };
+
+    const schemaId =
+      process.env.ISSUER_SCHEMA_ID ?? process.env.LATEST_SCHEMA_ID ?? undefined;
+    if (schemaId) {
+      options.schemaId = schemaId;
+    }
+
+    const credDefId =
+      process.env.ISSUER_CRED_DEF_ID ?? process.env.LATEST_CRED_DEF_ID ?? undefined;
+    if (credDefId) {
+      options.credentialDefinitionId = credDefId;
+    }
+
+    const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
+    const overrideAgent = (process.env.ISSUER_OVERRIDE_AGENT ?? "auto").toLowerCase();
+    const effectiveAgent =
+      (process.env.ISSUER_EFFECTIVE_AGENT ?? "").toLowerCase();
+    const issuerAgent =
+      effectiveAgent ||
+      (overrideAgent === "auto" ? referenceAgent : overrideAgent);
+
+    if (issuerAgent === "acapy" && !options.credentialDefinitionId) {
+      throw new Error(
+        "[IssueCredentialPipeline] ACA-Py issuer requires ISSUER_CRED_DEF_ID (or LATEST_CRED_DEF_ID from a prior issuance) to be set."
+      );
+    }
+
+    return options;
+  }
 }
- 

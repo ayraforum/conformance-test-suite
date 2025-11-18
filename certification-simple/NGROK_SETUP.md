@@ -77,7 +77,7 @@ Repeat the cycle whenever you need a new tunnel. Free-plan hostnames change ever
 
 Paid NGROK plans support multiple simultaneous tunnels and reserved domains. Configure both services with dedicated hostnames so URLs remain stable across restarts.
 
-1. Reserve two domains in the NGROK dashboard (e.g. `issuer.your-org.ngrok.app`, `verifier.your-org.ngrok.app`).
+1. Reserve dedicated domains in the NGROK dashboard, e.g. `reference.your-org.ngrok.app` for the reference agent tunnel and `verifier.your-org.ngrok.app` for the standalone verifier test container. If you plan to force the issuer override to Credo, reserve a third domain (e.g. `issuer.your-org.ngrok.app`) for that tunnel.
 2. Update `certification-simple/.env`:
 
 ```ini
@@ -85,8 +85,10 @@ USE_NGROK=true
 VERIFIER_USE_NGROK=true
 NGROK_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 NGROK_REGION=us
-SERVER_NGROK_DOMAIN=issuer.your-org.ngrok.app
-VERIFIER_NGROK_DOMAIN=verifier.your-org.ngrok.app
+SERVER_NGROK_DOMAIN=cts-server.your-org.ngrok.app
+REFERENCE_AGENT_NGROK_DOMAIN=reference.your-org.ngrok.app
+VERIFIER_TEST_NGROK_DOMAIN=verifier.your-org.ngrok.app
+ISSUER_OVERRIDE_NGROK_DOMAIN=issuer.your-org.ngrok.app   # optional; only used when ISSUER_OVERRIDE_AGENT=credo
 NGROK_POOLING_ENABLED=false
 ```
 
@@ -112,8 +114,12 @@ Both tunnels retain their reserved domains, keeping QR codes and webhook targets
 | `USE_NGROK` | Enables NGROK for the main server/issuer flow |
 | `SERVER_NGROK_DOMAIN` | Reserved domain for the server tunnel (paid plans) |
 | `VERIFIER_USE_NGROK` | Enables NGROK for the test-verifier container |
-| `VERIFIER_NGROK_DOMAIN` | Reserved domain for the verifier tunnel (paid plans) |
+| `VERIFIER_TEST_NGROK_DOMAIN` | Reserved domain for the standalone verifier test tunnel |
 | `NGROK_POOLING_ENABLED` | Set to `false` for one-to-one reserved domains; leave `true` for pooled listeners |
+| `REFERENCE_AGENT_NGROK_DOMAIN` | Domain used by whatever agent is configured as `REFERENCE_AGENT` (Credo or ACA-Py) |
+| `ISSUER_OVERRIDE_NGROK_DOMAIN` | Domain used by the override issuer agent when `ISSUER_OVERRIDE_AGENT=credo` |
+
+> **ACA-Py Holder Flow:** When `REFERENCE_AGENT=acapy`, the compose stack automatically starts an `acapy-ngrok` sidecar that forwards the ACA-Py HTTP inbound port (8041) to NGROK. Set `REFERENCE_AGENT_NGROK_DOMAIN` in the root `.env` to the reserved domain you want the QR codes to use (e.g. `reference-cts.ngrok.app`). If you also enable `ISSUER_OVERRIDE_AGENT=credo`, provide a distinct `ISSUER_OVERRIDE_NGROK_DOMAIN` so the Credo issuer can host its own invitations without colliding with the ACA-Py tunnel.
 
 ## 6. Troubleshooting
 

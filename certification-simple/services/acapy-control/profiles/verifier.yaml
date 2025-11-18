@@ -1,0 +1,15 @@
+label: "CTS ACA-Py Verifier"
+wallet:
+  type: askar
+  name: cts-verifier-wallet
+  key: cts-verifier-wallet-key
+ports:
+  admin: 8032
+  http: 8042
+transport:
+  - http
+endpoints: []
+genesis_url: "https://test.bcovrin.vonx.io/genesis"
+extra_args:
+  - "--auto-accept-requests"
+  - "--auto-respond-messages"

@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { createServer } from "http";
-import { BaseAgent, createAgentConfig } from "@demo/core";
+import { AgentController, BaseAgent, CredoAgentAdapter, createAgentConfig } from "@demo/core";
 import { v4 as uuidv4 } from "uuid";
 import VerifierTestPipeline from "./pipelines/verifierTestPipeline";
 import IssueCredentialPipeline from "./pipelines/issueCredentialPipeline";
@@ -17,16 +17,24 @@ const io = new Server(httpServer, {
 const agentId = uuidv4();
 const agentPort = Number(process.env.AGENT_PORT) || 3001;
 const baseUrl = process.env.BASE_URL || "http://localhost:3001";
+function deriveAgentLabel() {
+  const referenceAgent = (process.env.REFERENCE_AGENT || "credo").toLowerCase();
+  const agentType = referenceAgent === "acapy" ? "ACA-Py" : "Credo";
+  return `Ayra CTS Reference ${agentType} Agent`;
+}
+
+const agentLabel = deriveAgentLabel();
 
 // Initialize the server asynchronously
 async function initializeServer() {
   try {
-    const config = createAgentConfig("GAN Agent", agentPort, agentId, baseUrl, [baseUrl]);
+    const config = createAgentConfig(agentLabel, agentPort, agentId, baseUrl, [baseUrl]);
     const agent = new BaseAgent(config);
     await agent.init();
 
     const verifierPipeline = new VerifierTestPipeline(agent);
-    const issuerPipeline = new IssueCredentialPipeline(agent);
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+    const issuerPipeline = new IssueCredentialPipeline(controller);
 
     io.on("connection", (socket) => {
       console.log("Client connected");

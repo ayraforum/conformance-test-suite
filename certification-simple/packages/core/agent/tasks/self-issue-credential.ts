@@ -29,7 +29,7 @@ export class SelfIssueCredentialTask extends BaseRunnableTask {
     this._agent = agent;
     this._options = {
       did: options.did || `did:indy:${indyNetworkConfig.indyNamespace}:HYfhCRaKhccZtr7v8CHTe8`,
-      schemaName: options.schemaName || "Verifier Test Credential",
+      schemaName: options.schemaName || "VerifierTestCredential",
       schemaVersion: options.schemaVersion || "1.0.0",
       attributes: options.attributes || [
         { name: "type", value: "Certified GAN Employee Credential" },
@@ -82,8 +82,9 @@ export class SelfIssueCredentialTask extends BaseRunnableTask {
       this.addMessage("Starting self-credential issuance");
 
       // 1. Register Schema
+      const schemaNameBase = (this._options.schemaName || "VerifierTestCredential").replace(/[^a-zA-Z0-9_-]/g, "");
       const schemaTemplate = {
-        name: `${this._options.schemaName} ${v4()}`,
+        name: `${schemaNameBase}-${v4().replace(/-/g, "")}`,
         version: this._options.schemaVersion!,
         attrNames: this._options.attributes!.map(attr => attr.name),
         issuerId: this._options.did!,

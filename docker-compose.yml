@@ -16,9 +16,99 @@ services:
       PNPM_HOME: /pnpm
       USE_NGROK: ${USE_NGROK:-false}
       NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
+      REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
+      ISSUER_OVERRIDE_AGENT: ${ISSUER_OVERRIDE_AGENT:-auto}
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-}
+      ISSUER_OVERRIDE_NGROK_DOMAIN: ${ISSUER_OVERRIDE_NGROK_DOMAIN:-}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
+      ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
+      ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+      SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
     ports:
       - "3000:3000" # Frontend
       - "5005:5005" # API
+
+  app:
+    build:
+      context: ./.devcontainer
+      dockerfile: Dockerfile
+    depends_on:
+      - acapy-control
+    volumes:
+      - ./:/workspaces/conformance-test-suite:cached
+      - pnpm-store:/pnpm
+      - node-modules:/workspaces/conformance-test-suite/node_modules
+    working_dir: /workspaces/conformance-test-suite/certification-simple
+    command: >
+      bash -lc '
+        set -euo pipefail
+        corepack enable
+        pnpm install
+        pnpm --filter @demo/core run build
+        pnpm --filter cts-3 run start:server &
+        SERVER_PID=$!
+        pnpm --filter cts-3 dev &
+        CLIENT_PID=$!
+        trap "kill $SERVER_PID $CLIENT_PID" EXIT
+        wait
+      '
+    environment:
+      NODE_ENV: development
+      PNPM_HOME: /pnpm
+      USE_NGROK: ${USE_NGROK:-false}
+      NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
+      REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
+      ISSUER_OVERRIDE_AGENT: ${ISSUER_OVERRIDE_AGENT:-auto}
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-}
+      ISSUER_OVERRIDE_NGROK_DOMAIN: ${ISSUER_OVERRIDE_NGROK_DOMAIN:-}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
+      ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
+      ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+      SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
+    ports:
+      - "3000:3000"
+      - "5005:5005"
+
+  acapy-control:
+    build:
+      context: ./certification-simple/services/acapy-control
+    ports:
+      - "9001:9001"
+      - "8041:8041"
+      - "8042:8042"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-}
+      VERIFIER_TEST_NGROK_DOMAIN: ${VERIFIER_TEST_NGROK_DOMAIN:-}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
+      VERIFIER_NGROK_DOMAIN: ${VERIFIER_NGROK_DOMAIN:-${VERIFIER_TEST_NGROK_DOMAIN:-}}
+      ACAPY_ENDPOINT: ${ACAPY_ENDPOINT:-}
+      ACAPY_INVITE_BASE_URL: ${ACAPY_INVITE_BASE_URL:-}
+
+  acapy-ngrok:
+    image: ngrok/ngrok:alpine
+    depends_on:
+      - acapy-control
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTH_TOKEN:-}
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-${ISSUER_NGROK_DOMAIN:-}}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
+      NGROK_REGION: ${NGROK_REGION:-us}
+    entrypoint: []
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -euo pipefail
+        REF_DOMAIN="$${REFERENCE_AGENT_NGROK_DOMAIN}"
+        if [ -z "$$REF_DOMAIN" ]; then
+          REF_DOMAIN="$${ISSUER_NGROK_DOMAIN}"
+        fi
+        if [ -z "$$REF_DOMAIN" ]; then
+          echo 'REFERENCE_AGENT_NGROK_DOMAIN (or ISSUER_NGROK_DOMAIN) must be set (e.g. reference-xxx.ngrok.app)' >&2
+          exit 1
+        fi
+        exec ngrok http --region="$${NGROK_REGION}" --domain="$$REF_DOMAIN" http://acapy-control:8041
 
   # Optional sidecar if you want ngrok in a container (otherwise the app can open its own tunnel)
   ngrok:

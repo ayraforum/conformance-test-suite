@@ -67,7 +67,7 @@ services:
       - USE_NGROK=${USE_NGROK:-false}
       - NGROK_AUTH_TOKEN=${NGROK_AUTH_TOKEN}
       - NGROK_REGION=${NGROK_REGION:-us}
-      - VERIFIER_NGROK_DOMAIN=${VERIFIER_NGROK_DOMAIN:-}
+      - VERIFIER_TEST_NGROK_DOMAIN=${VERIFIER_TEST_NGROK_DOMAIN:-${VERIFIER_NGROK_DOMAIN:-}}
     depends_on:
       server:
         condition: service_healthy

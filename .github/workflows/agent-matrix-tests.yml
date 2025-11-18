@@ -1,0 +1,53 @@
+name: Agent Matrix Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Jest (${{ matrix.reference_agent }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        reference_agent: [credo, acapy]
+    env:
+      REFERENCE_AGENT: ${{ matrix.reference_agent }}
+      ACAPY_CONTROL_URL: http://127.0.0.1:9001
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "pnpm"
+          cache-dependency-path: certification-simple/pnpm-lock.yaml
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: certification-simple
+        run: pnpm install --frozen-lockfile
+
+      - name: Start ACA-Py control service
+        if: matrix.reference_agent == 'acapy'
+        run: |
+          docker compose up -d acapy-control
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:9001/docs >/dev/null; then
+              echo "ACA-Py control service is ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run unit tests
+        working-directory: certification-simple
+        run: pnpm test:unit
+
+      - name: Stop ACA-Py control service
+        if: matrix.reference_agent == 'acapy'
+        run: docker compose down

@@ -2,24 +2,19 @@
 process.env.NGROK_CONFIG = process.env.NGROK_CONFIG || "/tmp/ngrok.yml";
 // server.ts
 import 'dotenv/config';
-import express, { Request, Response } from 'express';
+import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { state } from './state';
 import VerifierTestPipeline from './pipelines/verifierTestPipeline';
 
-import {
-  SetupConnectionTask,
-  RequestProofTask,
-  RequestProofOptions,
-} from "@demo/core";
-import { createAgentConfig, BaseAgent } from "@demo/core";
+import { createAgentConfig, BaseAgent, AgentController, CredoAgentAdapter, AcaPyAgentAdapter } from "@demo/core";
 import * as ngrok from "@ngrok/ngrok";
 import type { Config as NgrokConfig } from "@ngrok/ngrok";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from "uuid";
-import { setDAG, setPipeline, setConfig, setAgent } from "./state";
+import { setDAG, setPipeline, setConfig, setAgent, setController, setIssuerController, setIssuerAgentType, state as serverState } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
@@ -54,9 +49,47 @@ function ensureNgrokConfig(): string {
  */
 const agentId = uuidv4();
 const agentPort: number = Number(process.env.AGENT_PORT) || 5006; // ngrok port
+function deriveAgentLabel() {
+  const referenceAgent = (process.env.REFERENCE_AGENT || "credo").toLowerCase();
+  const agentType = referenceAgent === "acapy" ? "ACA-Py" : "Credo";
+  return `Ayra CTS Reference ${agentType} Agent`;
+}
+
+const agentLabel = deriveAgentLabel();
 let activeNgrokListener: ngrok.Listener | null = null;
+let acapyAdapter: AcaPyAgentAdapter | null = null;
+const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
+const issuerOverrideAgent = (
+  process.env.ISSUER_OVERRIDE_AGENT ?? "auto"
+).toLowerCase();
+console.log(`[CONFIG] Reference agent: ${referenceAgent}`);
+console.log(`[CONFIG] Issuer override agent: ${issuerOverrideAgent}`);
+
+const resolveReferenceAgentDomain = (): string | null =>
+  process.env.REFERENCE_AGENT_NGROK_DOMAIN ??
+  process.env.ISSUER_NGROK_DOMAIN ??
+  process.env.VERIFIER_NGROK_DOMAIN ??
+  process.env.SERVER_NGROK_DOMAIN ??
+  process.env.NGROK_DOMAIN ??
+  null;
+
+const resolveOverrideAgentDomain = (): string | null =>
+  process.env.ISSUER_OVERRIDE_NGROK_DOMAIN ??
+  process.env.CREDO_ISSUER_NGROK_DOMAIN ??
+  process.env.ISSUER_NGROK_DOMAIN ??
+  null;
 
 const init = async () => {
+  if (referenceAgent === "acapy") {
+    await initCredoAgent();
+    await initAcaPyController();
+  } else {
+    await initCredoAgent();
+  }
+  await configureIssuerController();
+};
+
+const initCredoAgent = async () => {
   if (process.env.USE_NGROK === "true") {
     if (!process.env.NGROK_AUTH_TOKEN) {
       throw new Error("NGROK_AUTH_TOKEN not defined");
@@ -87,7 +120,12 @@ const init = async () => {
 
     let listener: ngrok.Listener | null = null;
     const poolingEnabled = (process.env.NGROK_POOLING_ENABLED ?? 'true').toLowerCase() === 'true';
-    const ngrokDomain = process.env.SERVER_NGROK_DOMAIN || process.env.NGROK_DOMAIN || null;
+    const referenceDomain = resolveReferenceAgentDomain();
+    const overrideDomain = resolveOverrideAgentDomain();
+    let ngrokDomain: string | null = referenceDomain;
+    if (referenceAgent !== "credo" && issuerOverrideAgent === "credo") {
+      ngrokDomain = overrideDomain || referenceDomain;
+    }
     try {
       const config: NgrokConfig & { pooling_enabled?: boolean } = {
         addr: agentPort,
@@ -116,7 +154,7 @@ const init = async () => {
     console.log(`ngrok tunnel established at ${ngrokUrl}`);
     activeNgrokListener = listener;
     const config = createAgentConfig(
-      "GAN Agent",
+      agentLabel,
       agentPort,
       agentId,
       ngrokUrl,
@@ -131,6 +169,8 @@ const init = async () => {
     await agent.init();
     console.log("setting agent");
     setAgent(agent);
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+    setController(controller);
     console.log("set agent and config");
   } else {
     const baseUrl = process.env.API_URL
@@ -140,7 +180,7 @@ const init = async () => {
       throw new Error("BASE_URL not defined");
     }
     console.log("base url", baseUrl);
-    const config = createAgentConfig("GAN Agent", agentPort, agentId, baseUrl, [
+    const config = createAgentConfig(agentLabel, agentPort, agentId, baseUrl, [
       baseUrl,
     ]);
     setConfig(config);
@@ -150,11 +190,25 @@ const init = async () => {
     const agent = new BaseAgent(config);
     await agent.init();
     setAgent(agent);
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+    setController(controller);
   }
+};
+
+const initAcaPyController = async () => {
+  const baseUrl = process.env.ACAPY_CONTROL_URL ?? "http://localhost:9001";
+  console.log(`[ACAPY] Connecting to control service at ${baseUrl}`);
+  acapyAdapter = await AcaPyAgentAdapter.create({ baseUrl });
+  const controller = new AgentController(acapyAdapter);
+  setController(controller);
+  console.log("[ACAPY] Controller initialized");
 };
 
 const shutdown = async () => {
   try {
+    if (referenceAgent === "acapy" && acapyAdapter) {
+      await acapyAdapter.shutdown();
+    }
     if (activeNgrokListener) {
       await activeNgrokListener.close();
       activeNgrokListener = null;
@@ -169,11 +223,45 @@ const shutdown = async () => {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
+const configureIssuerController = async () => {
+  const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
+  if (issuerOverrideAgent === "auto") {
+    const effective = referenceAgent === "acapy" ? "acapy" : "credo";
+    setIssuerController(undefined);
+    setIssuerAgentType(effective);
+    process.env.ISSUER_EFFECTIVE_AGENT = effective;
+    return;
+  }
+  if (issuerOverrideAgent === "credo") {
+    if (!serverState.agent) {
+      throw new Error(
+        "[Issuer Override] Credo agent not initialized; cannot create issuer controller"
+      );
+    }
+    const overrideController = new AgentController(
+      new CredoAgentAdapter(serverState.agent)
+    );
+    setIssuerController(overrideController);
+    console.log("[Issuer Override] Issuer controller set to Credo agent");
+    setIssuerAgentType("credo");
+    process.env.ISSUER_EFFECTIVE_AGENT = "credo";
+    return;
+  }
+  console.warn(
+    `[Issuer Override] Unsupported ISSUER_OVERRIDE_AGENT=${issuerOverrideAgent}; defaulting to reference controller`
+  );
+  const fallback = referenceAgent === "acapy" ? "acapy" : "credo";
+  setIssuerAgentType(fallback);
+  process.env.ISSUER_EFFECTIVE_AGENT = fallback;
+  setIssuerController(undefined);
+};
+
 export const reset = async () => {};
 /**
  * Main function to set up and run the task pipeline.
  */
 export const run = async (params?: any) => {
+  await ensureInitialized();
   try {
     console.log("[RUN] Starting pipeline execution with params:", params);
     if (params?.pipelineType) {
@@ -189,11 +277,6 @@ export const run = async (params?: any) => {
       } else {
         console.warn("[RUN] Ignoring unknown pipeline override:", params.pipelineType);
       }
-    }
-    const agent = state.agent;
-    console.log("Agent initialized successfully.");
-    if (!agent) {
-      throw Error("agent not defined");
     }
     const pipeline = state.pipeline;
     if (!pipeline) {
@@ -228,17 +311,39 @@ export const run = async (params?: any) => {
   }
 };
 
-console.log("initializing");
-try {
-  init().then(() => {
+let initializationPromise: Promise<void> | null = null;
+let initialized = false;
+
+const ensureInitialized = async (): Promise<void> => {
+  if (initialized) {
+    return;
+  }
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+
+  initializationPromise = (async () => {
+    await init();
     try {
       selectPipeline(PipelineType.HOLDER_TEST);
     } catch (e) {
       console.error(e);
     }
+    initialized = true;
+  })().catch((error) => {
+    initializationPromise = null;
+    initialized = false;
+    throw error;
   });
-} catch (e) {
-  console.error(e);
-}
+
+  return initializationPromise;
+};
+
+console.log("initializing");
+ensureInitialized().catch((e) => {
+  console.error("Failed to initialize CTS server", e);
+});
 
 runServer();
+
+export { ensureInitialized };
