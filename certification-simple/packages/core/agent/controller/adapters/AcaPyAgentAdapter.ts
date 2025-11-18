@@ -4,6 +4,8 @@ import type {
   AgentAdapter,
   ControllerConnectionRecord,
   ControllerInvitation,
+  CredentialOfferPayload,
+  CredentialOfferResult,
   ProofRequestPayload,
 } from "../types";
 
@@ -120,6 +122,35 @@ export class AcaPyAgentAdapter implements AgentAdapter {
       proof_exchange_id: response.proof_exchange_id,
       connection_id: connectionId,
     });
+  }
+
+  async issueCredential(payload: CredentialOfferPayload): Promise<CredentialOfferResult> {
+    if (!payload.credentialDefinitionId) {
+      throw new Error(
+        "ACA-Py adapter requires credentialDefinitionId to issue a credential. " +
+          "Provide one in CredentialIssuanceOptions when using ACA-Py."
+      );
+    }
+    const attributeMap: Record<string, string> = {};
+    for (const { name, value } of payload.attributes) {
+      attributeMap[name] = value;
+    }
+    const response = await this.post<{
+      credential_exchange_id: string;
+      record?: unknown;
+    }>("/credentials/offer", {
+      connection_id: payload.connectionId,
+      credential_definition_id: payload.credentialDefinitionId,
+      attributes: attributeMap,
+      protocol_version: "v2",
+    });
+    return {
+      schemaId: payload.schemaId,
+      legacySchemaId: payload.schemaId,
+      credentialDefinitionId: payload.credentialDefinitionId,
+      legacyCredentialDefinitionId: payload.credentialDefinitionId,
+      record: response.record,
+    };
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {

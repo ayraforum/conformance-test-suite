@@ -91,10 +91,20 @@ class ProfileConfig:
     candidates = [
       os.getenv(f"{label_key}_ENDPOINT"),
     ]
+    reference_domain = (
+      os.getenv("REFERENCE_AGENT_NGROK_DOMAIN")
+      or os.getenv("ISSUER_NGROK_DOMAIN")
+      or os.getenv("VERIFIER_NGROK_DOMAIN")
+    )
+    verifier_test_domain = (
+      os.getenv("VERIFIER_TEST_NGROK_DOMAIN")
+      or os.getenv("VERIFIER_NGROK_DOMAIN")
+    )
+
     if "ISSUER" in label_key:
-      candidates.insert(0, os.getenv("ISSUER_NGROK_DOMAIN"))
+      candidates.insert(0, reference_domain)
     if "VERIFIER" in label_key:
-      candidates.insert(0, os.getenv("VERIFIER_NGROK_DOMAIN"))
+      candidates.insert(0, verifier_test_domain)
     candidates.extend([
       os.getenv("ACAPY_ENDPOINT"),
       os.getenv("ACAPY_INVITE_BASE_URL"),

@@ -2,6 +2,8 @@ import type {
   AgentAdapter,
   ConnectionInitResult,
   ControllerConnectionRecord,
+  CredentialOfferPayload,
+  CredentialOfferResult,
   ProofRequestPayload,
 } from "./types";
 
@@ -28,6 +30,9 @@ export class AgentController {
     const connectionRecordPromise = (async (): Promise<ControllerConnectionRecord> => {
       const connectionRecord = await this.adapter.waitForConnection(invitation);
       await this.adapter.waitUntilConnected(connectionRecord.id);
+      if (this.adapter.getConnectionRecord) {
+        return this.adapter.getConnectionRecord(connectionRecord.id);
+      }
       return connectionRecord;
     })();
 
@@ -45,5 +50,20 @@ export class AgentController {
       throw new Error("proof configuration is required for requestProof");
     }
     return this.adapter.requestProofAndAccept(connectionId, proof);
+  }
+
+  async issueCredential(
+    payload: CredentialOfferPayload
+  ): Promise<CredentialOfferResult> {
+    if (!payload.connectionId) {
+      throw new Error("connectionId is required to issue a credential");
+    }
+    if (!payload.issuerDid) {
+      throw new Error("issuerDid is required to issue a credential");
+    }
+    if (!payload.attributes?.length) {
+      throw new Error("At least one attribute is required to issue a credential");
+    }
+    return this.adapter.issueCredential(payload);
   }
 }

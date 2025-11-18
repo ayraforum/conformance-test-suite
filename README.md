@@ -117,32 +117,41 @@ conformance-test-suite/
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd conformance-test-suite/certification-simple
+cd conformance-test-suite
 
-# Install dependencies
-pnpm install
+# Copy the sample env and edit the NGROK / agent settings
+cp .env.example .env
+# (update REFERENCE_AGENT, NGROK domains, tokens, etc.)
 
-# Set up required environment variables
-export USE_NGROK=true
-export NGROK_AUTH_TOKEN=your_token_here
-# Get your NGROK token from: https://dashboard.ngrok.com/get-started/your-authtoken
+# Start the certification-simple stack
+docker compose up --build acapy-control acapy-ngrok app
 
-# Start development environment
-pnpm run dev
-
-# Or use Docker
-docker-compose up --build
+# When finished
+docker compose down
 ```
 
-**Required Environment Variables:**
+**Required Environment Variables (in the repo root `.env`):**
 ```bash
-USE_NGROK=true                    # Enable NGROK tunneling for external connectivity
-NGROK_AUTH_TOKEN=your_token_here   # Your NGROK authentication token (REQUIRED)
+USE_NGROK=true                        # Enable NGROK tunneling for CTS services
+NGROK_AUTH_TOKEN=your_token_here      # NGROK authentication token (required when USE_NGROK=true)
+REFERENCE_AGENT=credo|acapy           # Which agent drives holder/verifier flows
+REFERENCE_AGENT_NGROK_DOMAIN=ref.example.ngrok.app   # Domain for the reference agent tunnel
+VERIFIER_TEST_NGROK_DOMAIN=verifier.example.ngrok.app # Domain for the test-verifier container
+ISSUER_OVERRIDE_AGENT=credo|acapy|auto # (optional) force the issuer controller
+ISSUER_OVERRIDE_NGROK_DOMAIN=issuer.example.ngrok.app # Domain for the override issuer tunnel
+SERVER_NGROK_DOMAIN=cts-server.example.ngrok.app      # Domain for API callbacks
 ```
 
-For NGROK-specific setup (including editing `certification-simple/.env`, free-plan tunnel rotation, and docker compose commands for starting/stopping issuer and verifier flows), see `certification-simple/NGROK_SETUP.md`.
+For NGROK domain planning, tunnel rotation, and the full list of optional variables see `certification-simple/NGROK_SETUP.md`.
 
-**Access Points:**
+### Reference Agents & Issuer Override
+
+- `REFERENCE_AGENT` selects which controller powers the holder and verifier flows. `credo` uses the built-in Credo agent; `acapy` connects to the ACA-Py control service.
+- `ISSUER_OVERRIDE_AGENT` (default `auto`) lets you force the credential issuer to Credo or ACA-Py independently of the reference agent. When set to `credo`, also provide `ISSUER_OVERRIDE_NGROK_DOMAIN` so the override agent has a unique tunnel; otherwise the UI QR codes collide.
+- `REFERENCE_AGENT_NGROK_DOMAIN` is the hostname wallets use to reach the reference agent. When ACA-Py is the reference agent, the `acapy-ngrok` sidecar automatically advertises this domain.
+- `VERIFIER_TEST_NGROK_DOMAIN` is only used by the standalone `test-verifier` container (the legacy CLI harness); it does not affect the UI flows.
+
+### Access Points (default ports)
 - Frontend: http://localhost:3000
 - API Server: http://localhost:5005
 - Test Interfaces: http://localhost:3000/holder, /verifier, /issuer, /registry

@@ -14,7 +14,7 @@ import type { Config as NgrokConfig } from "@ngrok/ngrok";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from "uuid";
-import { setDAG, setPipeline, setConfig, setAgent, setController } from "./state";
+import { setDAG, setPipeline, setConfig, setAgent, setController, setIssuerController, setIssuerAgentType, state as serverState } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
@@ -59,15 +59,34 @@ const agentLabel = deriveAgentLabel();
 let activeNgrokListener: ngrok.Listener | null = null;
 let acapyAdapter: AcaPyAgentAdapter | null = null;
 const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
+const issuerOverrideAgent = (
+  process.env.ISSUER_OVERRIDE_AGENT ?? "auto"
+).toLowerCase();
 console.log(`[CONFIG] Reference agent: ${referenceAgent}`);
+console.log(`[CONFIG] Issuer override agent: ${issuerOverrideAgent}`);
+
+const resolveReferenceAgentDomain = (): string | null =>
+  process.env.REFERENCE_AGENT_NGROK_DOMAIN ??
+  process.env.ISSUER_NGROK_DOMAIN ??
+  process.env.VERIFIER_NGROK_DOMAIN ??
+  process.env.SERVER_NGROK_DOMAIN ??
+  process.env.NGROK_DOMAIN ??
+  null;
+
+const resolveOverrideAgentDomain = (): string | null =>
+  process.env.ISSUER_OVERRIDE_NGROK_DOMAIN ??
+  process.env.CREDO_ISSUER_NGROK_DOMAIN ??
+  process.env.ISSUER_NGROK_DOMAIN ??
+  null;
 
 const init = async () => {
   if (referenceAgent === "acapy") {
     await initCredoAgent();
     await initAcaPyController();
-    return;
+  } else {
+    await initCredoAgent();
   }
-  await initCredoAgent();
+  await configureIssuerController();
 };
 
 const initCredoAgent = async () => {
@@ -101,7 +120,12 @@ const initCredoAgent = async () => {
 
     let listener: ngrok.Listener | null = null;
     const poolingEnabled = (process.env.NGROK_POOLING_ENABLED ?? 'true').toLowerCase() === 'true';
-    const ngrokDomain = process.env.SERVER_NGROK_DOMAIN || process.env.NGROK_DOMAIN || null;
+    const referenceDomain = resolveReferenceAgentDomain();
+    const overrideDomain = resolveOverrideAgentDomain();
+    let ngrokDomain: string | null = referenceDomain;
+    if (referenceAgent !== "credo" && issuerOverrideAgent === "credo") {
+      ngrokDomain = overrideDomain || referenceDomain;
+    }
     try {
       const config: NgrokConfig & { pooling_enabled?: boolean } = {
         addr: agentPort,
@@ -173,9 +197,8 @@ const initCredoAgent = async () => {
 
 const initAcaPyController = async () => {
   const baseUrl = process.env.ACAPY_CONTROL_URL ?? "http://localhost:9001";
-  const profile = (process.env.ACAPY_PROFILE ?? "issuer") as "issuer" | "verifier";
-  console.log(`[ACAPY] Connecting to control service at ${baseUrl} using profile ${profile}`);
-  acapyAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
+  console.log(`[ACAPY] Connecting to control service at ${baseUrl}`);
+  acapyAdapter = await AcaPyAgentAdapter.create({ baseUrl });
   const controller = new AgentController(acapyAdapter);
   setController(controller);
   console.log("[ACAPY] Controller initialized");
@@ -199,6 +222,39 @@ const shutdown = async () => {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+const configureIssuerController = async () => {
+  const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
+  if (issuerOverrideAgent === "auto") {
+    const effective = referenceAgent === "acapy" ? "acapy" : "credo";
+    setIssuerController(undefined);
+    setIssuerAgentType(effective);
+    process.env.ISSUER_EFFECTIVE_AGENT = effective;
+    return;
+  }
+  if (issuerOverrideAgent === "credo") {
+    if (!serverState.agent) {
+      throw new Error(
+        "[Issuer Override] Credo agent not initialized; cannot create issuer controller"
+      );
+    }
+    const overrideController = new AgentController(
+      new CredoAgentAdapter(serverState.agent)
+    );
+    setIssuerController(overrideController);
+    console.log("[Issuer Override] Issuer controller set to Credo agent");
+    setIssuerAgentType("credo");
+    process.env.ISSUER_EFFECTIVE_AGENT = "credo";
+    return;
+  }
+  console.warn(
+    `[Issuer Override] Unsupported ISSUER_OVERRIDE_AGENT=${issuerOverrideAgent}; defaulting to reference controller`
+  );
+  const fallback = referenceAgent === "acapy" ? "acapy" : "credo";
+  setIssuerAgentType(fallback);
+  process.env.ISSUER_EFFECTIVE_AGENT = fallback;
+  setIssuerController(undefined);
+};
 
 export const reset = async () => {};
 /**

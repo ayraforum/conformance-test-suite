@@ -20,6 +20,8 @@ export type State = {
   currentInvitation?: string;
   agent?: BaseAgent;
   controller?: AgentController;
+  issuerController?: AgentController;
+  issuerAgentType?: "credo" | "acapy";
 };
 
 const _state: State = {};
@@ -40,6 +42,15 @@ export const setAgent = (agent: BaseAgent) => {
 export const setController = (controller: AgentController) => {
   _state.controller = controller;
 };
+export const setIssuerController = (controller?: AgentController) => {
+  _state.issuerController = controller;
+};
+
+export const setIssuerAgentType = (
+  type?: "credo" | "acapy"
+): void => {
+  _state.issuerAgentType = type;
+};
 
 export const setConfig = (config: AgentConfiguration) => {
   _state.config = config;
@@ -58,10 +69,11 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
       pipe = new HolderTestPipeline(_state.controller);
       break;
     case PipelineType.ISSUER_TEST:
-      if (!_state.agent) {
-        throw new Error("agent not defined");
+      const issuerController = _state.issuerController ?? _state.controller;
+      if (!issuerController) {
+        throw new Error("agent controller not defined");
       }
-      pipe = new IssueCredentialPipeline(_state.agent);
+      pipe = new IssueCredentialPipeline(issuerController);
       break;
     case PipelineType.VERIFIER_TEST:
       if (!_state.agent) {

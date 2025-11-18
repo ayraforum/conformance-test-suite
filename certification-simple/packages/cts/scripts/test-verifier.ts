@@ -47,7 +47,11 @@ class VerifierTestAgent {
     this.useNgrok = ((process.env.VERIFIER_USE_NGROK ?? process.env.USE_NGROK ?? 'false').toLowerCase() === 'true');
     this.explicitEndpoint = process.env.VERIFIER_PUBLIC_ENDPOINT || process.env.PUBLIC_ENDPOINT || process.env.NGROK_TUNNEL_URL || null;
     this.enableNgrokPooling = ((process.env.NGROK_POOLING_ENABLED ?? 'true').toLowerCase() === 'true');
-    this.ngrokDomain = process.env.VERIFIER_NGROK_DOMAIN || process.env.NGROK_VERIFIER_DOMAIN || null;
+    this.ngrokDomain =
+      process.env.VERIFIER_TEST_NGROK_DOMAIN ||
+      process.env.VERIFIER_NGROK_DOMAIN ||
+      process.env.NGROK_VERIFIER_DOMAIN ||
+      null;
     this.serviceEndpoint = `http://${this.endpointPrefix}:${this.agentPort}`;
     
     console.log('🔧 VerifierTestAgent initialized:');
@@ -538,7 +542,7 @@ class VerifierTestAgent {
       } catch (retryError) {
         console.error('❌ Retry after cleanup failed:', (retryError as Error)?.message ?? retryError);
         if (!this.ngrokDomain) {
-          console.error('💡 Tip: Configure a dedicated domain for the verifier tunnel via VERIFIER_NGROK_DOMAIN to avoid clashes with other services using the same authtoken.');
+          console.error('💡 Tip: Configure a dedicated domain for the verifier test tunnel via VERIFIER_TEST_NGROK_DOMAIN to avoid clashes with other services using the same authtoken.');
         }
         throw retryError;
       }

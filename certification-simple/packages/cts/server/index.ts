@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { createServer } from "http";
-import { BaseAgent, createAgentConfig } from "@demo/core";
+import { AgentController, BaseAgent, CredoAgentAdapter, createAgentConfig } from "@demo/core";
 import { v4 as uuidv4 } from "uuid";
 import VerifierTestPipeline from "./pipelines/verifierTestPipeline";
 import IssueCredentialPipeline from "./pipelines/issueCredentialPipeline";
@@ -33,7 +33,8 @@ async function initializeServer() {
     await agent.init();
 
     const verifierPipeline = new VerifierTestPipeline(agent);
-    const issuerPipeline = new IssueCredentialPipeline(agent);
+    const controller = new AgentController(new CredoAgentAdapter(agent));
+    const issuerPipeline = new IssueCredentialPipeline(controller);
 
     io.on("connection", (socket) => {
       console.log("Client connected");

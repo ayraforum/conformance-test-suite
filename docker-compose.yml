@@ -17,6 +17,10 @@ services:
       USE_NGROK: ${USE_NGROK:-false}
       NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
       REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
+      ISSUER_OVERRIDE_AGENT: ${ISSUER_OVERRIDE_AGENT:-auto}
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-}
+      ISSUER_OVERRIDE_NGROK_DOMAIN: ${ISSUER_OVERRIDE_NGROK_DOMAIN:-}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
       ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
       ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
       SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
@@ -54,6 +58,10 @@ services:
       USE_NGROK: ${USE_NGROK:-false}
       NGROK_AUTH_TOKEN: ${NGROK_AUTH_TOKEN:-}
       REFERENCE_AGENT: ${REFERENCE_AGENT:-credo}
+      ISSUER_OVERRIDE_AGENT: ${ISSUER_OVERRIDE_AGENT:-auto}
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-}
+      ISSUER_OVERRIDE_NGROK_DOMAIN: ${ISSUER_OVERRIDE_NGROK_DOMAIN:-}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
       ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
       ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
       SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
@@ -70,8 +78,10 @@ services:
       - "8042:8042"
     environment:
       PYTHONUNBUFFERED: "1"
-      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-}
-      VERIFIER_NGROK_DOMAIN: ${VERIFIER_NGROK_DOMAIN:-}
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-}
+      VERIFIER_TEST_NGROK_DOMAIN: ${VERIFIER_TEST_NGROK_DOMAIN:-}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
+      VERIFIER_NGROK_DOMAIN: ${VERIFIER_NGROK_DOMAIN:-${VERIFIER_TEST_NGROK_DOMAIN:-}}
       ACAPY_ENDPOINT: ${ACAPY_ENDPOINT:-}
       ACAPY_INVITE_BASE_URL: ${ACAPY_INVITE_BASE_URL:-}
 
@@ -81,7 +91,8 @@ services:
       - acapy-control
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTH_TOKEN:-}
-      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-}
+      REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-${ISSUER_NGROK_DOMAIN:-}}
+      ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
       NGROK_REGION: ${NGROK_REGION:-us}
     entrypoint: []
     command:
@@ -89,11 +100,15 @@ services:
       - -c
       - |
         set -euo pipefail
-        if [ -z "$${ISSUER_NGROK_DOMAIN:-}" ]; then
-          echo 'ISSUER_NGROK_DOMAIN must be set (e.g. issuer-xxx.ngrok.app)' >&2
+        REF_DOMAIN="$${REFERENCE_AGENT_NGROK_DOMAIN}"
+        if [ -z "$$REF_DOMAIN" ]; then
+          REF_DOMAIN="$${ISSUER_NGROK_DOMAIN}"
+        fi
+        if [ -z "$$REF_DOMAIN" ]; then
+          echo 'REFERENCE_AGENT_NGROK_DOMAIN (or ISSUER_NGROK_DOMAIN) must be set (e.g. reference-xxx.ngrok.app)' >&2
           exit 1
         fi
-        exec ngrok http --region="$${NGROK_REGION}" --domain="$${ISSUER_NGROK_DOMAIN}" http://acapy-control:8041
+        exec ngrok http --region="$${NGROK_REGION}" --domain="$$REF_DOMAIN" http://acapy-control:8041
 
   # Optional sidecar if you want ngrok in a container (otherwise the app can open its own tunnel)
   ngrok:
