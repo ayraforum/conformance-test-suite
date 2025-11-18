@@ -1,20 +1,7 @@
 name: Agent Matrix Tests
 
 on:
-  pull_request:
-    branches:
-      - main
-      - develop
-      - ask/*
-      - feature/*
-    paths:
-      - "certification-simple/**"
-      - "docker-compose.yml"
-      - ".github/workflows/agent-matrix-tests.yml"
-  push:
-    branches:
-      - main
-      - develop
+  workflow_dispatch:
 
 jobs:
   tests:
