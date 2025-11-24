@@ -9,6 +9,15 @@ interface ReportStepProps {
 }
 
 export function ReportStep({ context, controller, isActive, onRestart }: ReportStepProps) {
+    const [showApiDetails, setShowApiDetails] = React.useState(false);
+    const [showAuthDetails, setShowAuthDetails] = React.useState(false);
+    const [showRecognitionDetails, setShowRecognitionDetails] = React.useState(false);
+    
+    React.useEffect(() => {
+        setShowApiDetails(false);
+        setShowAuthDetails(false);
+        setShowRecognitionDetails(false);
+    }, [context.apiTestReport]);
     // Mark step as passed when active
     React.useEffect(() => {
         if (isActive) {
@@ -22,15 +31,17 @@ export function ReportStep({ context, controller, isActive, onRestart }: ReportS
         if (!context.didDocument) return "Failed";
         if (!context.apiTestReport) return "Incomplete";
         if (!context.authResult) return "Incomplete";
+        if (!context.recognitionResult) return "Incomplete";
         
         const hasTrqpService = context.didDocument.service?.some(svc => svc.type === "TRQP") || false;
         const apiTestsPassed = context.apiTestReport.failedCount === 0;
         const isAuthorized = context.authResult.authorized || false;
+        const isRecognized = context.recognitionResult.recognized || false;
         
         if (!hasTrqpService) return "Failed";
         if (!apiTestsPassed) return "Partial";
         
-        return isAuthorized ? "Passed" : "Failed";
+        return isAuthorized && isRecognized ? "Passed" : "Partial";
     };
     
     // Get status color
@@ -76,12 +87,21 @@ export function ReportStep({ context, controller, isActive, onRestart }: ReportS
                     <div className="p-4">
                         <div className="flex items-center">
                             {context.didDocument ? (
-                                <>
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center bg-green-500 text-white mr-2">
-                                        ✓
-                                    </div>
-                                    <span>DID resolves with TRQP service</span>
-                                </>
+                                context.useKnownEndpoint ? (
+                                    <>
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center bg-gray-500 text-white mr-2">
+                                            –
+                                        </div>
+                                        <span>DID resolution bypassed (using provided TRQP endpoint)</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center bg-green-500 text-white mr-2">
+                                            ✓
+                                        </div>
+                                        <span>DID resolves with TRQP service</span>
+                                    </>
+                                )
                             ) : (
                                 <>
                                     <div className="w-6 h-6 rounded-full flex items-center justify-center bg-red-500 text-white mr-2">
@@ -96,7 +116,7 @@ export function ReportStep({ context, controller, isActive, onRestart }: ReportS
                 
                 <div className="border rounded-md overflow-hidden">
                     <div className="bg-gray-50 px-4 py-3 border-b">
-                        <h3 className="font-semibold">API Conformance Tests</h3>
+                        <h3 className="font-semibold">Ayra Extension API Tests</h3>
                     </div>
                     <div className="p-4">
                         {context.apiTestReport ? (
@@ -116,6 +136,43 @@ export function ReportStep({ context, controller, isActive, onRestart }: ReportS
                                 <div className="mt-2 text-sm">
                                     <p>Tests passed: {context.apiTestReport.passedCount} of {context.apiTestReport.passedCount + context.apiTestReport.failedCount}</p>
                                 </div>
+                                
+                                <div className="mt-4">
+                                    <button
+                                        onClick={() => setShowApiDetails(prev => !prev)}
+                                        className="text-sm text-blue-600 hover:text-blue-800 focus:outline-none"
+                                    >
+                                        {showApiDetails ? "Hide Details" : "View Details"}
+                                    </button>
+                                </div>
+
+                                {showApiDetails && (
+                                    <div className="mt-4 space-y-3 max-h-96 overflow-y-auto border-t pt-3">
+                                        {context.apiTestReport.testResults.map((test, idx) => (
+                                            <div key={idx} className="border rounded overflow-hidden">
+                                                <div className={`p-3 flex justify-between items-center ${
+                                                    test.status === 'passed' ? 'bg-green-50 border-b border-green-200' : 'bg-red-50 border-b border-red-200'
+                                                }`}>
+                                                    <div>
+                                                        <h4 className="font-semibold">{test.name}</h4>
+                                                        <p className="text-sm text-gray-600">{test.description}</p>
+                                                    </div>
+                                                    <span className={`px-2 py-1 rounded text-sm ${
+                                                        test.status === 'passed' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
+                                                    }`}>
+                                                        {test.status.toUpperCase()}
+                                                    </span>
+                                                </div>
+                                                {test.details && (
+                                                    <div className="p-3 bg-gray-50 border-b border-gray-200">
+                                                        <p className="text-sm font-medium text-gray-700">Details:</p>
+                                                        <p className="text-sm text-gray-600">{test.details}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <p className="text-gray-500 italic">API conformance tests not run</p>
@@ -129,20 +186,82 @@ export function ReportStep({ context, controller, isActive, onRestart }: ReportS
                     </div>
                     <div className="p-4">
                         {context.authResult ? (
-                            <div className="flex items-center">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                                    context.authResult.authorized ? 'bg-green-500' : 'bg-red-500'
-                                } text-white mr-2`}>
-                                    {context.authResult.authorized ? '✓' : '✗'}
+                            <>
+                                <div className="flex items-center">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                                        context.authResult.authorized ? 'bg-green-500' : 'bg-red-500'
+                                    } text-white mr-2`}>
+                                        {context.authResult.authorized ? '✓' : '✗'}
+                                    </div>
+                                    <span>
+                                        {context.authResult.authorized 
+                                            ? `${context.entityId} is authorized by ${context.authorityId} to ${context.action} ${context.resource}` 
+                                            : `${context.entityId} is not authorized by ${context.authorityId} to ${context.action} ${context.resource}`}
+                                    </span>
                                 </div>
-                                <span>
-                                    {context.authResult.authorized 
-                                        ? `Entity ${context.entityId} is authorized for ${context.authorizationId}` 
-                                        : `Entity ${context.entityId} is not authorized for ${context.authorizationId}`}
-                                </span>
-                            </div>
+                                {context.authResult.details && (
+                                    <div className="mt-3">
+                                        <button
+                                            onClick={() => setShowAuthDetails(prev => !prev)}
+                                            className="text-sm text-blue-600 hover:text-blue-800 focus:outline-none"
+                                        >
+                                            {showAuthDetails ? "Hide Details" : "View Details"}
+                                        </button>
+                                        {showAuthDetails && (
+                                            <div className="mt-2 bg-gray-50 border border-gray-200 rounded p-3 max-h-64 overflow-auto">
+                                                <pre className="text-xs">
+                                                    {JSON.stringify(context.authResult.details, null, 2)}
+                                                </pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
                         ) : (
                             <p className="text-gray-500 italic">Authorization verification not run</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="border rounded-md overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-3 border-b">
+                        <h3 className="font-semibold">Recognition Verification</h3>
+                    </div>
+                    <div className="p-4">
+                        {context.recognitionResult ? (
+                            <>
+                                <div className="flex items-center">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                                        context.recognitionResult.recognized ? 'bg-green-500' : 'bg-red-500'
+                                    } text-white mr-2`}>
+                                        {context.recognitionResult.recognized ? '✓' : '✗'}
+                                    </div>
+                                    <span>
+                                        {context.recognitionResult.recognized
+                                            ? `${context.recognitionEntityId || "Ecosystem"} recognizes ${context.recognitionResource || "target"}`
+                                            : `${context.recognitionEntityId || "Ecosystem"} does not recognize ${context.recognitionResource || "target"}`}
+                                    </span>
+                                </div>
+                                {context.recognitionResult.details && (
+                                    <div className="mt-3">
+                                        <button
+                                            onClick={() => setShowRecognitionDetails(prev => !prev)}
+                                            className="text-sm text-blue-600 hover:text-blue-800 focus:outline-none"
+                                        >
+                                            {showRecognitionDetails ? "Hide Details" : "View Details"}
+                                        </button>
+                                        {showRecognitionDetails && (
+                                            <div className="mt-2 bg-gray-50 border border-gray-200 rounded p-3 max-h-64 overflow-auto">
+                                                <pre className="text-xs">
+                                                    {JSON.stringify(context.recognitionResult.details, null, 2)}
+                                                </pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <p className="text-gray-500 italic">Recognition verification not run</p>
                         )}
                     </div>
                 </div>

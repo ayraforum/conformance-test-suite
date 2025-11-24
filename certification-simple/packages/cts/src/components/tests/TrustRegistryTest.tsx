@@ -4,14 +4,13 @@ import { TrustRegistryContext, createEmptyTrustRegistryContext } from "@/service
 import { TestStepStatus } from "@/services/BaseTestContext";
 
 // Import step components
-import { DIDInputStep } from "@/components/steps/DIDInputStep";
 import { DIDResolutionStep } from "@/components/steps/DIDResolutionStep";
 import { ApiConformanceStep } from "@/components/steps/ApiConformanceStep";
-import { AuthorizationEntryStep } from "@/components/steps/AuthorizationEntryStep";
 import { AuthorizationVerificationStep } from "@/components/steps/AuthorizationVerificationStep";
+import { RecognitionVerificationStep } from "@/components/steps/RecognitionVerificationStep";
 import { ReportStep } from "@/components/steps/ReportStep";
 
-type TrustRegistryErrors = { didResolution: string | null; apiTest: string | null; authVerification: string | null };
+type TrustRegistryErrors = { didResolution: string | null; apiTest: string | null; authVerification: string | null; recognitionVerification: string | null };
 
 export function TrustRegistryTest() {
   const [context, setContext] = useState<TrustRegistryContext>(createEmptyTrustRegistryContext());
@@ -43,6 +42,7 @@ export function TrustRegistryTest() {
           didResolution: mergedErrors.didResolution ?? null,
           apiTest: mergedErrors.apiTest ?? null,
           authVerification: mergedErrors.authVerification ?? null,
+          recognitionVerification: mergedErrors.recognitionVerification ?? null,
         } as TrustRegistryErrors
       };
     });
@@ -80,11 +80,11 @@ export function TrustRegistryTest() {
     const initialSteps: TestStep[] = [
       {
         id: 1,
-        name: "Enter Ecosystem DID",
-        description: "Provide the Ecosystem DID to be tested",
+        name: "Resolve DID",
+        description: "Configure the ecosystem DID and TRQP endpoint, then resolve it.",
         status: "pending",
         component: (
-          <DIDInputStep
+          <DIDResolutionStep
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(0, status),
@@ -93,9 +93,10 @@ export function TrustRegistryTest() {
                   didResolution: error,
                   apiTest: context.errors?.apiTest ?? null,
                   authVerification: context.errors?.authVerification ?? null,
+                  recognitionVerification: context.errors?.recognitionVerification ?? null,
                 } as TrustRegistryErrors
               }),
-              complete: (success) => {},
+              complete: () => {},
               updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(1)
             }}
@@ -106,22 +107,23 @@ export function TrustRegistryTest() {
       },
       {
         id: 2,
-        name: "Resolve DID",
-        description: "Resolve the DID and find TRQP service endpoints",
+        name: "Ayra Extension API Tests",
+        description: "Exercise the additional Ayra APIs for metadata, lookups, and recognitions.",
         status: "pending",
         component: (
-          <DIDResolutionStep
+          <ApiConformanceStep
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(1, status),
               setError: (error) => updateContext({
                 errors: {
-                  didResolution: error,
-                  apiTest: context.errors?.apiTest ?? null,
+                  didResolution: context.errors?.didResolution ?? null,
+                  apiTest: error,
                   authVerification: context.errors?.authVerification ?? null,
+                  recognitionVerification: context.errors?.recognitionVerification ?? null,
                 } as TrustRegistryErrors
               }),
-              complete: (success) => {},
+              complete: () => {},
               updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(2)
             }}
@@ -132,22 +134,23 @@ export function TrustRegistryTest() {
       },
       {
         id: 3,
-        name: "API Conformance",
-        description: "Test the API against the conformance requirements",
+        name: "Authorization Verification",
+        description: "Provide an entity and authorization, then verify the TRQP authorization response.",
         status: "pending",
         component: (
-          <ApiConformanceStep
+          <AuthorizationVerificationStep
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(2, status),
               setError: (error) => updateContext({
                 errors: {
                   didResolution: context.errors?.didResolution ?? null,
-                  apiTest: error,
-                  authVerification: context.errors?.authVerification ?? null,
+                  apiTest: context.errors?.apiTest ?? null,
+                  authVerification: error,
+                  recognitionVerification: context.errors?.recognitionVerification ?? null,
                 } as TrustRegistryErrors
               }),
-              complete: (success) => {},
+              complete: () => {},
               updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(3)
             }}
@@ -158,11 +161,11 @@ export function TrustRegistryTest() {
       },
       {
         id: 4,
-        name: "Authorization Entry",
-        description: "Enter entity and authorization details for verification",
+        name: "Recognition Verification",
+        description: "Check whether one ecosystem recognizes another via TRQP.",
         status: "pending",
         component: (
-          <AuthorizationEntryStep
+          <RecognitionVerificationStep
             context={context}
             controller={{
               setStatus: (status) => updateStepStatus(3, status),
@@ -170,10 +173,11 @@ export function TrustRegistryTest() {
                 errors: {
                   didResolution: context.errors?.didResolution ?? null,
                   apiTest: context.errors?.apiTest ?? null,
-                  authVerification: error,
+                  authVerification: context.errors?.authVerification ?? null,
+                  recognitionVerification: error,
                 } as TrustRegistryErrors
               }),
-              complete: (success) => {},
+              complete: () => {},
               updateContext: updateContext as any,
               goToNextStep: () => setCurrentStep(4)
             }}
@@ -184,32 +188,6 @@ export function TrustRegistryTest() {
       },
       {
         id: 5,
-        name: "Verification",
-        description: "Verify if the entity is authorized for the specified action",
-        status: "pending",
-        component: (
-          <AuthorizationVerificationStep
-            context={context}
-            controller={{
-              setStatus: (status) => updateStepStatus(4, status),
-              setError: (error) => updateContext({
-                errors: {
-                  didResolution: context.errors?.didResolution ?? null,
-                  apiTest: context.errors?.apiTest ?? null,
-                  authVerification: error,
-                } as TrustRegistryErrors
-              }),
-              complete: (success) => {},
-              updateContext: updateContext as any,
-              goToNextStep: () => setCurrentStep(5)
-            }}
-            isActive={currentStep === 4}
-          />
-        ),
-        isActive: currentStep === 4
-      },
-      {
-        id: 6,
         name: "Report",
         description: "Review the test results",
         status: "pending",
@@ -217,21 +195,26 @@ export function TrustRegistryTest() {
           <ReportStep
             context={context}
             controller={{
-              setStatus: (status) => updateStepStatus(5, status),
+              setStatus: (status) => updateStepStatus(4, status),
               setError: () => {},
-              complete: (success) => {},
+              complete: () => {},
               updateContext: updateContext as any,
               goToNextStep: () => {}
             }}
-            isActive={currentStep === 5}
+            isActive={currentStep === 4}
             onRestart={handleRestart}
           />
         ),
-        isActive: currentStep === 5
+        isActive: currentStep === 4
       }
     ];
     
-    setSteps(initialSteps);
+    setSteps(prevSteps =>
+      initialSteps.map((step, idx) => ({
+        ...step,
+        status: prevSteps[idx]?.status || step.status,
+      }))
+    );
   }, [currentStep, context]);
 
   return (

@@ -4,7 +4,7 @@
  * Common base context that all tests can extend
  */
 
-export type TestStepStatus = "pending" | "running" | "passed" | "failed" | "waiting";
+export type TestStepStatus = "pending" | "running" | "passed" | "failed" | "waiting" | "skipped";
 
 export interface BaseTestContext {
   errors?: {
