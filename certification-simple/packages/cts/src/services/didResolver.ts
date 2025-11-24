@@ -3,6 +3,8 @@
  * Handles DID resolution and verification of endpoints
  */
 
+const DEFAULT_RESOLVER_URL = process.env.NEXT_PUBLIC_DID_RESOLVER_URL || "https://dev.uniresolver.io/1.0/identifiers";
+
 export interface DIDDocument {
     id: string;
     service?: Array<{
@@ -24,7 +26,7 @@ export interface DIDDocument {
  */
 export const resolveDID = async (
     did: string,
-    resolverUrl: string = "https://dev.uniresolver.io/1.0/identifiers/"
+    resolverUrl: string = DEFAULT_RESOLVER_URL
 ): Promise<DIDDocument | null> => {
     try {
         const endpoint = `${resolverUrl.replace(/\/$/, "")}/${did}`;
@@ -41,6 +43,8 @@ export const resolveDID = async (
         return null;
     }
 };
+
+export const getDefaultResolverUrl = (): string => DEFAULT_RESOLVER_URL;
 
 /**
  * Extracts a service endpoint from a DID Document

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node ../../../scripts/sync-next-env.js",
+    "prebuild": "node ../../../scripts/sync-next-env.js",
+    "prestart": "node ../../../scripts/sync-next-env.js",
     "start:server": "ts-node --project tsconfig.server.json server/server.ts",
     "build:server": "tsc --project tsconfig.server.json",
     "start:frontend": "cd frontend && npm run dev",

@@ -1,33 +1,33 @@
 import React, { useState, useEffect } from "react";
 import { TestContext, TestStepController } from "@/services/TestContext";
-import { verifyEntityAuthorization } from "@/services/trustRegistryApi";
+import { verifyEcosystemRecognition } from "@/services/trustRegistryApi";
 
-interface AuthorizationVerificationStepProps {
+interface RecognitionVerificationStepProps {
     context: TestContext;
     controller: TestStepController;
     isActive: boolean;
 }
 
-export function AuthorizationVerificationStep({ context, controller }: AuthorizationVerificationStepProps) {
+export function RecognitionVerificationStep({ context, controller }: RecognitionVerificationStepProps) {
     const [isLoading, setIsLoading] = useState(false);
-    const [entityInput, setEntityInput] = useState(context.entityId || "");
-    const [authorityInput, setAuthorityInput] = useState(context.authorityId || "");
-    const [actionInput, setActionInput] = useState(context.action || "");
-    const [resourceInput, setResourceInput] = useState(context.resource || "");
-    const [contextInput, setContextInput] = useState(context.authContextJson || "");
+    const [entityInput, setEntityInput] = useState(context.recognitionEntityId || context.ecosystemDID || "");
+    const [authorityInput, setAuthorityInput] = useState(context.recognitionAuthorityId || "");
+    const [actionInput, setActionInput] = useState(context.recognitionAction || "");
+    const [resourceInput, setResourceInput] = useState(context.recognitionResource || "");
+    const [contextInput, setContextInput] = useState(context.recognitionContextJson || "");
     const [formError, setFormError] = useState<string | null>(null);
 
     useEffect(() => {
-        setEntityInput(context.entityId || "");
-        setAuthorityInput(context.authorityId || "");
-        setActionInput(context.action || "");
-        setResourceInput(context.resource || "");
-        setContextInput(context.authContextJson || "");
-    }, [context.entityId, context.authorityId, context.action, context.resource, context.authContextJson]);
+        setEntityInput(context.recognitionEntityId || context.ecosystemDID || "");
+        setAuthorityInput(context.recognitionAuthorityId || "");
+        setActionInput(context.recognitionAction || "");
+        setResourceInput(context.recognitionResource || "");
+        setContextInput(context.recognitionContextJson || "");
+    }, [context.recognitionEntityId, context.recognitionAuthorityId, context.recognitionAction, context.recognitionResource, context.recognitionContextJson, context.ecosystemDID]);
 
     const handleVerify = async () => {
         if (!context.apiBaseUrl) {
-            const message = "No API base URL available. Resolve a DID or provide a TRQP endpoint first.";
+            const message = "No API base URL available. Resolve or provide a TRQP endpoint first.";
             controller.setError(message);
             setFormError(message);
             return;
@@ -46,28 +46,28 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
         }
 
         controller.updateContext({
-            entityId: trimmedEntity,
-            authorityId: trimmedAuthority,
-            action: trimmedAction,
-            resource: trimmedResource,
-            authContextJson: contextInput
+            recognitionEntityId: trimmedEntity,
+            recognitionAuthorityId: trimmedAuthority,
+            recognitionAction: trimmedAction,
+            recognitionResource: trimmedResource,
+            recognitionContextJson: contextInput
         });
         setFormError(null);
-        await verifyAuthorization(trimmedEntity, trimmedAuthority, trimmedAction, trimmedResource, contextInput);
+        await verifyRecognition(trimmedEntity, trimmedAuthority, trimmedAction, trimmedResource, contextInput);
     };
 
-    const verifyAuthorization = async (
+    const verifyRecognition = async (
         entityOverride?: string,
         authorityOverride?: string,
         actionOverride?: string,
         resourceOverride?: string,
         ctxOverride?: string
     ) => {
-        const entityId = entityOverride || context.entityId;
-        const authorityId = authorityOverride || context.authorityId;
-        const action = actionOverride || context.action;
-        const resource = resourceOverride || context.resource;
-        const ctxJson = ctxOverride ?? context.authContextJson;
+        const entityId = entityOverride || context.recognitionEntityId;
+        const authorityId = authorityOverride || context.recognitionAuthorityId;
+        const action = actionOverride || context.recognitionAction;
+        const resource = resourceOverride || context.recognitionResource;
+        const ctxJson = ctxOverride ?? context.recognitionContextJson;
 
         if (!context.apiBaseUrl || !entityId || !authorityId || !action || !resource) {
             return;
@@ -78,7 +78,7 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
         controller.setError(null);
 
         try {
-            const result = await verifyEntityAuthorization(
+            const result = await verifyEcosystemRecognition(
                 context.apiBaseUrl,
                 entityId,
                 authorityId,
@@ -89,11 +89,11 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
             );
 
             controller.updateContext({
-                authResult: result,
+                recognitionResult: result,
                 reportTimestamp: new Date().toISOString()
             });
 
-            controller.setStatus(result.authorized ? "passed" : "failed");
+            controller.setStatus(result.recognized ? "passed" : "failed");
             controller.complete(true);
             setTimeout(() => controller.goToNextStep(), 1000);
         } catch (error) {
@@ -104,7 +104,7 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
             controller.updateContext({
                 errors: {
                     ...context.errors,
-                    authVerification: errorMessage
+                    recognitionVerification: errorMessage
                 }
             });
             controller.complete(false);
@@ -116,84 +116,84 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
     return (
         <div className="flex flex-col p-4 border border-gray-300 rounded">
             <div className="mb-6">
-                <h4 className="text-lg font-semibold mb-2">Authorization Inputs</h4>
+                <h4 className="text-lg font-semibold mb-2">Recognition Inputs</h4>
                 <p className="text-sm text-gray-600 mb-4">
-                    Copy the entity DID and authorization identifier directly from the Trust Registry admin UI, then run the verification.
+                    Provide the full TRQP recognition payload (entity, authority, action, resource, optional context).
                 </p>
 
                 <div className="space-y-4">
                     <div>
-                        <label htmlFor="authEntityId" className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="recognitionEntity" className="block text-sm font-medium text-gray-700 mb-1">
                             Entity ID
                         </label>
                         <input
-                            id="authEntityId"
+                            id="recognitionEntity"
                             type="text"
                             value={entityInput}
                             onChange={(e) => setEntityInput(e.target.value)}
                             placeholder="did:web:example"
                             className="w-full border border-gray-300 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Use the DID or identifier registered in the Trust Registry.</p>
+                        <p className="mt-1 text-xs text-gray-500">The ecosystem asserting recognition.</p>
                     </div>
 
                     <div>
-                        <label htmlFor="authorizationId" className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="recognitionAuthority" className="block text-sm font-medium text-gray-700 mb-1">
                             Authority ID
                         </label>
                         <input
-                            id="authorityId"
+                            id="recognitionAuthority"
                             type="text"
                             value={authorityInput}
                             onChange={(e) => setAuthorityInput(e.target.value)}
-                            placeholder="[root] ayracard"
+                            placeholder="[member-of] ayratrustnetwork"
                             className="w-full border border-gray-300 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Authority identifier from the registry.</p>
+                        <p className="mt-1 text-xs text-gray-500">Authority/recognition type identifier.</p>
                     </div>
 
                     <div>
-                        <label htmlFor="actionId" className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="recognitionAction" className="block text-sm font-medium text-gray-700 mb-1">
                             Action
                         </label>
                         <input
-                            id="actionId"
+                            id="recognitionAction"
                             type="text"
                             value={actionInput}
                             onChange={(e) => setActionInput(e.target.value)}
-                            placeholder="issue"
+                            placeholder="recognize"
                             className="w-full border border-gray-300 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <p className="mt-1 text-xs text-gray-500">TRQP action to verify, e.g., issue, manage-issuers.</p>
+                        <p className="mt-1 text-xs text-gray-500">Action to evaluate (e.g., recognize, member-of).</p>
                     </div>
 
                     <div>
-                        <label htmlFor="resourceId" className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="recognitionResource" className="block text-sm font-medium text-gray-700 mb-1">
                             Resource
                         </label>
                         <input
-                            id="resourceId"
+                            id="recognitionResource"
                             type="text"
                             value={resourceInput}
                             onChange={(e) => setResourceInput(e.target.value)}
-                            placeholder="ayracard:businesscard"
+                            placeholder="did:web:target"
                             className="w-full border border-gray-300 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Target resource (e.g., credential type) for the action.</p>
+                        <p className="mt-1 text-xs text-gray-500">The ecosystem or EGF that should be recognized.</p>
                     </div>
 
                     <div>
-                        <label htmlFor="authContext" className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="recognitionContext" className="block text-sm font-medium text-gray-700 mb-1">
                             Context (JSON, optional)
                         </label>
                         <textarea
-                            id="authContext"
+                            id="recognitionContext"
                             value={contextInput}
                             onChange={(e) => setContextInput(e.target.value)}
                             placeholder='{"nonce":"123"}'
                             className="w-full border border-gray-300 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 h-24"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Additional context for the authorization check.</p>
+                        <p className="mt-1 text-xs text-gray-500">Additional context for the recognition check.</p>
                     </div>
                 </div>
 
@@ -209,7 +209,7 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
                         className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                         disabled={isLoading}
                     >
-                        Run Authorization Check
+                        Run Recognition Check
                     </button>
                 </div>
             </div>
@@ -218,41 +218,45 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
             {isLoading ? (
                 <div className="text-center py-4">
                     <div className="inline-block animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500 mr-2"></div>
-                    <span className="text-gray-600">Verifying authorization...</span>
+                    <span className="text-gray-600">Checking recognition...</span>
                 </div>
-            ) : context.authResult ? (
+            ) : context.recognitionResult ? (
                 <div className="w-full">
                     <div className="mb-4 flex items-center">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            context.authResult.authorized ? 'bg-green-500' : 'bg-red-500'
-                        } text-white mr-3`}>
-                            {context.authResult.authorized ? '✓' : '✗'}
+                        <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                context.recognitionResult.recognized ? "bg-green-500" : "bg-red-500"
+                            } text-white mr-3`}
+                        >
+                            {context.recognitionResult.recognized ? "✓" : "✗"}
                         </div>
                         <div>
-                            <h3 className={`text-lg font-semibold ${
-                                context.authResult.authorized ? 'text-green-700' : 'text-red-700'
-                            }`}>
-                                {context.authResult.authorized ? 'Authorized' : 'Not Authorized'}
+                            <h3
+                                className={`text-lg font-semibold ${
+                                    context.recognitionResult.recognized ? "text-green-700" : "text-red-700"
+                                }`}
+                            >
+                                {context.recognitionResult.recognized ? "Recognized" : "Not Recognized"}
                             </h3>
                             <p className="text-sm text-gray-600">
-                                {context.authResult.authorized 
-                                    ? `${context.entityId} is authorized for ${context.action} on ${context.resource}`
-                                    : `${context.entityId} is not authorized for ${context.action} on ${context.resource}`}
+                                {context.recognitionResult.recognized
+                                    ? `${context.recognitionEntityId} recognizes ${context.recognitionResource}.`
+                                    : `${context.recognitionEntityId} does not recognize ${context.recognitionResource}.`}
                             </p>
                         </div>
                     </div>
-                    
-                    {context.authResult.details && (
+
+                    {context.recognitionResult.details && (
                         <div className="mt-4">
                             <p className="font-medium mb-2">Response Details:</p>
                             <div className="bg-gray-100 p-3 rounded overflow-auto max-h-60">
                                 <pre className="text-xs">
-                                    {JSON.stringify(context.authResult.details, null, 2)}
+                                    {JSON.stringify(context.recognitionResult.details, null, 2)}
                                 </pre>
                             </div>
                         </div>
                     )}
-                    
+
                     <div className="mt-6 flex justify-between">
                         <button
                             onClick={handleVerify}
@@ -268,11 +272,11 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
                         </button>
                     </div>
                 </div>
-            ) : context.errors?.authVerification ? (
+            ) : context.errors?.recognitionVerification ? (
                 <div className="text-center py-4 text-red-500">
                     <p className="font-semibold">Error:</p>
-                    <p>{context.errors.authVerification}</p>
-                    
+                    <p>{context.errors.recognitionVerification}</p>
+
                     <button
                         onClick={handleVerify}
                         className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -283,7 +287,7 @@ export function AuthorizationVerificationStep({ context, controller }: Authoriza
             ) : (
                 <div className="text-center py-4">
                     <p className="text-gray-500 italic">
-                        Configure the fields above and click &quot;Run Authorization Check&quot; to see the result here.
+                        Configure the fields above and click &quot;Run Recognition Check&quot; to see the result here.
                     </p>
                 </div>
             )}

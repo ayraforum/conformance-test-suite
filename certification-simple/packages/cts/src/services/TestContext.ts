@@ -12,6 +12,9 @@ export interface TestContext {
     // DID Resolution
     ecosystemDID?: string;
     didDocument?: DIDDocument | null;
+    resolverUrl?: string;
+    useKnownEndpoint?: boolean;
+    knownEndpointUrl?: string;
     
     // API Testing
     apiBaseUrl?: string;
@@ -19,8 +22,22 @@ export interface TestContext {
     
     // Authorization
     entityId?: string;
-    authorizationId?: string;
+    authorityId?: string;
+    authorizationId?: string; // legacy Ayra extension
+    action?: string;
+    resource?: string;
+    authContextJson?: string;
     authResult?: { authorized: boolean; details?: any } | null;
+
+    // Recognition
+    recognitionEntityId?: string;
+    recognitionAuthorityId?: string;
+    recognitionAction?: string;
+    recognitionResource?: string;
+    recognitionContextJson?: string;
+    recognitionEcosystemId?: string; // legacy Ayra extension
+    recognitionTargetId?: string; // legacy Ayra extension
+    recognitionResult?: { recognized: boolean; details?: any } | null;
     
     // General
     reportTimestamp?: string;
@@ -28,10 +45,11 @@ export interface TestContext {
         didResolution?: string | null;
         apiTest?: string | null;
         authVerification?: string | null;
+        recognitionVerification?: string | null;
     };
 }
 
-export type TestStepStatus = "pending" | "running" | "passed" | "failed" | "waiting";
+export type TestStepStatus = "pending" | "running" | "passed" | "failed" | "waiting" | "skipped";
 
 export interface TestStepController {
     setStatus: (status: TestStepStatus) => void;
@@ -47,15 +65,31 @@ export interface TestStepController {
 export const createEmptyContext = (): TestContext => ({
     ecosystemDID: "",
     didDocument: null,
+    resolverUrl: "",
+    useKnownEndpoint: false,
+    knownEndpointUrl: "",
     apiBaseUrl: "",
     apiTestReport: null,
     entityId: "",
+    authorityId: "",
     authorizationId: "",
+    action: "",
+    resource: "",
+    authContextJson: "",
     authResult: null,
+    recognitionEntityId: "",
+    recognitionAuthorityId: "",
+    recognitionAction: "",
+    recognitionResource: "",
+    recognitionContextJson: "",
+    recognitionEcosystemId: "",
+    recognitionTargetId: "",
+    recognitionResult: null,
     reportTimestamp: "",
     errors: {
         didResolution: null,
         apiTest: null,
-        authVerification: null
+        authVerification: null,
+        recognitionVerification: null
     }
 });

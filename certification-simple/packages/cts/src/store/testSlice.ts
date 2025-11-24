@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-export type TestStepStatus = 'pending' | 'running' | 'passed' | 'failed';
+export type TestStepStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
 
 export interface TestState {
   currentStep: number;
