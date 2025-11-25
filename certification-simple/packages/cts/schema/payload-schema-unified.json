@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schema.ayra.forum/ayra-card-payload.json",
+  "title": "Ayra Card Payload",
+  "description": "Unified schema for Ayra Card Payload structure - compatible with embedded payloads array in Ayra Card credentials",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the payload item",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "examples": [
+        "example-01",
+        "phone-001",
+        "credential-004",
+        "social-linkedin"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "description": "Indicates the type of payload - unmanaged string, max 255 characters",
+      "minLength": 1,
+      "maxLength": 255,
+      "examples": [
+        "phone",
+        "email",
+        "social",
+        "avatar",
+        "credential",
+        "designation",
+        "website",
+        "vlei",
+        "deeplink",
+        "agent-endpoint"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the payload item",
+      "examples": [
+        "Phone number of the employee",
+        "LinkedIn profile of the employee",
+        "Avatar of the employee",
+        "Government ID verifiable credential of the employee"
+      ]
+    },
+    "format": {
+      "type": "string",
+      "description": "Format or encoding type of the data",
+      "minLength": 1,
+      "maxLength": 255,
+      "examples": [
+        "text",
+        "url",
+        "email",
+        "phone",
+        "image/png;base64",
+        "image/jpeg;base64",
+        "application/pdf;base64",
+        "application/json",
+        "dcql",
+        "oid4vp",
+        "w3c/ldv1",
+        "w3c/ldv2",
+        "sd-jwt-vc",
+        "jwt-vc",
+        "did",
+        "uri"
+      ]
+    },
+    "data": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Inline string data (text, URL, base64-encoded content, JSON string, etc.)"
+        },
+        {
+          "type": "object",
+          "description": "By-reference data with links to external content",
+          "properties": {
+            "links": {
+              "type": "array",
+              "description": "Array of URLs for fetching content by reference",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              },
+              "minItems": 1
+            },
+            "hash": {
+              "type": "string",
+              "description": "Optional multi-hash (https://multiformats.io/multihash/) for integrity verification of referenced content"
+            },
+            "byte_count": {
+              "type": "integer",
+              "description": "Optional size hint in bytes for referenced content",
+              "minimum": 0
+            }
+          },
+          "required": ["links"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "format",
+    "data"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "id": "phone-001",
+      "type": "phone",
+      "description": "Mobile phone number",
+      "format": "text",
+      "data": "+1-555-0123"
+    },
+    {
+      "id": "linkedin-profile",
+      "type": "social",
+      "description": "LinkedIn profile URL",
+      "format": "url",
+      "data": "https://linkedin.com/in/johndoe"
+    },
+    {
+      "id": "avatar-001",
+      "type": "avatar",
+      "description": "Profile photo",
+      "format": "image/png;base64",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ..."
+    },
+    {
+      "id": "credential-request-01",
+      "type": "credential",
+      "description": "Government ID credential request",
+      "format": "dcql",
+      "data": "{\"query\":{\"type\":\"govid\",\"credentialQuery\":[...]}}"
+    },
+    {
+      "id": "agent-endpoint-01",
+      "type": "agent-endpoint",
+      "description": "MCP agent endpoint",
+      "format": "url",
+      "data": "https://agent.example.com/mcp/v1"
+    },
+    {
+      "id": "large-video-001",
+      "type": "video",
+      "description": "Introduction video (by reference)",
+      "format": "video/mp4",
+      "data": {
+        "links": [
+          "https://cdn.example.com/videos/intro.mp4",
+          "https://backup.example.com/videos/intro.mp4"
+        ],
+        "hash": "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco",
+        "byte_count": 15728640
+      }
+    },
+    {
+      "id": "document-001",
+      "type": "document",
+      "description": "Large PDF document (by reference with integrity check)",
+      "format": "application/pdf",
+      "data": {
+        "links": ["https://docs.example.com/whitepaper.pdf"],
+        "hash": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"
+      }
+    }
+  ]
+}

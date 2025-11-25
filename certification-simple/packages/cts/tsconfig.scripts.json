@@ -7,6 +7,9 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
+    "types": [
+      "node"
+    ],
     "paths": {
       "@demo/core": ["../core/build/agent"],
       "@demo/core/*": ["../core/build/agent/*"],

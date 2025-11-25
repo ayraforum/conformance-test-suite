@@ -18,7 +18,8 @@
     "test-holder": "ts-node --project tsconfig.scripts.json scripts/test-holder.ts",
     "test-verifier": "ts-node --project tsconfig.scripts.json scripts/test-verifier.ts",
     "test-integration": "ts-node --project tsconfig.scripts.json scripts/test-integration.ts",
-    "test-all": "npm run test-integration"
+    "test-all": "npm run test-integration",
+    "validate:ayra-card-context": "ts-node --project tsconfig.scripts.json scripts/validate-ayra-card-context.ts"
   },
   "dependencies": {
     "@cosmjs/crypto": "~0.30.0",

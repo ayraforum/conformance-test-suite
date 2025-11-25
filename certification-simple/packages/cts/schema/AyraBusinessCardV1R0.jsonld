@@ -1,0 +1,102 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@protected": true,
+    "schema": "https://schema.org/",
+    "AyraBusinessCard": {
+      "@id": "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld",
+      "@context": {
+        "@version": 1.1,
+        "@protected": true
+      }
+    },
+    "id": "@id",
+    "type": "@type",
+    "ayra_trust_network_did": {
+      "@id": "https://schema.affinidi.io/ayra_trust_network_did",
+      "@type": "@id"
+    },
+    "ayra_assurance_level": {
+      "@id": "https://schema.affinidi.io/ayra_assurance_level",
+      "@type": "schema:Number"
+    },
+    "ayra_card_type": {
+      "@id": "https://schema.affinidi.io/ayra_card_type",
+      "@type": "schema:Text"
+    },
+    "ayra_card_version": {
+      "@id": "https://schema.affinidi.io/ayra_card_version",
+      "@type": "schema:Text"
+    },
+    "ayra_card_type_version": {
+      "@id": "https://schema.affinidi.io/ayra_card_type_version",
+      "@type": "schema:Text"
+    },
+    "authority_trust_registry": {
+      "@id": "https://schema.affinidi.io/authority_trust_registry",
+      "@type": "@id"
+    },
+    "ecosystem_id": {
+      "@id": "https://schema.affinidi.io/ecosystem_id",
+      "@type": "@id"
+    },
+    "issuer_id": {
+      "@id": "https://schema.affinidi.io/issuer_id",
+      "@type": "@id"
+    },
+    "issued_under_assertion_id": {
+      "@id": "https://schema.affinidi.io/issued_under_assertion_id",
+      "@type": "schema:Text"
+    },
+    "egf_id": {
+      "@id": "https://schema.affinidi.io/egf_id",
+      "@type": "@id"
+    },
+    "display_name": {
+      "@id": "schema:name",
+      "@type": "schema:Text"
+    },
+    "company_display_name": {
+      "@id": "schema:legalName",
+      "@type": "schema:Text"
+    },
+    "email": {
+      "@id": "schema:email",
+      "@type": "schema:Text"
+    },
+    "phone": {
+      "@id": "schema:telephone",
+      "@type": "schema:Text"
+    },
+    "person_name": {
+      "@id": "schema:name",
+      "@type": "schema:Text"
+    },
+    "title": {
+      "@id": "schema:jobTitle",
+      "@type": "schema:Text"
+    },
+    "payloads": {
+      "@id": "https://schema.affinidi.io/payloads",
+      "@container": "@set",
+      "@context": {
+        "id": "@id",
+        "type": "@type",
+        "description": {
+          "@id": "schema:description",
+          "@type": "schema:Text"
+        },
+        "format": {
+          "@id": "schema:encodingFormat",
+          "@type": "schema:Text"
+        },
+        "data": "schema:value",
+        "links": {
+          "@id": "schema:url",
+          "@container": "@set",
+          "@type": "@id"
+        }
+      }
+    }
+  }
+}
