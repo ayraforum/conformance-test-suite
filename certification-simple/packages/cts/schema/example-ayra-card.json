@@ -1,0 +1,100 @@
+{
+    "@context": [
+        "https://www.w3.org/ns/credentials/v2",
+        "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld"
+    ],
+    "issuer": {
+        "id": "did:web:marmot-suited-muskrat.ngrok-free.app:bubba-bank"
+    },
+    "type": [
+        "VerifiableCredential",
+        "AyraBusinessCard"
+    ],
+    "id": "claimid:f84195e7-88f5-4e3e-9177-a1e47bf9aae3",
+    "credentialSchema": {
+        "id": "https://schema.affinidi.io/AyraBusinessCardV1R0.json",
+        "type": "JsonSchemaValidator2018"
+    },
+    "validFrom": "2025-10-16T05:48:37.966890Z",
+    "validUntil": "2026-10-16T05:48:37.966892Z",
+    "credentialSubject": {
+        "id": "did:key:zDnaezLucPkqin26376hu2BUzoTxHuY4UHShjEhP4beUbTArA",
+        "ayra_trust_network_did": "did:web:marmot-suited-muskrat.ngrok-free.app:ayra-trust-network",
+        "ayra_card_version": "1.0.0",
+        "ayra_card_type_version": "1.0.0",
+        "authority_trust_registry": "https://registry.ayra.network/registries/bubba",
+        "display_name": "Paramesh Kamarthi",
+        "email": "paramesh.k@affinidi.com",
+        "ecosystem_id": "did:web:marmot-suited-muskrat.ngrok-free.app:bubba-group",
+        "issued_under_assertion_id": "ayracards:ayrabusinesscard:global:issue",
+        "issuer_id": "did:web:marmot-suited-muskrat.ngrok-free.app:bubba-bank",
+        "egf_id": "did:web:marmot-suited-muskrat.ngrok-free.app:ayra-forum",
+        "ayra_assurance_level": 0,
+        "ayra_card_type": "AyraBusinessCard",
+        "payloads": [
+            {
+                "id": "example-01",
+                "type": "phone",
+                "description": "Phone number of the employee",
+                "format": "text",
+                "data": "+919980166067"
+            },
+            {
+                "id": "example-02",
+                "type": "social",
+                "description": "LinkedIn profile of the employee",
+                "format": "url",
+                "data": "https://linkedin.com/kamarthiparamesh"
+            },
+            {
+                "id": "example-03",
+                "type": "avatar",
+                "description": "Avatar of the employee",
+                "format": "image/png;base64",
+                "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+            },
+            {
+                "id": "example-04",
+                "type": "credential",
+                "description": "Government ID verifiable credential of the employee",
+                "format": "dcql",
+                "data": "{\"query\":{\"type\":\"govid\",\"credentialQuery\":[{\"reason\":[{\"@id\":\"https://schemas.affinidi.com/GovernmentIDCredentialRequestV1R0.json\",\"@type\":[\"VerifiableCredential\",\"GovernmentIDCredential\"]}]}]}}"
+            },
+            {
+                "id": "example-05",
+                "type": "credential",
+                "description": "Identity credential issued by affinidi",
+                "format": "w3c/ldv2",
+                "data": "{\"@context\":[\"https://www.w3.org/2018/credentials/v1\",\"https://schema.affinidi.io/IdentityCredentialV1R0.jsonld\"],\"type\":[\"VerifiableCredential\",\"IdentityCredential\"],\"credentialSubject\":{\"data\":\"Identity verification credential data\"}}"
+            },
+            {
+                "id": "example-06",
+                "type": "designation",
+                "description": "Solutions Architect Lead",
+                "format": "text",
+                "data": "Solutions Architect"
+            },
+            {
+                "id": "example-07",
+                "type": "website",
+                "description": "organization website",
+                "format": "url",
+                "data": "https://bubba-bank.com"
+            },
+            {
+                "id": "example-08",
+                "type": "vlei",
+                "description": "Verifiable Legal Entity Identifier of the organization",
+                "format": "url",
+                "data": "https://bubba-bank.com/vlei/bubba.json"
+            }
+        ]
+    },
+    "proof": {
+        "format": "EcdsaSecp256k1Signature2019",
+        "created": "2025-10-16T11:18:37.967266",
+        "verificationMethod": "did:web:marmot-suited-muskrat.ngrok-free.app:bubba-bank#key-1",
+        "proofPurpose": "assertionMethod",
+        "jws": "eyJhbGciOiJFUzI1NksiLCJiNjQiOmZhbHNlLCJjcml0IjpbImI2NCJdfQ..6T909HUgzjMhITyI7UBp7nVBV_3kThPSJ8Brs5qjj5o-HrpndD4hmGVs1GETE_Pyf7-KJqUUdiU8bdNj3ZA00g"
+    }
+}

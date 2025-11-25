@@ -1,0 +1,12 @@
+{
+  "payloadID": "example-001",
+  "payloadType": "email",
+  "description": "Example email payload for demonstration",
+  "payloadData": {
+    "emailAddress": "user@example.com",
+    "displayName": "John Doe",
+    "verified": true,
+    "provider": "gmail",
+    "timestamp": "2025-09-04T10:30:00Z"
+  }
+}

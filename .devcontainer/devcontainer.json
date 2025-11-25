@@ -2,6 +2,7 @@
   "name": "CTS Dev",
   "dockerComposeFile": ["../docker-compose.yml"],
   "service": "dev",
+  "runServices": ["acapy-control"],
   "workspaceFolder": "/workspaces/conformance-test-suite",
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {},
@@ -23,7 +24,8 @@
       "extensions": [
         "ms-azuretools.vscode-docker",
         "esbenp.prettier-vscode",
-        "dbaeumer.vscode-eslint"
+        "dbaeumer.vscode-eslint",
+        "openai-labs.codex"
       ]
     }
   },

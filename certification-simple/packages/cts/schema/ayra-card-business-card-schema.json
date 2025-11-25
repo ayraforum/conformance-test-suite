@@ -1,0 +1,285 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schema.affinidi.io/AyraBusinessCardV1R0.json",
+  "$metadata": {
+    "version": 1,
+    "revision": 0,
+    "discoverable": true,
+    "uris": {
+      "jsonLdContext": "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld",
+      "jsonSchema": "https://schema.affinidi.io/AyraBusinessCardV1R0.json"
+    }
+  },
+  "title": "AyraBusinessCard",
+  "description": "Ayra Business Card",
+  "type": "object",
+  "required": [
+    "@context",
+    "type",
+    "issuer",
+    "validFrom",
+    "credentialSubject"
+  ],
+  "properties": {
+    "@context": {
+      "type": [
+        "string",
+        "array",
+        "object"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "format": "uri"
+    },
+    "type": {
+      "type": [
+        "string",
+        "array"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "issuer": {
+      "type": [
+        "string",
+        "object"
+      ],
+      "format": "uri",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "validFrom": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "validUntil": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "credentialSubject": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uri",
+          "description": "DID of the credential subject"
+        },
+        "ayra_trust_network_did": {
+          "type": "string",
+          "format": "uri",
+          "description": "DID for the Ayra Trust Network ecosystem"
+        },
+        "ayra_assurance_level": {
+          "type": ["string", "integer"],
+          "description": "Assurance level (0 or blank acceptable)"
+        },
+        "ayra_card_type": {
+          "type": "string",
+          "description": "Type of Ayra Card from Ayra Type Catalog (e.g., 'businesscard')",
+          "examples": ["businesscard", "staffpass", "membercard"]
+        },
+        "ayra_card_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Semantic version of Ayra Card protocol (e.g., '1.0.1')",
+          "examples": ["1.0.0", "1.0.1", "2.0.0"]
+        },
+        "ayra_card_type_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Version of specific Ayra Card type",
+          "examples": ["1.0.0", "1.0.1"]
+        },
+        "authority_trust_registry": {
+          "type": "string",
+          "format": "uri",
+          "description": "URI of the Trust Registry used for validation"
+        },
+        "ecosystem_id": {
+          "type": "string",
+          "format": "uri",
+          "description": "DID of the ecosystem under which this credential was issued"
+        },
+        "issuer_id": {
+          "type": "string",
+          "format": "uri",
+          "description": "DID of the issuer (duplicates top-level issuer.id for convenience)"
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Display name for the credential holder"
+        },
+        "company_display_name": {
+          "type": "string",
+          "description": "Display name of the issuing company/organization"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the credential holder"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Phone number of the credential holder"
+        },
+        "person_name": {
+          "type": "string",
+          "description": "Full name of the person"
+        },
+        "title": {
+          "type": "string",
+          "description": "Job title or role"
+        },
+        
+        "payloads": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique identifier for the payload item",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "examples": [
+                  "example-01",
+                  "phone-001",
+                  "credential-004",
+                  "social-linkedin"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "description": "Indicates the type of payload - unmanaged string, max 255 characters",
+                "minLength": 1,
+                "maxLength": 255,
+                "examples": [
+                  "phone",
+                  "email",
+                  "social",
+                  "avatar",
+                  "credential",
+                  "designation",
+                  "website",
+                  "vlei",
+                  "deeplink",
+                  "agent-endpoint"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of the payload item",
+                "examples": [
+                  "Phone number of the employee",
+                  "LinkedIn profile of the employee",
+                  "Avatar of the employee",
+                  "Government ID verifiable credential of the employee"
+                ]
+              },
+              "format": {
+                "type": "string",
+                "description": "Format or encoding type of the data",
+                "minLength": 1,
+                "maxLength": 255,
+                "examples": [
+                  "text",
+                  "url",
+                  "email",
+                  "phone",
+                  "image/png;base64",
+                  "image/jpeg;base64",
+                  "application/pdf;base64",
+                  "application/json",
+                  "dcql",
+                  "oid4vp",
+                  "w3c/ldv1",
+                  "w3c/ldv2",
+                  "sd-jwt-vc",
+                  "jwt-vc",
+                  "did",
+                  "uri"
+                ]
+              },
+              "data": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Inline string data (text, URL, base64-encoded content, JSON string, etc.)"
+                  },
+                  {
+                    "type": "object",
+                    "description": "By-reference data with links to external content",
+                    "properties": {
+                      "links": {
+                        "type": "array",
+                        "description": "Array of URLs for fetching content by reference",
+                        "items": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "minItems": 1
+                      },
+                      "hash": {
+                        "type": "string",
+                        "description": "Optional multi-hash (https://multiformats.io/multihash/) for integrity verification of referenced content"
+                      },
+                      "byte_count": {
+                        "type": "integer",
+                        "description": "Optional size hint in bytes for referenced content",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["links"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "format",
+              "data"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "ayra_trust_network_did",
+        "ayra_card_type",
+        "ayra_card_version",
+        "ayra_card_type_version",
+        "authority_trust_registry",
+        "ecosystem_id",
+        "issuer_id"
+      ]
+    },
+    "credentialSchema": {
+      "type": "object",
+      "required": [
+        "id",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uri"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
