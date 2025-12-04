@@ -4,7 +4,7 @@ export default function HomePage() {
   const tests = [
     {
       id: "trust-registry",
-      title: "Authority Profile Conformance",
+      title: "Trust Registry Conformance",
       description:
         "Test if your ecocsystem and Trust Registry meets the required conformance standards.",
       path: "/registry",
