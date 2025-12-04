@@ -123,7 +123,11 @@ cd conformance-test-suite
 cp .env.example .env
 # (update REFERENCE_AGENT, NGROK domains, tokens, etc.)
 
-# Start the certification-simple stack
+# Start the certification-simple stack with the default credo reference agent
+
+docker compose up app
+
+# OR Start the certification-simple stack with ACA-Py
 docker compose up --build acapy-control acapy-ngrok app
 
 # When finished
