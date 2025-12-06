@@ -24,8 +24,7 @@
       "extensions": [
         "ms-azuretools.vscode-docker",
         "esbenp.prettier-vscode",
-        "dbaeumer.vscode-eslint",
-        "openai-labs.codex"
+        "dbaeumer.vscode-eslint"
       ]
     }
   },

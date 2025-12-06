@@ -22,6 +22,7 @@ export type State = {
   controller?: AgentController;
   issuerController?: AgentController;
   issuerAgentType?: "credo" | "acapy";
+  credentialFormat?: "anoncreds" | "w3c";
 };
 
 const _state: State = {};
@@ -52,6 +53,12 @@ export const setIssuerAgentType = (
   _state.issuerAgentType = type;
 };
 
+export const setCredentialFormat = (
+  format: "anoncreds" | "w3c"
+): void => {
+  _state.credentialFormat = format;
+};
+
 export const setConfig = (config: AgentConfiguration) => {
   _state.config = config;
 };
@@ -73,7 +80,12 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
       if (!issuerController) {
         throw new Error("agent controller not defined");
       }
-      pipe = new IssueCredentialPipeline(issuerController);
+      if (_state.issuerAgentType === "acapy" && _state.credentialFormat === "w3c") {
+        const { IssueAcaPyW3CPipeline } = require("./pipelines");
+        pipe = new IssueAcaPyW3CPipeline(issuerController);
+      } else {
+        pipe = new IssueCredentialPipeline(issuerController);
+      }
       break;
     case PipelineType.VERIFIER_TEST:
       if (!_state.agent) {

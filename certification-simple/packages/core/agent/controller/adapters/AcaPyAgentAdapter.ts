@@ -25,6 +25,7 @@ interface AgentStartResponse {
 interface InvitationApiResponse {
   invitation_url: string;
   connection_id: string;
+  out_of_band_id?: string;
   invitation: unknown;
 }
 
@@ -50,6 +51,13 @@ export class AcaPyAgentAdapter implements AgentAdapter {
     return this.options.baseUrl.replace(/\/$/, "");
   }
 
+  private ensureAdminUrl(): string {
+    if (!this.adminUrl) {
+      throw new Error("ACA-Py admin URL is not set");
+    }
+    return this.adminUrl.replace(/\/$/, "");
+  }
+
   private async start(): Promise<void> {
     const response = await this.post<AgentStartResponse>("/agent/start", {
       profile: this.options.profile ?? DEFAULT_PROFILE,
@@ -72,6 +80,10 @@ export class AcaPyAgentAdapter implements AgentAdapter {
     return `ACA-Py (${this.options.profile ?? DEFAULT_PROFILE})`;
   }
 
+  getAdminUrl(): string | undefined {
+    return this.adminUrl;
+  }
+
   async createOutOfBandInvitation(): Promise<ControllerInvitation> {
     const payload = await this.post<InvitationApiResponse>(
       "/connections/create-invitation",
@@ -79,9 +91,58 @@ export class AcaPyAgentAdapter implements AgentAdapter {
     );
     return {
       id: payload.connection_id,
+      outOfBandId:
+        payload.out_of_band_id ||
+        (payload as any).oob_id ||
+        (payload.invitation as any)?.["@id"] ||
+        (payload.invitation as any)?.["id"],
       url: payload.invitation_url,
       raw: payload.invitation,
     };
+  }
+
+  async createDidKey(keyType: "ed25519" | "bls12381g2" = "ed25519"): Promise<string> {
+    const response = await this.post<{ did: string }>(
+      "/wallet/did/create",
+      {
+        key_type: keyType,
+      }
+    );
+    return response.did;
+  }
+
+  async issueLdpCredential(payload: unknown): Promise<unknown> {
+    const admin = this.ensureAdminUrl();
+    return this.rawPost(`${admin}/vc/credentials/issue`, payload);
+  }
+
+  async verifyLdpCredential(vc: unknown): Promise<unknown> {
+    const admin = this.ensureAdminUrl();
+    return this.rawPost(`${admin}/vc/credentials/verify`, { verifiableCredential: vc });
+  }
+
+  async issueLdProofCredential(payload: unknown): Promise<unknown> {
+    const admin = this.ensureAdminUrl();
+    return this.rawPost(`${admin}/issue-credential-2.0/send-offer`, payload);
+  }
+
+  private async rawPost(url: string, body: unknown): Promise<any> {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `ACA-Py control request failed: ${response.status} ${response.statusText} - ${text}`
+      );
+    }
+    try {
+      return await response.json();
+    } catch {
+      return {};
+    }
   }
 
   buildInvitationUrl(invitation: ControllerInvitation): string {
@@ -91,17 +152,20 @@ export class AcaPyAgentAdapter implements AgentAdapter {
   async waitForConnection(
     invitation: ControllerInvitation
   ): Promise<ControllerConnectionRecord> {
-    if (!invitation.id) {
-      throw new Error("Invitation id is required to wait for connection");
+    const payload: Record<string, string> = {};
+    if (invitation.id) payload.connection_id = invitation.id;
+    if (invitation.outOfBandId) payload.oob_id = invitation.outOfBandId;
+
+    if (!payload.connection_id && !payload.oob_id) {
+      throw new Error("Invitation did not include a connection or out-of-band id");
     }
-    const record = await this.post<ConnectionRecordApiResponse>(
-      "/connections/wait",
-      { connection_id: invitation.id }
-    );
+
+    const record = await this.post<ConnectionRecordApiResponse>("/connections/wait", payload);
     return { id: record.connection_id, raw: record.record ?? record };
   }
 
   async waitUntilConnected(connectionId: string): Promise<void> {
+    if (!connectionId) return;
     await this.post("/connections/wait", { connection_id: connectionId });
   }
 

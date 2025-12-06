@@ -22,7 +22,9 @@ class AgentStopResponse(BaseModel):
 
 class InvitationResponse(BaseModel):
   invitation_url: str = Field(..., alias="invitation_url")
-  connection_id: str
+  connection_id: Optional[str] = None
+  out_of_band_id: Optional[str] = None
+  oob_id: Optional[str] = None
   invitation: dict
 
 
@@ -59,11 +61,30 @@ class CredentialOfferResponse(BaseModel):
 
 
 class WaitForConnectionRequest(BaseModel):
-  connection_id: str
+  connection_id: Optional[str] = None
+  oob_id: Optional[str] = None
   timeout_ms: Optional[int] = 120000
 
 
 class ConnectionRecordResponse(BaseModel):
-  connection_id: str
+  connection_id: Optional[str] = None
   state: str
   record: dict
+
+
+class ReceiveInvitationRequest(BaseModel):
+  invitation: dict
+
+
+class ReceiveInvitationResponse(BaseModel):
+  connection_id: Optional[str] = None
+  oob_id: Optional[str] = None
+  record: dict
+
+
+class CreateDidRequest(BaseModel):
+  key_type: Literal["ed25519", "bls12381g2"] = "ed25519"
+
+
+class CreateDidResponse(BaseModel):
+  did: str
