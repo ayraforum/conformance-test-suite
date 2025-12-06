@@ -1,43 +1,37 @@
 # Ayra Trust Network - Conformance Test Suite
 
-> ⚠️ **WORK IN PROGRESS - NOT READY FOR PRODUCTION**
-> 
-> This is an experimental conformance testing suite that is actively under development. The codebase is fragile, unstable, and subject to breaking changes. **DO NOT USE IN PRODUCTION ENVIRONMENTS**.
+Conformance tooling for Ayra Trust Network implementations built on the `certification-simple` stack (the production baseline).
+
+**Current coverage**
+- ✅ TRQP trust registry checks
+- ✅ Holder conformance flow
+- ✅ Issue flow (utility flow, not scored as a conformance flow)
+- 🚧 Verifier conformance flow (being finished now)
+- ✅ Credential format: AnonCreds
+- 🚧 Credential format: W3C LDP (in progress)
 
 ## Overview
 
-This repository contains experimental conformance testing tools for validating digital identity implementations against Ayra Trust Network standards. The project explores two distinct architectural approaches for SSI (Self-Sovereign Identity) conformance testing.
-
-> 🚨 **IMPORTANT DISCLAIMER**
-> 
-> - **Experimental Software**: This code is exploratory and may contain bugs, security vulnerabilities, or incomplete features
-> - **No Stability Guarantees**: APIs, interfaces, and functionality may change without notice
-> - **Development Use Only**: Intended for research, development, and testing purposes only
-> - **No Production Support**: Not suitable for production environments or critical systems
+This repository contains conformance testing tools for validating digital identity implementations against Ayra Trust Network standards, focused on the `certification-simple` stack.
 
 ## Repository Structure
 
 ```
 conformance-test-suite/
-├── certification-simple/          # Exploratory monolithic approach
-├── test-harness-integrated/      # Production-oriented distributed approach
+├── certification-simple/          # Primary CTS stack (Next.js + Express)
 └── README.md                     # This file
 ```
 
-## Two Architectural Approaches
+## Certification-Simple Stack
 
-### 1. 🧪 **Certification-Simple** (Exploratory)
+**Architecture**: Monolithic Next.js application with integrated testing and Express API.
 
-**Location**: `./certification-simple/`
-
-**Architecture**: Monolithic Next.js application with integrated testing
-
-**⚠️ Status**: **HIGHLY EXPERIMENTAL** - Fragile and unstable codebase
+**Status**: Production baseline for TRQP, holder, and issue flows; verifier conformance flow is in progress; AnonCreds supported today with W3C LDP underway.
 
 #### Purpose
-- Rapid prototyping and exploration of conformance testing concepts
-- Quick iteration on test scenarios and user interfaces
-- Research into direct agent testing approaches
+- Rapid iteration on conformance testing concepts
+- Quick setup for demos and local validation
+- Direct agent testing without external harnesses
 - Development and debugging workflow validation
 
 #### Key Features
@@ -48,61 +42,6 @@ conformance-test-suite/
 - Real-time WebSocket updates for test monitoring
 - QR code generation for mobile wallet testing
 
-#### ⚠️ **Limitations & Warnings**
-- **Fragile Architecture**: Code may break unexpectedly with minor changes
-- **Limited Error Handling**: May not gracefully handle edge cases
-- **Unstable APIs**: Internal interfaces subject to frequent changes
-- **Basic Security**: Not hardened for production security requirements
-- **Performance Issues**: Not optimized for concurrent users or heavy loads
-- **Incomplete Features**: Many features are partially implemented
-- **Technical Debt**: Quick prototyping has resulted in code quality issues
-
-#### Use Cases
-- ✅ Local development and testing
-- ✅ Proof of concept demonstrations
-- ✅ Research and experimentation
-- ❌ Production deployments
-- ❌ Multi-user environments
-- ❌ Security-critical applications
-
----
-
-### 2. 🏗️ **Test-Harness-Integrated** (Production-Oriented)
-
-**Location**: `./test-harness-integrated/`
-
-**Architecture**: Distributed microservices with external harness integration
-
-**⚠️ Status**: **UNDER DEVELOPMENT** - More stable but still incomplete
-
-#### Purpose
-- Production-ready conformance testing infrastructure
-- Integration with established industry testing harnesses
-- Scalable multi-user testing environment
-- Standardized testing protocols and reporting
-
-#### Key Features
-- Separate Next.js frontend and Express.js backend services
-- Integration with Aries Agent Test Harness (AATH)
-- Integration with OpenID Conformance Suite
-- PostgreSQL database for persistent test results
-- Scalable microservices architecture
-- Standardized test protocols and reporting
-- Multi-user support with authentication
-
-#### Current Status
-- 🚧 **In Active Development**
-- 🔄 **Architecture Stabilizing**
-- ⏳ **Features Being Implemented**
-- 📋 **Testing Protocols Being Defined**
-
-#### Planned Use Cases
-- 🎯 Enterprise conformance testing
-- 🎯 Certification and compliance validation
-- 🎯 Multi-implementation interoperability testing
-- 🎯 Automated CI/CD integration
-- 🎯 Regulatory compliance reporting
-
 ## Getting Started
 
 ### Prerequisites
@@ -111,8 +50,6 @@ conformance-test-suite/
 - Docker & Docker Compose (recommended)
 
 ### Quick Start (Certification-Simple)
-
-> ⚠️ **Remember**: This is experimental software. Expect issues!
 
 ```bash
 # Clone the repository
@@ -162,34 +99,10 @@ For NGROK domain planning, tunnel rotation, and the full list of optional variab
 
 **Compatible Wallets Tested:**
 - ✅ **BC Government Wallet** - Successfully tested with holder conformance flows
-- 🧪 Other Credo-TS based wallets (experimental support)
+- 🧪 Other Credo-TS based wallets (ad hoc testing)
 - 📱 Mobile wallets supporting DIDComm v1/v2 protocols
 
-### Development Disclaimer
-
-```
-⚠️  DEVELOPMENT ENVIRONMENT ONLY  ⚠️
-
-This software is provided "as-is" for development and research purposes.
-- Expect bugs, crashes, and unexpected behavior
-- Code may be restructured or removed without notice  
-- No backwards compatibility guarantees
-- Security vulnerabilities may exist
-- Performance is not optimized
-- Documentation may be outdated or incomplete
-```
-
 ## Contributing
-
-### Before Contributing
-
-> 🚨 **Read This First**
-> 
-> This is experimental software under active development. Contributions are welcome, but please understand:
-> - Code may be refactored or removed entirely
-> - No guarantees about contribution longevity
-> - Focus on learning and experimentation over production quality
-> - Expect frequent breaking changes
 
 ### Contribution Guidelines
 
@@ -201,28 +114,13 @@ This software is provided "as-is" for development and research purposes.
 
 ### Code Quality Expectations
 
-- **Certification-Simple**: Experimental code quality accepted, focus on functionality
-- **Test-Harness-Integrated**: Higher code quality standards, production considerations
-
-## Architecture Comparison
-
-| Aspect | Certification-Simple | Test-Harness-Integrated |
-|--------|---------------------|-------------------------|
-| **Complexity** | Low - Single application | High - Distributed services |
-| **Setup Time** | Minutes | Hours |
-| **Stability** | ⚠️ Very Low | 🔄 Improving |
-| **Scalability** | Limited | High |
-| **Standards** | Custom protocols | Industry standards |
-| **Database** | In-memory/file | PostgreSQL |
-| **Authentication** | None | Multi-user |
-| **Deployment** | Single container | Multi-service |
-| **Use Case** | Development/Research | Production/Enterprise |
+- Fast iteration with production hardening underway
 
 ## Security Considerations
 
-> 🔒 **SECURITY WARNING**
+> 🔒 **Security Notes**
 > 
-> **DO NOT USE IN PRODUCTION** - Both approaches have security limitations:
+> Designed for controlled development environments; add hardening and authentication before internet exposure.
 
 ### Known Security Issues
 - No authentication or authorization mechanisms
@@ -248,17 +146,13 @@ Licensed under the Apache License 2.0. See [LICENSE](./LICENSE) for details.
 ## Support and Feedback
 
 ### Getting Help
-- 📚 **Documentation**: Check individual README files in each approach directory
+- 📚 **Documentation**: Check README files under `certification-simple/`
 - 🐛 **Issues**: Report bugs and issues via GitHub Issues
 - 💬 **Discussions**: Use GitHub Discussions for questions and feedback
 
 ### Feedback Welcome
-This is experimental software - your feedback helps improve it:
+Tell us what works and what could be smoother:
 - What works well?
 - What breaks frequently?
 - What features are missing?
 - How can the architecture be improved?
-
----
-
-**Remember**: This is experimental software. Use at your own risk, expect issues, and help us make it better! 🚀
