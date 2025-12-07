@@ -27,7 +27,8 @@ See the main repository README for detailed comparisons and full documentation.
 ```bash
 cd /path/to/conformance-test-suite
 cp .env.example .env   # edit with your NGROK + reference agent settings
-docker compose up --build acapy-control acapy-ngrok app
+# Default Credo setup
+docker compose up --build app
 # ... run flows at http://localhost:3000 ...
 docker compose down
 ```

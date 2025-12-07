@@ -51,23 +51,29 @@ conformance-test-suite/
 
 ### Quick Start (Certification-Simple)
 
+1) Clone and configure env
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd conformance-test-suite
-
-# Copy the sample env and edit the NGROK / agent settings
 cp .env.example .env
-# (update REFERENCE_AGENT, NGROK domains, tokens, etc.)
+# Set NGROK domains/tokens and choose your agent: REFERENCE_AGENT=credo|acapy
+```
 
-# Start the certification-simple stack with the default credo reference agent
+2) Start with Credo Reference Agent(s) (default)
+```bash
+# Ensure REFERENCE_AGENT=credo in .env
+docker compose up --build app
+```
 
-docker compose up app
-
-# OR Start the certification-simple stack with ACA-Py
+3) Start with ACA-Py Reference Agent(s) (alternate)
+```bash
+# Set REFERENCE_AGENT=acapy in .env and provide REFERENCE_AGENT_NGROK_DOMAIN
+# Optionally set ISSUER_OVERRIDE_AGENT/ISSUER_OVERRIDE_NGROK_DOMAIN if Credo issues
 docker compose up --build acapy-control acapy-ngrok app
+```
 
-# When finished
+When finished:
+```bash
 docker compose down
 ```
 
@@ -98,9 +104,8 @@ For NGROK domain planning, tunnel rotation, and the full list of optional variab
 - Test Interfaces: http://localhost:3000/holder, /verifier, /issuer, /registry
 
 **Compatible Wallets Tested:**
-- ✅ **BC Government Wallet** - Successfully tested with holder conformance flows
-- 🧪 Other Credo-TS based wallets (ad hoc testing)
-- 📱 Mobile wallets supporting DIDComm v1/v2 protocols
+- ✅ **BC Government Wallet** - Successfully tested with holder conformance flows (Anoncreds only)
+- 📱 Mobile wallets supporting DIDComm v2 protocols
 
 ## Contributing
 
