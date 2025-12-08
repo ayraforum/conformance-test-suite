@@ -35,6 +35,7 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - acapy-control
+      - acapy-holder-control
     volumes:
       - ./:/workspaces/conformance-test-suite:cached
       - pnpm-store:/pnpm
@@ -66,6 +67,12 @@ services:
       ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
       ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
       SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
+      ACAPY_ENDPOINT: ${ACAPY_ENDPOINT:-http://acapy-control:8041}
+      ACAPY_INVITE_BASE_URL: ${ACAPY_INVITE_BASE_URL:-http://acapy-control:8041}
+      ACAPY_HOLDER_CONTROL_URL: ${ACAPY_HOLDER_CONTROL_URL:-http://acapy-holder-control:9003}
+      ACAPY_HOLDER_ENDPOINT: ${ACAPY_HOLDER_ENDPOINT:-http://acapy-holder-control:8043}
+      ACAPY_HOLDER_INVITE_BASE_URL: ${ACAPY_HOLDER_INVITE_BASE_URL:-http://acapy-holder-control:8043}
+      ACAPY_AUTO_SEND_INVITE_TO_INTERNAL_HOLDER: ${ACAPY_AUTO_SEND_INVITE_TO_INTERNAL_HOLDER:-false}
     ports:
       - "3000:3000"
       - "5005:5005"
@@ -89,6 +96,7 @@ services:
       ACAPY_ENDPOINT: ${ACAPY_ENDPOINT:-}
       ACAPY_INVITE_BASE_URL: ${ACAPY_INVITE_BASE_URL:-}
       ACAPY_ADMIN_HOST: ${ACAPY_ADMIN_HOST:-acapy-control}
+      ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
 
   acapy-holder-control:
     build:
@@ -103,6 +111,8 @@ services:
       PYTHONUNBUFFERED: "1"
       ACAPY_ADMIN_HOST: ${ACAPY_HOLDER_ADMIN_HOST:-acapy-holder-control}
       ACAPY_PROFILE: ${ACAPY_HOLDER_PROFILE:-holder}
+      ACAPY_ENDPOINT: ${ACAPY_HOLDER_ENDPOINT:-http://acapy-holder-control:8043}
+      ACAPY_INVITE_BASE_URL: ${ACAPY_HOLDER_INVITE_BASE_URL:-http://acapy-holder-control:8043}
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9003"]
 
   acapy-ngrok:

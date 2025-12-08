@@ -88,9 +88,9 @@ class ProfileConfig:
 
   def _resolve_env_endpoint(self) -> Optional[str]:
     label_key = self.label.upper().replace(" ", "_")
-    candidates = [
-      os.getenv(f"{label_key}_ENDPOINT"),
-    ]
+    candidates = [os.getenv(f"{label_key}_ENDPOINT")]
+
+    use_ngrok = os.getenv("USE_NGROK", "").lower() == "true"
     reference_domain = (
       os.getenv("REFERENCE_AGENT_NGROK_DOMAIN")
       or os.getenv("ISSUER_NGROK_DOMAIN")
@@ -101,10 +101,12 @@ class ProfileConfig:
       or os.getenv("VERIFIER_NGROK_DOMAIN")
     )
 
-    if "ISSUER" in label_key:
+    # Only consider ngrok domains when explicitly enabled
+    if use_ngrok and "ISSUER" in label_key:
       candidates.insert(0, reference_domain)
-    if "VERIFIER" in label_key:
+    if use_ngrok and "VERIFIER" in label_key:
       candidates.insert(0, verifier_test_domain)
+
     candidates.extend([
       os.getenv("ACAPY_ENDPOINT"),
       os.getenv("ACAPY_INVITE_BASE_URL"),

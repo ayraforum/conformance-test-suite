@@ -15,6 +15,7 @@ extra_args:
   # For internal reference holder, auto-respond to offers and auto-store to keep flows hands-free
   - "--auto-respond-credential-offer"
   - "--auto-store-credential"
+  - "--auto-respond-presentation-request"
   - "--emit-new-didcomm-prefix"
   - "--experimental-didcomm-v2"
   - "--webhook-url"

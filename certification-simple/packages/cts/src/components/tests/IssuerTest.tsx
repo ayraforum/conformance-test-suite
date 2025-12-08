@@ -331,27 +331,30 @@ export function IssuerTest() {
   const updateStepsFromDAG = (dag: DAGData) => {
     if (!dag.nodes || dag.nodes.length === 0) return;
 
-    // Find the current running step
-    let newCurrentStep = currentStep;
-    const firstRunningNode = dag.nodes.findIndex(node => 
-      node.task.state.runState === 'running' || node.task.state.status === 'Running'
-    );
-    const lastCompletedNode = dag.nodes.findIndex(node => 
-      node.task.state.status === 'Accepted' || node.task.state.runState === 'completed'
+    const completedCount = dag.nodes.filter(
+      (node) =>
+        node.task.state.status === "Accepted" ||
+        node.task.state.runState === "completed"
+    ).length;
+    const anyRunning = dag.nodes.some(
+      (node) =>
+        node.task.state.runState === "running" ||
+        node.task.state.status === "Running"
     );
 
-    if (firstRunningNode !== -1) {
-      newCurrentStep = firstRunningNode;
-    } else if (lastCompletedNode !== -1 && lastCompletedNode === dag.nodes.length - 1) {
-      // All steps completed, go to report
-      newCurrentStep = 2;
-    } else if (lastCompletedNode !== -1) {
-      // Move to next step after completed one
-      newCurrentStep = Math.min(lastCompletedNode + 1, 2);
+    let nextStep = currentStep;
+    const dagRunState = dag.status?.runState?.toLowerCase();
+    if (dagRunState === "completed" || completedCount >= dag.nodes.length) {
+      nextStep = 2;
+    } else if (anyRunning) {
+      // If something is running, stay on the current step or move to the next uncompleted
+      nextStep = Math.min(completedCount, 1);
+    } else {
+      nextStep = Math.min(completedCount, 2);
     }
 
-    if (newCurrentStep !== currentStep) {
-      setCurrentStep(newCurrentStep);
+    if (nextStep !== currentStep) {
+      setCurrentStep(nextStep);
     }
   };
 
@@ -414,10 +417,34 @@ export function IssuerTest() {
           initialSteps[index].status = status;
         }
       });
+      const dagRunState = dagData.status?.runState?.toLowerCase();
+      if (dagRunState === "completed") {
+        initialSteps[0].status = "passed";
+        initialSteps[1].status = "passed";
+        initialSteps[2].status = "passed";
+        setCurrentStep(2);
+      }
     }
 
     setSteps(initialSteps);
   }, [currentStep, dagData]);
+
+  // Poll DAG periodically in case socket updates are missed
+  useEffect(() => {
+    const poll = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/dag`);
+        const data = await res.json();
+        if (data?.dag) {
+          setDagData(data.dag);
+          updateStepsFromDAG(data.dag);
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 2000);
+    return () => clearInterval(poll);
+  }, [currentStep]);
 
   return (
     <div>

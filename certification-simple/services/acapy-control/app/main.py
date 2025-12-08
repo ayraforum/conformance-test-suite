@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+import os
+import sys
+from pathlib import Path
 
 from acapy_controller.process_manager import AcaPyProcessManager
 from acapy_controller.event_bus import EventBroker
@@ -11,6 +14,22 @@ manager = AcaPyProcessManager()
 event_broker = EventBroker()
 rpc_router = RpcRouter(manager, event_broker)
 app.include_router(rpc_router.router)
+
+@app.on_event("startup")
+async def auto_start_agent():
+  """Auto-start the configured ACA-Py profile when the control service boots."""
+  autostart = os.getenv("ACAPY_AUTOSTART", "true").lower() == "true"
+  if not autostart:
+    return
+  profile_name = os.getenv("ACAPY_PROFILE") or "issuer"
+  profile_path = Path(__file__).resolve().parent.parent / "profiles" / f"{profile_name}.yaml"
+  try:
+    await manager.start(profile_path)
+    print(f"[control] ACA-Py agent started with profile '{profile_name}'")
+  except Exception as exc:  # pylint: disable=broad-except
+    print(f"[control] Failed to start ACA-Py agent for profile '{profile_name}': {exc}", file=sys.stderr)
+    # Fail fast so container restart surfaces the issue
+    raise
 
 @app.post("/webhook")
 async def webhook_handler(payload: dict):
