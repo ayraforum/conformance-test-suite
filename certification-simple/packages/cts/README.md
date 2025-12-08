@@ -26,75 +26,15 @@ The CTS package contains a complete testing environment with:
 
 ## 🏗️ Repository Architecture Overview
 
-The conformance test suite project contains **two distinct architectural approaches**:
+This package is the Certification-Simple stack: a monolithic Next.js application with an integrated Express backend, task pipelines, and direct Credo-TS integration. It is the maintained production baseline for Ayra CTS.
 
-### **1. Certification-Simple Approach** (This Package)
-**Location**: `/certification-simple/packages/cts/`
-
-**Architecture**: Monolithic Next.js application with integrated backend
-
-**Components**:
-- Single Next.js application serving both frontend and API
-- Integrated Express.js server for API endpoints
-- Built-in test pipeline orchestration
-- Direct integration with Credo-TS agents
-
-**Target Use Cases**:
-- Rapid prototyping and testing
-- Simple deployment scenarios
-- Direct agent testing without external dependencies
-- Development and debugging workflows
-
-### **2. Test-Harness-Integrated Approach**
-**Location**: `/test-harnness-integrated/`
-
-**Architecture**: Distributed microservices with external harness integration
-
-**Components**:
-- Separate Next.js frontend application
-- Standalone Express.js backend service
-- Integration with Aries Agent Test Harness (AATH)
-- Integration with OpenID Conformance Suite
-- PostgreSQL database for persistence
-
-**Target Use Cases**:
-- Production conformance testing
-- Enterprise integration scenarios
-- Multi-harness test orchestration
-- Standardized testing protocols
-
-## 📊 Approach Comparison
-
-### **Certification-Simple (This Package)**
-
-#### ✅ **Advantages**
-- **Rapid Setup**: Single command deployment with minimal dependencies
-- **Self-Contained**: No external test harness dependencies required
-- **Development-Friendly**: Hot reloading, integrated debugging, easy modification
-- **Lightweight**: Minimal infrastructure requirements
-- **Real-time Testing**: Direct agent interaction with immediate feedback
-- **Flexible**: Easy to customize and extend for specific testing scenarios
-
-#### ⚠️ **Trade-offs**
-- **Limited Standardization**: Custom test protocols vs. established harnesses
-- **Scope**: Focused on Credo-TS ecosystem rather than broad interoperability
-- **Persistence**: In-memory state vs. database persistence
-- **Scalability**: Single-instance architecture vs. distributed system
-
-### **Test-Harness-Integrated**
-
-#### ✅ **Advantages**
-- **Industry Standards**: Leverages established test harnesses (AATH, OpenID)
-- **Broad Compatibility**: Tests multiple implementation types and protocols
-- **Enterprise Ready**: Database persistence, scalable architecture
-- **Standardized Protocols**: Follows established testing methodologies
-- **Production Deployment**: Designed for long-running, multi-user scenarios
-
-#### ⚠️ **Trade-offs**
-- **Complex Setup**: Requires multiple external dependencies and services
-- **Infrastructure Overhead**: Database, multiple services, external harnesses
-- **Development Friction**: Slower iteration cycles, more complex debugging
-- **Deployment Complexity**: Multi-service orchestration and configuration
+**Current coverage**
+- ✅ TRQP trust registry checks
+- ✅ Holder conformance flow
+- ✅ Issue flow (utility flow)
+- ✅ Credential format: AnonCreds
+- 🚧 Verifier conformance flow (in progress)
+- 🚧 Credential format: W3C LDP (in progress)
 
 ## 🚀 Quick Start
 
