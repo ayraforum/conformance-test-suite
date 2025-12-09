@@ -11,13 +11,16 @@ import {
 import { randomUUID } from "crypto";
 
 import { DAG } from "@demo/core/pipeline/src/dag";
+import { state as serverState } from "../state";
 
 export default class HolderTestPipeline {
   _dag: DAG;
   _controller: AgentController;
+  _verifyTRQP: boolean;
 
-  constructor(controller: AgentController) {
+  constructor(controller: AgentController, verifyTRQP = false) {
     this._controller = controller;
+    this._verifyTRQP = verifyTRQP;
     this._dag = this._make(controller);
   }
 
@@ -53,6 +56,11 @@ export default class HolderTestPipeline {
           presentation_definition: {
             name: "Ayra Business Card LDP",
             purpose: "Present an Ayra Business Card signed as a Linked Data Proof VC",
+            format: {
+              ldp_vp: {
+                proof_type: ["Ed25519Signature2020"],
+              },
+            },
             input_descriptors: [
               {
                 id: "ayra-business-card",
@@ -88,8 +96,10 @@ export default class HolderTestPipeline {
 
     const requestProofOptions: RequestProofOptions = {
       proof: proof,
-      checkTrustRegistry: true,
-      trqpURL: "https://dev.gan.technology/tr",
+      checkTrustRegistry: this._verifyTRQP || serverState.verifyTRQP || false,
+      trqpURL:
+        process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT ||
+        process.env.NEXT_PUBLIC_TRQP_LOCAL_URL,
     };
 
     // Create request proof task

@@ -172,7 +172,7 @@ export class AcaPyAgentAdapter implements AgentAdapter {
   async requestProofAndAccept(
     connectionId: string,
     proof: ProofRequestPayload
-  ): Promise<void> {
+  ): Promise<any> {
     const protocolVersion = proof.protocolVersion ?? "v2";
     const response = await this.post<{ proof_exchange_id: string }>(
       "/proofs/request",
@@ -182,10 +182,19 @@ export class AcaPyAgentAdapter implements AgentAdapter {
         proof_formats: proof.proofFormats,
       }
     );
-    await this.post("/proofs/verify", {
+    const verifyResp = await this.post("/proofs/verify", {
       proof_exchange_id: response.proof_exchange_id,
       connection_id: connectionId,
     });
+    // Try to return whatever verify provided; fall back to request response
+    if (verifyResp) {
+      const record =
+        (verifyResp as any).record ||
+        (verifyResp as any).result ||
+        verifyResp;
+      return record;
+    }
+    return response;
   }
 
   async issueCredential(payload: CredentialOfferPayload): Promise<CredentialOfferResult> {
@@ -195,18 +204,27 @@ export class AcaPyAgentAdapter implements AgentAdapter {
           "Provide one in CredentialIssuanceOptions when using ACA-Py."
       );
     }
-    const attributeMap: Record<string, string> = {};
-    for (const { name, value } of payload.attributes) {
-      attributeMap[name] = value;
-    }
+    const previewAttributes = payload.attributes.map(({ name, value }) => ({
+      name,
+      value: String(value),
+    }));
+
     const response = await this.post<{
       credential_exchange_id: string;
       record?: unknown;
     }>("/credentials/offer", {
       connection_id: payload.connectionId,
-      credential_definition_id: payload.credentialDefinitionId,
-      attributes: attributeMap,
       protocol_version: "v2",
+      credential_preview: {
+        "@type": "issue-credential/2.0/credential-preview",
+        attributes: previewAttributes,
+      },
+      filter: {
+        indy: {
+          cred_def_id: payload.credentialDefinitionId,
+          attributes: previewAttributes,
+        },
+      },
     });
     return {
       schemaId: payload.schemaId,
@@ -230,6 +248,10 @@ export class AcaPyAgentAdapter implements AgentAdapter {
         `ACA-Py control request failed: ${response.status} ${response.statusText} - ${text}`
       );
     }
-    return (await response.json()) as T;
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      return (await response.json()) as T;
+    }
+    return {} as T;
   }
 }

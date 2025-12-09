@@ -125,12 +125,16 @@ function ConnectionStep({
   context, 
   isActive, 
   onNext,
-  taskData 
+  taskData,
+  verifyTRQP,
+  onToggleTRQP
 }: { 
   context: any; 
   isActive: boolean; 
   onNext: () => void;
   taskData?: TaskNode;
+  verifyTRQP: boolean;
+  onToggleTRQP: (value: boolean) => void;
 }) {
   const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
@@ -176,7 +180,7 @@ function ConnectionStep({
     // This component now just reacts to Redux state changes
   }, []);
 
-  const startConnection = async () => {
+  const startConnection = async (verifyTRQP: boolean) => {
     if (!socket || !isConnected) {
       console.error('Not connected to server. Please refresh and try again.');
       return;
@@ -204,7 +208,7 @@ function ConnectionStep({
           const response = await fetch(runUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pipelineType: 'HOLDER_TEST' }),
+            body: JSON.stringify({ pipelineType: 'HOLDER_TEST', verifyTRQP }),
           });
           if (!response.ok) {
             throw new Error(`Failed to start pipeline: ${response.statusText}`);
@@ -260,7 +264,7 @@ function ConnectionStep({
 
       {!hasStarted ? (
         <button
-          onClick={startConnection}
+          onClick={() => startConnection(verifyTRQP)}
           disabled={!isConnected}
           className="btn btn-blue"
         >
@@ -301,6 +305,18 @@ function ConnectionStep({
           )}
         </div>
       )}
+
+      <div className="mt-4">
+        <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            className="form-checkbox h-4 w-4 text-blue-600"
+            checked={verifyTRQP}
+            onChange={(e) => onToggleTRQP(e.target.checked)}
+          />
+          <span>Verify Trust Registry (TRQP) during presentation</span>
+        </label>
+      </div>
 
       <MessageRenderer 
         messages={stepMessages} 
@@ -391,12 +407,14 @@ function ReportStep({
   context, 
   isActive, 
   onRestart,
-  dagData
+  dagData,
+  verifyTRQP = false
 }: { 
   context: any; 
   isActive: boolean; 
   onRestart: () => void;
   dagData?: DAGData;
+  verifyTRQP?: boolean;
 }) {
   const [showFullReport, setShowFullReport] = useState(false);
   const [testResults, setTestResults] = useState({
@@ -407,8 +425,13 @@ function ReportStep({
 
   useEffect(() => {
     if (dagData) {
-      const passed = dagData.nodes.filter(n => n.task.state.status === "passed").length;
-      const failed = dagData.nodes.filter(n => n.task.state.status === "failed").length;
+      const passed = dagData.nodes.filter(
+        n =>
+          n.task.state.status === "passed" ||
+          n.task.state.status === "Accepted" ||
+          n.task.state.status === "Completed"
+      ).length;
+      const failed = dagData.nodes.filter(n => n.task.state.status === "failed" || n.task.state.status === "Error").length;
       setTestResults({
         passed,
         failed,
@@ -439,6 +462,41 @@ function ReportStep({
 
   if (!isActive) return null;
 
+  const proofNode = dagData?.nodes?.find(
+    (n) => n.name?.toLowerCase().includes("proof")
+  );
+  const hasTrqpError =
+    verifyTRQP &&
+    !!proofNode?.task?.state?.errors?.some((e: any) =>
+      String(e).toLowerCase().includes("trqp")
+    );
+  const hasTrqpMessage =
+    verifyTRQP &&
+    !!proofNode?.task?.state?.messages?.some((m: any) =>
+      String(m).toLowerCase().includes("trqp")
+    );
+  const hasTrqpSkipped =
+    verifyTRQP &&
+    proofNode?.task?.state?.messages?.some((m: any) =>
+      String(m).toLowerCase().includes("trqp check skipped")
+    );
+  const trustStatus = verifyTRQP
+    ? hasTrqpError
+      ? "failed"
+      : hasTrqpSkipped
+      ? "skipped"
+      : proofNode &&
+        (proofNode.finished ||
+          proofNode.task.state.runState === "Completed" ||
+          proofNode.task.state.status === "Accepted")
+      ? "passed"
+      : "pending"
+    : "skipped";
+  const trqpMessages =
+    proofNode?.task?.state?.messages?.filter((m: any) =>
+      String(m).toLowerCase().includes("trqp")
+    ) || [];
+
   return (
     <div className="space-y-6">
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -449,7 +507,7 @@ function ReportStep({
       </div>
       
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-3 h-3 bg-green-500 rounded-full"></div>
@@ -472,6 +530,30 @@ function ReportStep({
             <span className="font-medium">Compliance</span>
           </div>
           <p className="text-sm text-gray-600">Protocol compliant</p>
+        </div>
+
+        <div className="bg-white border rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div
+              className={`w-3 h-3 rounded-full ${
+                trustStatus === "passed"
+                  ? "bg-green-500"
+                  : trustStatus === "failed"
+                  ? "bg-red-500"
+                  : "bg-gray-400"
+              }`}
+            ></div>
+            <span className="font-medium">Trust Registry</span>
+          </div>
+          <p className="text-sm text-gray-600">
+            {trustStatus === "skipped"
+              ? "Not requested"
+              : trustStatus === "passed"
+              ? "TRQP authorization/recognition verified"
+              : trustStatus === "failed"
+              ? "TRQP verification failed"
+              : "Awaiting TRQP verification"}
+          </p>
         </div>
       </div>
 
@@ -514,6 +596,26 @@ function ReportStep({
               <span className="font-medium">Completed Tasks:</span>
               <span>{dagData.nodes.filter(n => n.finished).length}</span>
             </div>
+            {verifyTRQP && (
+              <div className="flex justify-between">
+                <span className="font-medium">Trust Registry:</span>
+                <span className={`font-medium ${
+                  trustStatus === "passed"
+                    ? "text-green-600"
+                    : trustStatus === "failed"
+                    ? "text-red-600"
+                    : "text-gray-600"
+                }`}>
+                  {trustStatus === "passed"
+                    ? "TRQP authorization/recognition verified"
+                    : trustStatus === "failed"
+                    ? "TRQP verification failed"
+                    : trustStatus === "skipped"
+                    ? "Not requested"
+                    : "Awaiting TRQP verification"}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Full Report */}
@@ -562,6 +664,16 @@ function ReportStep({
                             <ul className="list-disc list-inside ml-2 mt-1">
                               {node.task.state.errors.map((err, idx) => (
                                 <li key={idx} className="text-red-600">{err}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {verifyTRQP && node.name?.toLowerCase().includes("proof") && trqpMessages.length > 0 && (
+                          <div className="mt-2">
+                            <strong>TRQP Messages:</strong>
+                            <ul className="list-disc list-inside ml-2 mt-1">
+                              {trqpMessages.map((msg, idx) => (
+                                <li key={idx} className="text-gray-600">{msg}</li>
                               ))}
                             </ul>
                           </div>
@@ -653,7 +765,26 @@ export function HolderTest() {
   const [testStartTime, setTestStartTime] = useState<Date | null>(null);
   const [testEndTime, setTestEndTime] = useState<Date | null>(null);
   const [testDuration, setTestDuration] = useState<number | null>(null);
-  
+  const defaultTRQP =
+    Boolean(process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT) ||
+    Boolean(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
+  const [verifyTRQP, setVerifyTRQP] = useState(defaultTRQP);
+
+  // On mount, clear stale holder state and reselect the holder pipeline
+  useEffect(() => {
+    const prep = async () => {
+      try {
+        await fetch(`${API_BASE_URL}/api/select/pipeline?pipeline=HOLDER_TEST`);
+      } catch (e) {
+        console.warn("Failed to select holder pipeline", e);
+      } finally {
+        dispatch(resetTest());
+        setCurrentStep(0);
+      }
+    };
+    prep();
+  }, [dispatch]);
+
   // Get DAG state from Redux
   const dagState = useSelector((state: RootState) => state.dag.dag);
   const invitationUrl = useSelector((state: RootState) => state.test.invitationUrl);
@@ -754,7 +885,7 @@ export function HolderTest() {
       name: "Connection",
       description: "Establish a connection with your holder wallet",
       status: taskData[0] ? getStepStatusFromNode(taskData[0]) : "pending",
-      component: <ConnectionStep context={{}} isActive={currentStep === 0} onNext={() => setCurrentStep(1)} taskData={taskData[0]} />,
+      component: <ConnectionStep context={{}} isActive={currentStep === 0} onNext={() => setCurrentStep(1)} taskData={taskData[0]} verifyTRQP={verifyTRQP} onToggleTRQP={setVerifyTRQP} />,
       isActive: currentStep === 0,
       taskData: taskData[0]
     },
@@ -779,7 +910,8 @@ export function HolderTest() {
           setCurrentStep(0);
           dispatch(resetTest());
         }} 
-        dagData={dagData || undefined} 
+        dagData={dagData || undefined}
+        verifyTRQP={verifyTRQP} 
       />,
       isActive: currentStep === 2
     }
@@ -795,6 +927,7 @@ export function HolderTest() {
         onRestart={() => {
           setCurrentStep(0);
           dispatch(resetTest());
+          fetch(`${API_BASE_URL}/api/select/pipeline?pipeline=HOLDER_TEST`).catch(() => {});
         }}
       />
     </div>

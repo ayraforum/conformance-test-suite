@@ -283,6 +283,10 @@ export const run = async (params?: any) => {
   await ensureInitialized();
   try {
     console.log("[RUN] Starting pipeline execution with params:", params);
+    if (typeof params?.verifyTRQP !== "undefined") {
+      const { setVerifyTRQP } = await import("./state");
+      setVerifyTRQP(Boolean(params.verifyTRQP));
+    }
     if (params?.pipelineType) {
       const pipelineType = params.pipelineType as PipelineType;
       console.log("[RUN] Pipeline override requested:", pipelineType);

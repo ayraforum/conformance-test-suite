@@ -74,7 +74,7 @@ export class AgentController {
   async requestProof(
     connectionId: string,
     proof: ProofRequestPayload
-  ): Promise<void> {
+  ): Promise<any> {
     if (!connectionId) {
       throw new Error("connectionId is required for requestProof");
     }

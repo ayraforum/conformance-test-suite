@@ -108,6 +108,16 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
         inlineContext
       );
 
+      if (process.env.DEBUG_AYRA_CREDENTIAL === "true") {
+        this.addMessage(
+          `Issuing credential (DEBUG_AYRA_CREDENTIAL=true): ${JSON.stringify(
+            credential,
+            null,
+            2
+          )}`
+        );
+      }
+
       this.addMessage("Issuing Ayra Business Card (LDP VC) via Issue Credential v2 (ld-proof)");
       const issued: any = await adapter.issueLdProofCredential({
         connection_id: connectionRecord.id,

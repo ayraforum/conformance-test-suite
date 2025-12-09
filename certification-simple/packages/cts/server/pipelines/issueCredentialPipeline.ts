@@ -13,6 +13,9 @@ export default class IssueCredentialPipeline {
   _dag: DAG;
   _controller: AgentController;
   _did: string;
+  private static FALLBACK_CRED_DEF =
+    process.env.HOLDER_TEST_CRED_DEF_ID ||
+    "did:indy:bcovrin:test:HYfhCRaKhccZtr7v8CHTe8/anoncreds/v0/CLAIM_DEF/2815242/latest";
 
   constructor(controller: AgentController) {
     this._controller = controller;
@@ -91,8 +94,10 @@ export default class IssueCredentialPipeline {
       (overrideAgent === "auto" ? referenceAgent : overrideAgent);
 
     if (issuerAgent === "acapy" && !options.credentialDefinitionId) {
-      throw new Error(
-        "[IssueCredentialPipeline] ACA-Py issuer requires ISSUER_CRED_DEF_ID (or LATEST_CRED_DEF_ID from a prior issuance) to be set."
+      options.credentialDefinitionId = IssueCredentialPipeline.FALLBACK_CRED_DEF;
+      console.warn(
+        `[IssueCredentialPipeline] No credential definition id set for ACA-Py; using fallback ${options.credentialDefinitionId}. ` +
+          "Set ISSUER_CRED_DEF_ID or LATEST_CRED_DEF_ID to override."
       );
     }
 

@@ -23,6 +23,7 @@ export type State = {
   issuerController?: AgentController;
   issuerAgentType?: "credo" | "acapy";
   credentialFormat?: "anoncreds" | "w3c";
+  verifyTRQP?: boolean;
 };
 
 const _state: State = {};
@@ -63,6 +64,10 @@ export const setConfig = (config: AgentConfiguration) => {
   _state.config = config;
 };
 
+export const setVerifyTRQP = (flag?: boolean) => {
+  _state.verifyTRQP = flag;
+};
+
 export { _state as state };
 
 export const selectPipeline = (type: PipelineType): Pipeline => {
@@ -73,7 +78,10 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
       if (!_state.controller) {
         throw new Error("agent controller not defined");
       }
-      pipe = new HolderTestPipeline(_state.controller);
+      pipe = new HolderTestPipeline(
+        _state.controller,
+        _state.verifyTRQP ?? false
+      );
       break;
     case PipelineType.ISSUER_TEST:
       const issuerController = _state.issuerController ?? _state.controller;

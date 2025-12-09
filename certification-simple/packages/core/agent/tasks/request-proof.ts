@@ -23,6 +23,7 @@ export type RequestProofOptions = {
 export class RequestProofTask extends BaseRunnableTask {
   private controller: AgentController;
   private _options: RequestProofOptions;
+  private _presentationRecord: any;
 
   constructor(
     controller: AgentController,
@@ -64,46 +65,10 @@ export class RequestProofTask extends BaseRunnableTask {
       }
       this.addMessage("Requesting proof via controller");
 
-      await this.controller.requestProof(connStr, this._options.proof);
+      const proofRecord = await this.controller.requestProof(connStr, this._options.proof);
+      this._presentationRecord = proofRecord;
       if (this._options.checkTrustRegistry) {
-        try {
-          console.log("verifying issuer against GAN Trust Registry....");
-          console.log("creating client with ", this._options.trqpURL);
-          const configuration = new Configuration({
-            basePath: this._options.trqpURL,
-          });
-
-          const issuerDID = "did:web:samplenetwork.foundation";
-          console.log(
-            `Checking if issuer ${issuerDID} is listed in GAN Registry under GAN EGF and Authorization Namespace`
-          );
-          this.addMessage(
-            `Checking if issuer ${issuerDID} is listed in GAN Registry under GAN EGF and Authorization Namespace`
-          );
-
-  //        const client = new TRQPClient(configuration);
-  //        client.registryAPI
-  //          .entitiesEntityVIDAuthorizationGet(
-  //            "did:web:samplenetwork.foundation"
-  //          )
-  //          .then((resp) => {
-  //            console.log(resp.data);
-  //          });
-
-  //        const resp =
-  //          await client.registryAPI.entitiesEntityVIDAuthorizationGet(
-  //            issuerDID
-  //          );
-//          if (resp.status === 200) {
-//            console.log("Listed in GAN Registry", resp.data);
-//            this.addMessage("Found listing in GAN Registry");
-//          } else {
-//            console.log("Not listed in GAN Registry!", resp.data);
-//            throw new Error("Not listed in GAN Registry!");
-//          }
-        } catch (e) {
-          console.error(e.code);
-        }
+        await this.runTrqpChecks(proofRecord);
       }
       this.setCompleted();
       this.setAccepted();
@@ -123,7 +88,87 @@ export class RequestProofTask extends BaseRunnableTask {
       value: {
         message: "Proof request completed successfully",
         state: this.state,
+        presentation: this._presentationRecord,
       },
     };
+  }
+
+  private async runTrqpChecks(proofRecord: any): Promise<void> {
+    const baseUrl =
+      this._options.trqpURL ||
+      process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT ||
+      process.env.NEXT_PUBLIC_TRQP_LOCAL_URL;
+    if (!baseUrl) {
+      this.addMessage("TRQP check skipped: no TRQP endpoint configured");
+      return;
+    }
+    const vc = this.extractVc(proofRecord);
+    if (!vc) {
+      this.addError("TRQP check skipped: no verifiable credential found in presentation");
+      return;
+    }
+    const issuerDid = vc.issuer?.id || vc.issuer;
+    const credType = Array.isArray(vc.type) ? vc.type.join(",") : String(vc.type || "");
+    const payload = { issuer: issuerDid, type: credType, credential: vc };
+
+    // Authorization check
+    this.addMessage("TRQP authorization check started");
+    try {
+      const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/trqp/authorization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`TRQP authorization failed: ${resp.status} ${text}`);
+      }
+      this.addMessage("TRQP authorization check passed");
+    } catch (err) {
+      this.addError(`TRQP authorization failed: ${err}`);
+      throw err;
+    }
+
+    // Recognition check
+    this.addMessage("TRQP recognition check started");
+    try {
+      const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/trqp/recognition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`TRQP recognition failed: ${resp.status} ${text}`);
+      }
+      this.addMessage("TRQP recognition check passed");
+    } catch (err) {
+      this.addError(`TRQP recognition failed: ${err}`);
+      throw err;
+    }
+  }
+
+  private extractVc(proofRecord: any): any | null {
+    const attaches =
+      proofRecord?.presentation?.presentations_attach ||
+      proofRecord?.pres?.presentations_attach ||
+      proofRecord?.presentations_attach;
+    if (!attaches || !attaches.length) return null;
+    const data = attaches[0]?.data;
+    if (!data) return null;
+    const b64 = data.base64;
+    if (!b64) return null;
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(b64, "base64").toString("utf8")
+      );
+      const vc =
+        decoded.verifiableCredential?.[0] ||
+        decoded.verifiableCredential ||
+        decoded;
+      return vc;
+    } catch {
+      return null;
+    }
   }
 }
