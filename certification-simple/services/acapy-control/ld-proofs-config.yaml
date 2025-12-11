@@ -1,0 +1,11 @@
+acapy_agent.vc.ld_proofs:
+  # Default proof type for JSON-LD issuance/verification
+  default_proof_type: Ed25519Signature2020
+  proof_types:
+    Ed25519Signature2020:
+      module: acapy_agent.vc.ld_proofs.suites.ed25519_signature_2020
+      key_type: ed25519
+    # Uncomment to enable BBS+ later when both sides support it
+    # BbsBlsSignature2020:
+    #   module: acapy_agent.vc.ld_proofs.suites.bbs_bls_signature_2020
+    #   key_type: bls12381g2

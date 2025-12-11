@@ -5,6 +5,7 @@ export type ProofRequestPayload = RequestProofOptions["proof"];
 
 export type ControllerInvitation = {
   id?: string;
+  outOfBandId?: string;
   url: string;
   raw?: unknown;
 };

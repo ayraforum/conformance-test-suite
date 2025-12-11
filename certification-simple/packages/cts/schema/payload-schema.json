@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ayra./schemas/ayra-card-payload.json",
+  "title": "Ayra Card Payload (DEPRECATED)",
+  "description": "DEPRECATED: This schema is superseded by payload-schema-unified.json which aligns with the embedded payload structure in ayra-card-schema.json. Please use payload-schema-unified.json for new implementations.",
+  "deprecated": true,
+  "type": "object",
+  "properties": {
+    "payloadID": {
+      "type": "string",
+      "description": "Unique identifier for the payload",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "payloadType": {
+      "type": "string",
+      "description": "Indicates the kind of payload - unmanaged string, max 255 characters",
+      "minLength": 1,
+      "maxLength": 255,
+      "examples": ["email", "3I88GH", "OID4VP:DCQL", "agent-DID"]
+    },
+    "dataType": {
+      "type": "string",
+      "description": "Indicates the data type of the  - unmanaged string, max 255 characters, optional",
+      "minLength": 1,
+      "maxLength": 255,
+      "examples": ["mime:image/jpeg"]
+    },
+    "encodingType": {
+      "type": "string",
+      "description": "Indicates the encoding type type of the  - unmanaged string, max 255 characters, optional",
+      "minLength": 1,
+      "maxLength": 255,
+      "examples": ["base64","CBOR",]
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human-readable description of the payload"
+    },
+    "payloadData": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "JSON object containing payload-specific data",
+          "additionalProperties": true
+        },
+        {
+          "type": "string",
+          "description": "Base64-encoded CBOR data",
+          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+          "contentEncoding": "base64",
+          "contentMediaType": "application/cbor"
+        }
+      ]
+    }
+  },
+  "required": [
+    "payloadID",
+    "payloadType",
+    "payloadData"
+  ],
+  "additionalProperties": false
+}

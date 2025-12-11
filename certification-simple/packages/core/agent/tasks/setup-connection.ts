@@ -42,7 +42,7 @@ export class SetupConnectionTask extends BaseRunnableTask {
       await this.controller.establishConnection();
     this._oobInvitation = invitation;
     eventEmitter.emit("invitation", invitation.url);
-    console.log("Verifier OOB Invitation URL:\n", invitationUrl);
+    console.log("Invitation URL:\n", invitationUrl);
     qrcord.generate(invitationUrl, { small: true });
 
     this.setRunState(RunnableState.PENDING);

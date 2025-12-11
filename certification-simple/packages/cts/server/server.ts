@@ -123,7 +123,12 @@ const initCredoAgent = async () => {
     const referenceDomain = resolveReferenceAgentDomain();
     const overrideDomain = resolveOverrideAgentDomain();
     let ngrokDomain: string | null = referenceDomain;
+    // If reference and issuer are split, pick the appropriate domain.
+    // Avoid colliding with the ACA-Py sidecar when both reference and issuer are ACA-Py:
+    // in that case, prefer the issuer override domain for this app tunnel.
     if (referenceAgent !== "credo" && issuerOverrideAgent === "credo") {
+      ngrokDomain = overrideDomain || referenceDomain;
+    } else if (referenceAgent === "acapy" && issuerOverrideAgent === "acapy") {
       ngrokDomain = overrideDomain || referenceDomain;
     }
     try {
@@ -232,6 +237,20 @@ const configureIssuerController = async () => {
     process.env.ISSUER_EFFECTIVE_AGENT = effective;
     return;
   }
+  if (issuerOverrideAgent === "acapy") {
+    if (!acapyAdapter) {
+      await initAcaPyController();
+    }
+    if (!acapyAdapter) {
+      throw new Error("[Issuer Override] ACA-Py adapter not initialized");
+    }
+    const overrideController = new AgentController(acapyAdapter);
+    setIssuerController(overrideController);
+    console.log("[Issuer Override] Issuer controller set to ACA-Py");
+    setIssuerAgentType("acapy");
+    process.env.ISSUER_EFFECTIVE_AGENT = "acapy";
+    return;
+  }
   if (issuerOverrideAgent === "credo") {
     if (!serverState.agent) {
       throw new Error(
@@ -264,6 +283,10 @@ export const run = async (params?: any) => {
   await ensureInitialized();
   try {
     console.log("[RUN] Starting pipeline execution with params:", params);
+    if (typeof params?.verifyTRQP !== "undefined") {
+      const { setVerifyTRQP } = await import("./state");
+      setVerifyTRQP(Boolean(params.verifyTRQP));
+    }
     if (params?.pipelineType) {
       const pipelineType = params.pipelineType as PipelineType;
       console.log("[RUN] Pipeline override requested:", pipelineType);

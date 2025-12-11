@@ -8,15 +8,19 @@ import {
   RequestProofTask,
   RequestProofOptions,
 } from "@demo/core";
+import { randomUUID } from "crypto";
 
 import { DAG } from "@demo/core/pipeline/src/dag";
+import { state as serverState } from "../state";
 
 export default class HolderTestPipeline {
   _dag: DAG;
   _controller: AgentController;
+  _verifyTRQP: boolean;
 
-  constructor(controller: AgentController) {
+  constructor(controller: AgentController, verifyTRQP = false) {
     this._controller = controller;
+    this._verifyTRQP = verifyTRQP;
     this._dag = this._make(controller);
   }
 
@@ -39,51 +43,63 @@ export default class HolderTestPipeline {
       "Establish a connection with the holder wallet"
     );
 
-    // Determine the credential definition identifier to request in the proof
-    const fallbackCredDefId =
-      "did:indy:bcovrin:test:HYfhCRaKhccZtr7v8CHTe8/anoncreds/v0/CLAIM_DEF/2815242/latest";
-    const credDefId =
-      process.env.LATEST_CRED_DEF_ID ??
-      process.env.HOLDER_TEST_CRED_DEF_ID ??
-      fallbackCredDefId;
-
-    if (!process.env.LATEST_CRED_DEF_ID && !process.env.HOLDER_TEST_CRED_DEF_ID) {
-      console.warn(
-        `[HolderTestPipeline] Using fallback credential definition id ${fallbackCredDefId}. ` +
-          "Issue a credential in this session or set HOLDER_TEST_CRED_DEF_ID to target a specific credential."
-      );
-    } else {
-      console.log(
-        `[HolderTestPipeline] Using credential definition id ${credDefId} for holder proof request.`
-      );
-    }
-
-    // Define proof request structure for credential presentation
+    // Define DIF/ld-proof presentation request targeting Ayra Business Card
+    const challenge = randomUUID();
     const proof = {
       protocolVersion: "v2",
       proofFormats: {
-        anoncreds: {
-          name: "proof-request",
-          version: "1.0",
-          requested_attributes: {
-            name: {
-              name: "type",
-              restrictions: [
-                {
-                  cred_def_id: credDefId,
-                },
-              ],
-            },
+        dif: {
+          options: {
+            challenge,
+            domain: "https://cts.issuer",
           },
-          requested_predicates: {},
+          presentation_definition: {
+            name: "Ayra Business Card LDP",
+            purpose: "Present an Ayra Business Card signed as a Linked Data Proof VC",
+            format: {
+              ldp_vp: {
+                proof_type: ["Ed25519Signature2020"],
+              },
+            },
+            input_descriptors: [
+              {
+                id: "ayra-business-card",
+                purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
+                schema: [
+                  { uri: "https://www.w3.org/2018/credentials/v1" },
+                  { uri: "https://www.w3.org/ns/credentials/v2" },
+                ],
+                constraints: {
+                  fields: [
+                    {
+                      path: ["$.type", "$.vc.type", "$.credential.type"],
+                      filter: {
+                        type: "array",
+                        contains: { const: "AyraBusinessCard" },
+                      },
+                    },
+                    {
+                      path: ["$.proof.type", "$.proof[0].type"],
+                      filter: {
+                        type: "string",
+                        const: "Ed25519Signature2020",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
         },
       },
     };
 
     const requestProofOptions: RequestProofOptions = {
       proof: proof,
-      checkTrustRegistry: true,
-      trqpURL: "https://dev.gan.technology/tr",
+      checkTrustRegistry: this._verifyTRQP || serverState.verifyTRQP || false,
+      trqpURL:
+        process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT ||
+        process.env.NEXT_PUBLIC_TRQP_LOCAL_URL,
     };
 
     // Create request proof task

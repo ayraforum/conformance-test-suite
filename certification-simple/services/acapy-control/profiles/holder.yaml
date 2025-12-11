@@ -1,26 +1,25 @@
-label: "CTS ACA-Py Issuer"
+label: "CTS ACA-Py Holder"
 wallet:
   type: askar
-  name: cts-issuer-wallet
-  key: cts-issuer-wallet-key
+  name: cts-holder-wallet
+  key: cts-holder-wallet-key
 ports:
-  admin: 8031
-  http: 8041
+  admin: 8032
+  http: 8043
 transport:
   - http
 endpoints: []
 genesis_url: "https://test.bcovrin.vonx.io/genesis"
 extra_args:
   - "--auto-accept-requests"
-  - "--auto-store-credential"
-  - "--auto-respond-messages"
+  # For internal reference holder, auto-respond to offers and auto-store to keep flows hands-free
   - "--auto-respond-credential-offer"
-  - "--auto-respond-credential-request"
+  - "--auto-store-credential"
   - "--auto-respond-presentation-request"
   - "--emit-new-didcomm-prefix"
   - "--experimental-didcomm-v2"
   - "--webhook-url"
-  - "http://acapy-control:9001/webhook"
+  - "http://acapy-holder-control:9003/webhook"
   - "--no-ledger"
   - "--plugin"
   - "acapy_agent.vc.ld_proofs"

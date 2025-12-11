@@ -20,13 +20,19 @@ RUN apt-get update \
      libffi-dev \
      libsodium23 \
      libpq5 \
+     git \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-  && pip install --no-cache-dir aries-cloudagent anoncreds aries-askar indy-credx indy_vdr
+  && pip install --no-cache-dir \
+     "acapy-agent[indy,bbs,askar]==1.4.0" \
+     "didcomm-messaging==0.1.1a0" \
+     anoncreds \
+     indy-credx \
+     indy_vdr
 
 COPY . .
 

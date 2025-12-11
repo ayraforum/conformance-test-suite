@@ -91,9 +91,24 @@ docker build -t cts-package .
 docker run -p 5005:5005 -e NGROK_AUTH_TOKEN=your_token_here cts-package
 ```
 
+### **Dev Container (with ACA-Py sidecar)**
+- Ensure Docker is running, then open the repo in VS Code and “Reopen in Container” (uses `.devcontainer/devcontainer.json`). This brings up the `dev` container and the `acapy-control` sidecar.
+- Inside the dev container:
+  - Start API: `pnpm --filter cts-3 start:server`
+  - Start frontend: `pnpm --filter cts-3 dev`
+  - Run Ayra schema validation: `npm run validate:ayra-card-context -- --sample schema/example-ayra-card.json --context schema/AyraBusinessCardV1R0.jsonld --context-url https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld`
+  - ACA-Py admin endpoint (default): `http://acapy-control:9001`
+
 ## 🧪 Testing Framework
 
 ### **Available Test Types**
+
+#### **Ayra Card Context/Schema Validation** (`npm run validate:ayra-card-context`)
+Validates that the Ayra Card JSON Schema, JSON-LD context, and (optionally) a sample credential align before running DIDComm flows.
+- Defaults target `schema/ayra-card-business-card-schema.json` and `schema/example-ayra-card.json` from the upstream Ayra repo.
+- Provide a JSON-LD context file if available (for example `schema/AyraBusinessCardV1R0.jsonld` or place it in `public/contexts/`).
+- Enforce the expected context URL with `--context-url` (e.g., `https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld` or your local host).
+- Example: `npm run validate:ayra-card-context -- --sample schema/example-ayra-card.json --context schema/AyraBusinessCardV1R0.jsonld --context-url https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld`
 
 #### **1. Holder Testing** (`npm run test-holder`)
 Tests verifier functionality by creating connection invitations and proof requests:

@@ -86,6 +86,16 @@ app.get("/api/invitation", (req, res) => {
   res.json({ invite: state?.currentInvitation });
 });
 
+app.post("/api/card-format", (req, res) => {
+  const fmt = (req.body?.format || "").toLowerCase();
+  if (fmt !== "anoncreds" && fmt !== "w3c") {
+    return res.status(400).json({ error: "format must be 'anoncreds' or 'w3c'" });
+  }
+  const { setCredentialFormat } = require("./state");
+  setCredentialFormat(fmt);
+  res.json({ format: fmt });
+});
+
 // Catch-all route for debugging
 app.use('*', (req, res) => {
   console.log(`Unhandled route: ${req.method} ${req.originalUrl}`);

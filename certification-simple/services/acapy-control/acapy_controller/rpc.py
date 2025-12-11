@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import os
 
 from fastapi import APIRouter, HTTPException
 from httpx import HTTPStatusError
@@ -21,6 +22,10 @@ from app.schemas.agents import (
   ProofRequest,
   ProofVerifyRequest,
   WaitForConnectionRequest,
+  CreateDidRequest,
+  CreateDidResponse,
+  ReceiveInvitationRequest,
+  ReceiveInvitationResponse,
 )
 
 
@@ -35,17 +40,25 @@ class RpcRouter:
     self.router.post("/agent/start", response_model=AgentStartResponse)(self.start_agent)
     self.router.post("/agent/stop", response_model=AgentStopResponse)(self.stop_agent)
     self.router.post("/connections/create-invitation", response_model=InvitationResponse)(self.create_invitation)
+    self.router.post("/connections/receive-invitation", response_model=ReceiveInvitationResponse)(self.receive_invitation)
     self.router.post("/proofs/request", response_model=ProofExchangeResponse)(self.request_proof)
     self.router.post("/proofs/verify", response_model=ProofExchangeResponse)(self.verify_proof)
     self.router.post("/credentials/offer", response_model=CredentialOfferResponse)(self.offer_credential)
     self.router.get("/events/stream")(self.stream_events)
     self.router.post("/connections/wait", response_model=ConnectionRecordResponse)(self.wait_for_connection)
+    self.router.post("/wallet/did/create", response_model=CreateDidResponse)(self.create_did)
 
   async def start_agent(self, body: AgentStartRequest):
     try:
       profile_path = Path(__file__).resolve().parent.parent / "profiles" / f"{body.profile}.yaml"
       profile = await self.manager.start(profile_path)
-      response = AgentStartResponse(status="started", profile=body.profile, admin_url=profile.admin_url)
+      public_admin_host = os.getenv("ACAPY_ADMIN_HOST") or os.getenv("ACAPY_PUBLIC_ADMIN_HOST")
+      admin_url = (
+        f"http://{public_admin_host}:{profile.admin_port}"
+        if public_admin_host
+        else profile.admin_url
+      )
+      response = AgentStartResponse(status="started", profile=body.profile, admin_url=admin_url)
       await self.events.publish("agent_started", response.dict())
       return response
     except Exception as exc:  # pylint: disable=broad-except
@@ -65,6 +78,8 @@ class RpcRouter:
     response = InvitationResponse(
       invitation_url=payload["invitation_url"],
       connection_id=payload["connection_id"],
+      out_of_band_id=payload.get("out_of_band_id") or payload.get("oob_id"),
+      oob_id=payload.get("oob_id") or payload.get("out_of_band_id"),
       invitation=payload["invitation"],
     )
     await self.events.publish("invitation_created", response.dict(by_alias=True))
@@ -128,14 +143,50 @@ class RpcRouter:
   async def wait_for_connection(self, body: WaitForConnectionRequest):
     if not self.manager.is_running:
       raise HTTPException(status_code=400, detail="Agent not started")
-    record = await self.manager.wait_for_connection(body.connection_id, body.timeout_ms or 120000)
-    response = ConnectionRecordResponse(
-      connection_id=record.get("connection_id", body.connection_id),
-      state=record.get("state") or record.get("rfc23_state") or "unknown",
-      record=record,
-    )
-    await self.events.publish("connection_ready", response.dict())
-    return response
+    try:
+      record = {}
+      if body.oob_id:
+        record = await self.manager.wait_for_oob_connection(body.oob_id, body.timeout_ms or 120000)
+      if (not record) and body.connection_id:
+        record = await self.manager.wait_for_connection(body.connection_id, body.timeout_ms or 120000)
+      if not record:
+        raise HTTPException(status_code=504, detail="Timed out waiting for connection")
+      response = ConnectionRecordResponse(
+        connection_id=record.get("connection_id", body.connection_id),
+        state=record.get("state") or record.get("rfc23_state") or "unknown",
+        record=record,
+      )
+      await self.events.publish("connection_ready", response.dict())
+      return response
+    except HTTPException:
+      raise
+    except Exception as exc:  # pylint: disable=broad-except
+      raise HTTPException(status_code=504, detail=str(exc)) from exc
+
+  async def create_did(self, body: CreateDidRequest):
+    if not self.manager.is_running:
+      raise HTTPException(status_code=400, detail="Agent not started")
+    did = await self.manager.create_did_key(body.key_type)
+    return CreateDidResponse(did=did)
+
+  async def receive_invitation(self, body: ReceiveInvitationRequest):
+    if not self.manager.is_running:
+      # Auto-start the holder/target agent using configured profile
+      profile_name = os.getenv("ACAPY_PROFILE") or "holder"
+      try:
+        profile_path = Path(__file__).resolve().parent.parent / "profiles" / f"{profile_name}.yaml"
+        await self.manager.start(profile_path)
+      except Exception as exc:  # pylint: disable=broad-except
+        raise HTTPException(status_code=500, detail=f"Failed to start agent: {exc}") from exc
+    try:
+      record = await self.manager.receive_invitation(body.invitation)
+      return ReceiveInvitationResponse(
+        connection_id=record.get("connection_id"),
+        oob_id=record.get("oob_id") or record.get("out_of_band_id"),
+        record=record,
+      )
+    except Exception as exc:  # pylint: disable=broad-except
+      raise HTTPException(status_code=500, detail=str(exc)) from exc
 
   async def stream_events(self):
     queue = await self.events.subscribe()

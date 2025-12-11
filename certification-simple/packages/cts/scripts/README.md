@@ -39,6 +39,19 @@ Runs both tests in sequence to validate the complete system:
 2. Tests real Credo agent as holder 
 3. Provides comprehensive summary
 
+### 🛂 Ayra Card Schema/Context Validation
+
+#### `npm run validate:ayra-card-context`
+Validates the Ayra Card JSON Schema, JSON-LD context, and (optionally) a sample credential:
+- Defaults target the files dropped from `ayracards-concept/technical/schema`: `schema/ayra-card-business-card-schema.json` and `schema/example-ayra-card.json`.
+- Provide a JSON-LD context file if you have it (e.g., `schema/AyraBusinessCardV1R0.jsonld` or serve it from `public/contexts/`).
+- Set `--context-url` if you want the sample `@context` array checked (for example `https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld` or your local host path).
+
+Example:
+```bash
+npm run validate:ayra-card-context -- --context schema/AyraBusinessCardV1R0.jsonld --context-url https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld --sample schema/example-ayra-card.json
+```
+
 ## Prerequisites
 
 1. **Server Running**: Start the server first:

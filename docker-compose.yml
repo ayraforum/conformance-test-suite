@@ -23,6 +23,7 @@ services:
       ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
       ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
       ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+      ACAPY_HOLDER_CONTROL_URL: ${ACAPY_HOLDER_CONTROL_URL:-http://acapy-holder-control:9003}
       SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
     ports:
       - "3000:3000" # Frontend
@@ -34,6 +35,7 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - acapy-control
+      - acapy-holder-control
     volumes:
       - ./:/workspaces/conformance-test-suite:cached
       - pnpm-store:/pnpm
@@ -65,6 +67,14 @@ services:
       ACAPY_CONTROL_URL: ${ACAPY_CONTROL_URL:-http://acapy-control:9001}
       ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
       SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
+      ACAPY_ENDPOINT: ${ACAPY_ENDPOINT:-http://acapy-control:8041}
+      ACAPY_INVITE_BASE_URL: ${ACAPY_INVITE_BASE_URL:-http://acapy-control:8041}
+      ACAPY_HOLDER_CONTROL_URL: ${ACAPY_HOLDER_CONTROL_URL:-http://acapy-holder-control:9003}
+      ACAPY_HOLDER_ENDPOINT: ${ACAPY_HOLDER_ENDPOINT:-http://acapy-holder-control:8043}
+      ACAPY_HOLDER_INVITE_BASE_URL: ${ACAPY_HOLDER_INVITE_BASE_URL:-http://acapy-holder-control:8043}
+      ACAPY_AUTO_SEND_INVITE_TO_INTERNAL_HOLDER: ${ACAPY_AUTO_SEND_INVITE_TO_INTERNAL_HOLDER:-false}
+      NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT: ${NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT:-}
+      NEXT_PUBLIC_TRQP_LOCAL_URL: ${NEXT_PUBLIC_TRQP_LOCAL_URL:-}
     ports:
       - "3000:3000"
       - "5005:5005"
@@ -72,6 +82,9 @@ services:
   acapy-control:
     build:
       context: ./certification-simple/services/acapy-control
+    volumes:
+      # TEMP: expose local Ayra context until hosted at a stable URL
+      - ./certification-simple/packages/cts/schema:/app/schema:ro
     ports:
       - "9001:9001"
       - "8041:8041"
@@ -84,6 +97,25 @@ services:
       VERIFIER_NGROK_DOMAIN: ${VERIFIER_NGROK_DOMAIN:-${VERIFIER_TEST_NGROK_DOMAIN:-}}
       ACAPY_ENDPOINT: ${ACAPY_ENDPOINT:-}
       ACAPY_INVITE_BASE_URL: ${ACAPY_INVITE_BASE_URL:-}
+      ACAPY_ADMIN_HOST: ${ACAPY_ADMIN_HOST:-acapy-control}
+      ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+
+  acapy-holder-control:
+    build:
+      context: ./certification-simple/services/acapy-control
+    volumes:
+      # TEMP: expose local Ayra context until hosted at a stable URL
+      - ./certification-simple/packages/cts/schema:/app/schema:ro
+    ports:
+      - "9003:9003"
+      - "8043:8043"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      ACAPY_ADMIN_HOST: ${ACAPY_HOLDER_ADMIN_HOST:-acapy-holder-control}
+      ACAPY_PROFILE: ${ACAPY_HOLDER_PROFILE:-holder}
+      ACAPY_ENDPOINT: ${ACAPY_HOLDER_ENDPOINT:-http://acapy-holder-control:8043}
+      ACAPY_INVITE_BASE_URL: ${ACAPY_HOLDER_INVITE_BASE_URL:-http://acapy-holder-control:8043}
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9003"]
 
   acapy-ngrok:
     image: ngrok/ngrok:alpine

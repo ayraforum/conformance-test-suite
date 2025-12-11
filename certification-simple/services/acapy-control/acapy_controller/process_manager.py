@@ -21,6 +21,10 @@ class AcaPyProcessManager:
   def __init__(self) -> None:
     self._process: Optional[asyncio.subprocess.Process] = None
     self._profile: Optional[ProfileConfig] = None
+    # Track connection lifecycle based on webhooks to avoid long polling timeouts.
+    self._active_connections: set[str] = set()
+    self._invitation_map: dict[str, str] = {}
+    self._oob_by_invitation: dict[str, str] = {}
 
   @property
   def admin_url(self) -> str:
@@ -67,11 +71,46 @@ class AcaPyProcessManager:
 
     async with httpx.AsyncClient() as client:
       resp = await client.post(
-        f"{self.admin_url}/connections/create-invitation",
-        params={"multi_use": str(multi_use).lower()},
+        f"{self.admin_url}/out-of-band/create-invitation",
+        json={
+          "handshake_protocols": [
+            "https://didcomm.org/didexchange/1.0",
+            "https://didcomm.org/didexchange/1.1",
+          ],
+          "use_public_did": False,
+          "multi_use": multi_use,
+          "create_connection": True,
+        },
       )
       resp.raise_for_status()
-      return resp.json()
+      data = resp.json()
+      invitation = data.get("invitation") or {}
+      invitation_msg_id = invitation.get("@id") or invitation.get("id")
+      oob_id_value = data.get("oob_id") or data.get("out_of_band_id")
+      if invitation_msg_id and oob_id_value:
+        self._oob_by_invitation[invitation_msg_id] = oob_id_value
+      return {
+        "invitation_url": data.get("invitation_url"),
+        "connection_id": data.get("connection_id"),
+        "out_of_band_id": data.get("out_of_band_id") or data.get("oob_id"),
+        "oob_id": data.get("oob_id") or data.get("out_of_band_id"),
+        "invitation": data.get("invitation"),
+      }
+
+  async def receive_invitation(self, invitation: dict) -> dict:
+    """Accept an out-of-band invitation (simulating a holder scanning QR)."""
+    if not self._profile:
+      raise RuntimeError("ACA-Py not started")
+
+    payload = dict(invitation)
+    async with httpx.AsyncClient() as client:
+      resp = await client.post(
+        f"{self.admin_url}/out-of-band/receive-invitation",
+        json=payload,
+      )
+      resp.raise_for_status()
+      data = resp.json()
+      return data.get("result") or data
 
   async def request_proof(self, body: dict) -> dict:
     if not self._profile:
@@ -114,9 +153,15 @@ class AcaPyProcessManager:
       resp.raise_for_status()
       return resp.json()
 
-  async def wait_for_connection(self, connection_id: str, timeout_ms: int = 120000) -> dict:
+  async def wait_for_connection(self, connection_id: str, timeout_ms: int = 240000) -> dict:
     deadline = time.monotonic() + timeout_ms / 1000
     while time.monotonic() < deadline:
+      if connection_id in self._active_connections:
+        record = await self.get_connection(connection_id)
+        if record:
+          return record
+        # Webhook told us it's active but record lookup failed; return a minimal record.
+        return {"connection_id": connection_id, "state": "active"}
       record = await self.get_connection(connection_id)
       if not record:
         await asyncio.sleep(1)
@@ -128,14 +173,103 @@ class AcaPyProcessManager:
       await asyncio.sleep(1)
     raise RuntimeError(f"Connection {connection_id} did not become active in time")
 
+  async def wait_for_oob_connection(self, oob_id: str, timeout_ms: int = 240000) -> dict:
+    deadline = time.monotonic() + timeout_ms / 1000
+    connection_id: Optional[str] = self._invitation_map.get(oob_id)
+    while time.monotonic() < deadline:
+      # Refresh mapping from any webhook-derived data
+      connection_id = self._invitation_map.get(oob_id) or connection_id
+      if connection_id:
+        try:
+          return await self.wait_for_connection(
+            connection_id,
+            int((deadline - time.monotonic()) * 1000),
+          )
+        except Exception:
+          # fall through and keep polling
+          pass
+
+      record = await self.get_oob_record(oob_id)
+      connection_id = (
+        record.get("connection_id")
+        or self._invitation_map.get(oob_id)
+        or connection_id
+      )
+      # Some versions expose 'state' or 'trace' but no connection yet; check state for completeness
+      oob_state = record.get("state") or record.get("oob_state")
+      if oob_state and oob_state in {"done", "completed"} and connection_id:
+        try:
+          return await self.wait_for_connection(
+            connection_id,
+            int((deadline - time.monotonic()) * 1000),
+          )
+        except Exception:
+          pass
+      await asyncio.sleep(1)
+    raise RuntimeError(f"OOB {oob_id} did not yield an active connection in time")
+
+  def handle_webhook(self, topic: str, body: dict) -> None:
+    topic = (topic or "").replace("-", "_")
+    if topic == "connections":
+      state = body.get("state") or body.get("rfc23_state")
+      conn_id = body.get("connection_id")
+      invitation_msg_id = body.get("invitation_msg_id") or body.get("invi_msg_id")
+      oob_id = body.get("oob_id") or body.get("out_of_band_id")
+      if invitation_msg_id and conn_id:
+        self._invitation_map[invitation_msg_id] = conn_id
+        if invitation_msg_id in self._oob_by_invitation:
+          self._invitation_map[self._oob_by_invitation[invitation_msg_id]] = conn_id
+      if oob_id and conn_id:
+        self._invitation_map[oob_id] = conn_id
+      if state in {"active", "completed"} and conn_id:
+        self._active_connections.add(conn_id)
+    elif topic in {"out_of_band", "out_of_band_v1_1", "out_of_band_v1"}:
+      state = body.get("state") or body.get("oob_state")
+      conn_id = body.get("connection_id")
+      oob_id = body.get("oob_id") or body.get("out_of_band_id") or body.get("invitation_id")
+      invitation_msg_id = body.get("invitation_msg_id") or body.get("invi_msg_id")
+      if invitation_msg_id and conn_id:
+        self._invitation_map[invitation_msg_id] = conn_id
+        if invitation_msg_id in self._oob_by_invitation:
+          self._invitation_map[self._oob_by_invitation[invitation_msg_id]] = conn_id
+      if oob_id and conn_id:
+        self._invitation_map[oob_id] = conn_id
+      if state in {"done", "completed"} and conn_id:
+        self._active_connections.add(conn_id)
+
   async def get_connection(self, connection_id: str) -> dict:
     if not self._profile:
       raise RuntimeError("ACA-Py not started")
     async with httpx.AsyncClient() as client:
       resp = await client.get(f"{self.admin_url}/connections/{connection_id}")
+      if resp.status_code == 404:
+        return {}
       resp.raise_for_status()
       data = resp.json()
       return data.get("result") or data.get("connection") or data
+
+  async def get_oob_record(self, oob_id: str) -> dict:
+    if not self._profile:
+      raise RuntimeError("ACA-Py not started")
+    async with httpx.AsyncClient() as client:
+      resp = await client.get(f"{self.admin_url}/out-of-band/records/{oob_id}")
+      if resp.status_code == 404:
+        return {}
+      resp.raise_for_status()
+      data = resp.json()
+      return data.get("result") or data.get("record") or data
+
+  async def create_did_key(self, key_type: str = "ed25519") -> str:
+    if not self._profile:
+      raise RuntimeError("ACA-Py not started")
+    async with httpx.AsyncClient() as client:
+      resp = await client.post(
+        f"{self.admin_url}/wallet/did/create",
+        json={"method": "key", "options": {"key_type": key_type}},
+      )
+      resp.raise_for_status()
+      data = resp.json()
+      return (data.get("result") or {}).get("did")
 
   async def wait_for_proof(self, proof_exchange_id: str, timeout_ms: int = 120000, connection_id: Optional[str] = None) -> dict:
     deadline = time.monotonic() + timeout_ms / 1000

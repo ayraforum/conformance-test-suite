@@ -1,6 +1,39 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { SOCKET_SERVER_URL } from "../utils/env";
 
 export default function HomePage() {
+  const [cardFormat, setCardFormat] = useState<"anoncreds" | "w3c">("anoncreds");
+
+  useEffect(() => {
+    const stored = window?.localStorage?.getItem("ayra.cardFormat");
+    if (stored === "anoncreds" || stored === "w3c") {
+      setCardFormat(stored);
+      // Attempt to inform the backend
+      fetch(`${SOCKET_SERVER_URL}/api/card-format`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format: stored }),
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleFormatChange = async (next: "anoncreds" | "w3c") => {
+    setCardFormat(next);
+    window?.localStorage?.setItem("ayra.cardFormat", next);
+    try {
+      await fetch(`${SOCKET_SERVER_URL}/api/card-format`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format: next }),
+      });
+    } catch (e) {
+      // ignore; UI state is still updated
+    }
+  };
+
   const tests = [
     {
       id: "trust-registry",
@@ -35,6 +68,30 @@ export default function HomePage() {
           A comprehensive suite of tests to verify conformance with Ayra Trust
           Registry and SSI standards.
         </p>
+
+        <div className="max-w-3xl mx-auto mb-10 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Ayra Card format for tests</p>
+              <p className="text-lg font-semibold text-gray-900">
+                {cardFormat === "anoncreds" ? "AnonCreds (legacy)" : "W3C LDP (ACA-Py VC-API)"}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This choice applies to issuer/holder flows. W3C requires ACA-Py and the inline context.
+              </p>
+            </div>
+            <select
+              value={cardFormat}
+              onChange={(e) =>
+                handleFormatChange(e.target.value === "w3c" ? "w3c" : "anoncreds")
+              }
+              className="border border-gray-300 rounded px-3 py-2 text-sm"
+            >
+              <option value="anoncreds">AnonCreds</option>
+              <option value="w3c">W3C (LDP VC)</option>
+            </select>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {tests.map((test) => (
