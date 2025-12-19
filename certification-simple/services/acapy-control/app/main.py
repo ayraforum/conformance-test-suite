@@ -37,6 +37,7 @@ async def webhook_handler(payload: dict):
   body = payload.get("payload") or payload
   try:
     manager.handle_webhook(topic, body)
+    await manager.maybe_auto_verify_from_webhook(topic, body)
   except Exception:
     # best-effort; do not fail the webhook
     pass
@@ -48,6 +49,7 @@ async def webhook_topic_handler(topic: str, payload: dict):
   body = payload.get("payload") or payload
   try:
     manager.handle_webhook(topic, body)
+    await manager.maybe_auto_verify_from_webhook(topic, body)
   except Exception:
     pass
   return {"status": "ok"}

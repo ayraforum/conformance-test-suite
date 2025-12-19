@@ -87,13 +87,23 @@ app.get("/api/invitation", (req, res) => {
 });
 
 app.post("/api/card-format", (req, res) => {
-  const fmt = (req.body?.format || "").toLowerCase();
+  let fmt = (req.body?.format || "").toLowerCase();
   if (fmt !== "anoncreds" && fmt !== "w3c") {
     return res.status(400).json({ error: "format must be 'anoncreds' or 'w3c'" });
+  }
+  // In ACA-Py demo/reference mode, AnonCreds requires an explicit opt-in (it needs an AnonCreds-enabled profile).
+  const referenceAgent = (process.env.REFERENCE_AGENT || "credo").split("#")[0].trim().split(/\s+/)[0].toLowerCase();
+  const allowAcaPyAnonCreds = (process.env.ALLOW_ACAPY_ANONCREDS || "false").split("#")[0].trim().toLowerCase() === "true";
+  if (referenceAgent === "acapy" && !allowAcaPyAnonCreds && fmt === "anoncreds") {
+    fmt = "w3c";
   }
   const { setCredentialFormat } = require("./state");
   setCredentialFormat(fmt);
   res.json({ format: fmt });
+});
+
+app.get("/api/card-format", (req, res) => {
+  res.json({ format: state?.credentialFormat ?? null });
 });
 
 // Catch-all route for debugging

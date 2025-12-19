@@ -14,11 +14,23 @@ import type { Config as NgrokConfig } from "@ngrok/ngrok";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from "uuid";
-import { setDAG, setPipeline, setConfig, setAgent, setController, setIssuerController, setIssuerAgentType, state as serverState } from "./state";
+import { setDAG, setPipeline, setConfig, setAgent, setController, setIssuerController, setVerifierController, setIssuerAgentType, setCredentialFormat, state as serverState } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
 import { selectPipeline } from "./state";
+
+const normalizeEnvValue = (value?: string): string =>
+  (value ?? "").split("#")[0].trim();
+
+const normalizeEnvChoice = (value: string | undefined, fallback: string): string =>
+  normalizeEnvValue(value || fallback).split(/\s+/)[0].toLowerCase();
+
+const normalizeProfile = (value: string | undefined, fallback: "issuer" | "verifier" | "holder") => {
+  const v = normalizeEnvChoice(value, fallback);
+  if (v === "issuer" || v === "verifier" || v === "holder") return v;
+  return fallback;
+};
 
 
 function ensureNgrokConfig(): string {
@@ -50,7 +62,7 @@ function ensureNgrokConfig(): string {
 const agentId = uuidv4();
 const agentPort: number = Number(process.env.AGENT_PORT) || 5006; // ngrok port
 function deriveAgentLabel() {
-  const referenceAgent = (process.env.REFERENCE_AGENT || "credo").toLowerCase();
+  const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
   const agentType = referenceAgent === "acapy" ? "ACA-Py" : "Credo";
   return `Ayra CTS Reference ${agentType} Agent`;
 }
@@ -58,10 +70,10 @@ function deriveAgentLabel() {
 const agentLabel = deriveAgentLabel();
 let activeNgrokListener: ngrok.Listener | null = null;
 let acapyAdapter: AcaPyAgentAdapter | null = null;
-const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
-const issuerOverrideAgent = (
-  process.env.ISSUER_OVERRIDE_AGENT ?? "auto"
-).toLowerCase();
+let acapyIssuerAdapter: AcaPyAgentAdapter | null = null;
+let acapyVerifierAdapter: AcaPyAgentAdapter | null = null;
+const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
+const issuerOverrideAgent = normalizeEnvChoice(process.env.ISSUER_OVERRIDE_AGENT, "auto");
 console.log(`[CONFIG] Reference agent: ${referenceAgent}`);
 console.log(`[CONFIG] Issuer override agent: ${issuerOverrideAgent}`);
 
@@ -83,8 +95,15 @@ const init = async () => {
   if (referenceAgent === "acapy") {
     await initCredoAgent();
     await initAcaPyController();
+    await initAcaPyIssuerController();
+    await initAcaPyVerifierController();
   } else {
     await initCredoAgent();
+  }
+  // Default card format: when running with ACA-Py reference agent, default to W3C
+  // unless the UI has already selected something (via /api/card-format).
+  if (!serverState.credentialFormat) {
+    setCredentialFormat(referenceAgent === "acapy" ? "w3c" : "anoncreds");
   }
   await configureIssuerController();
 };
@@ -201,18 +220,58 @@ const initCredoAgent = async () => {
 };
 
 const initAcaPyController = async () => {
-  const baseUrl = process.env.ACAPY_CONTROL_URL ?? "http://localhost:9001";
-  console.log(`[ACAPY] Connecting to control service at ${baseUrl}`);
-  acapyAdapter = await AcaPyAgentAdapter.create({ baseUrl });
+  const baseUrl =
+    process.env.ACAPY_HOLDER_CONTROL_URL ||
+    process.env.ACAPY_CONTROL_URL ||
+    "http://localhost:9001";
+  const profile = normalizeProfile(
+    process.env.ACAPY_HOLDER_PROFILE || process.env.ACAPY_PROFILE,
+    "holder"
+  );
+  console.log(`[ACAPY] Connecting to control service at ${baseUrl} (profile: ${profile})`);
+  acapyAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
   const controller = new AgentController(acapyAdapter);
   setController(controller);
   console.log("[ACAPY] Controller initialized");
+};
+
+const initAcaPyIssuerController = async () => {
+  const baseUrl = process.env.ACAPY_CONTROL_URL || "http://localhost:9001";
+  const profile = normalizeProfile(process.env.ACAPY_PROFILE, "issuer");
+  console.log(`[ACAPY] Connecting to issuer control service at ${baseUrl} (profile: ${profile})`);
+  acapyIssuerAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
+  const controller = new AgentController(acapyIssuerAdapter);
+  setIssuerController(controller);
+  setIssuerAgentType("acapy");
+  console.log("[ACAPY] Issuer controller initialized");
+};
+
+const initAcaPyVerifierController = async () => {
+  const baseUrl =
+    process.env.ACAPY_VERIFIER_CONTROL_URL ||
+    process.env.ACAPY_CONTROL_URL;
+  if (!baseUrl) {
+    console.log("[ACAPY] Verifier control URL not provided; skipping verifier controller init");
+    return;
+  }
+  const profile = normalizeProfile(process.env.ACAPY_VERIFIER_PROFILE, "verifier");
+  console.log(`[ACAPY] Connecting to verifier control service at ${baseUrl} (profile: ${profile})`);
+  acapyVerifierAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
+  const controller = new AgentController(acapyVerifierAdapter);
+  setVerifierController(controller);
+  console.log("[ACAPY] Verifier controller initialized");
 };
 
 const shutdown = async () => {
   try {
     if (referenceAgent === "acapy" && acapyAdapter) {
       await acapyAdapter.shutdown();
+    }
+    if (referenceAgent === "acapy" && acapyIssuerAdapter) {
+      await acapyIssuerAdapter.shutdown();
+    }
+    if (referenceAgent === "acapy" && acapyVerifierAdapter) {
+      await acapyVerifierAdapter.shutdown();
     }
     if (activeNgrokListener) {
       await activeNgrokListener.close();
@@ -229,8 +288,16 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 const configureIssuerController = async () => {
-  const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
+  const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
   if (issuerOverrideAgent === "auto") {
+    if (referenceAgent === "acapy" && acapyIssuerAdapter) {
+      // prefer dedicated ACA-Py issuer controller if available
+      const issuerController = new AgentController(acapyIssuerAdapter);
+      setIssuerController(issuerController);
+      setIssuerAgentType("acapy");
+      process.env.ISSUER_EFFECTIVE_AGENT = "acapy";
+      return;
+    }
     const effective = referenceAgent === "acapy" ? "acapy" : "credo";
     setIssuerController(undefined);
     setIssuerAgentType(effective);
@@ -238,6 +305,14 @@ const configureIssuerController = async () => {
     return;
   }
   if (issuerOverrideAgent === "acapy") {
+    if (acapyIssuerAdapter) {
+      const overrideController = new AgentController(acapyIssuerAdapter);
+      setIssuerController(overrideController);
+      console.log("[Issuer Override] Issuer controller set to ACA-Py (dedicated issuer adapter)");
+      setIssuerAgentType("acapy");
+      process.env.ISSUER_EFFECTIVE_AGENT = "acapy";
+      return;
+    }
     if (!acapyAdapter) {
       await initAcaPyController();
     }
@@ -246,7 +321,7 @@ const configureIssuerController = async () => {
     }
     const overrideController = new AgentController(acapyAdapter);
     setIssuerController(overrideController);
-    console.log("[Issuer Override] Issuer controller set to ACA-Py");
+    console.log("[Issuer Override] Issuer controller set to ACA-Py (shared adapter)");
     setIssuerAgentType("acapy");
     process.env.ISSUER_EFFECTIVE_AGENT = "acapy";
     return;

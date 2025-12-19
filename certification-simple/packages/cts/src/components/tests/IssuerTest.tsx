@@ -301,6 +301,14 @@ export function IssuerTest() {
   useEffect(() => {
     const preparePipeline = async () => {
       try {
+        // Ensure backend uses the same card format selected on the home page.
+        const stored = window?.localStorage?.getItem("ayra.cardFormat");
+        const fmt = stored === "anoncreds" || stored === "w3c" ? stored : "w3c";
+        await fetch(`${API_BASE_URL}/api/card-format`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ format: fmt }),
+        }).catch(() => {});
         await fetch(`${API_BASE_URL}/api/select/pipeline?pipeline=ISSUER_TEST`);
         // clear any stale DAG data
         setDagData(null);
@@ -331,16 +339,20 @@ export function IssuerTest() {
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
-    if (node.task.state.status === 'Accepted' || node.task.state.runState === 'completed') {
-      return 'passed';
+    const status = (node.task.state.status || "").toLowerCase();
+    const runState = (node.task.state.runState || "").toLowerCase();
+
+    // Important: tasks often set runState=completed even when they fail. Always check failure first.
+    if (status === "failed" || status === "error" || runState === "failed" || runState === "error") {
+      return "failed";
     }
-    if (node.task.state.runState === 'running' || node.task.state.status === 'Running') {
-      return 'running';
+    if (status === "accepted" || status === "passed") {
+      return "passed";
     }
-    if (node.task.state.status === 'Failed' || node.task.state.runState === 'failed') {
-      return 'failed';
+    if (status === "running" || status === "started" || runState === "running") {
+      return "running";
     }
-    return 'pending';
+    return "pending";
   };
 
   // Update steps based on DAG data
@@ -439,6 +451,13 @@ export function IssuerTest() {
 
     // Update step statuses based on DAG data
       if (dagData?.nodes) {
+        const anyFailed = dagData.nodes.some(
+          (node) =>
+            (node.task.state.status || "").toLowerCase() === "failed" ||
+            (node.task.state.status || "").toLowerCase() === "error" ||
+            (node.task.state.runState || "").toLowerCase() === "failed" ||
+            (node.task.state.runState || "").toLowerCase() === "error"
+        );
         dagData.nodes.forEach((node, index) => {
           if (initialSteps[index]) {
             const status = getStepStatusFromNode(node);
@@ -446,13 +465,16 @@ export function IssuerTest() {
           }
         });
         const dagRunState = dagData.status?.runState?.toLowerCase();
-        if (dagRunState === "completed") {
+        if (dagRunState === "completed" && !anyFailed) {
           initialSteps[0].status = "passed";
           initialSteps[1].status = "passed";
           initialSteps[2].status = "passed";
           setCurrentStep(2);
         } else if (dagRunState === "error") {
           // If DAG errored, mark last step failed and stop on report
+          initialSteps[2].status = "failed";
+          setCurrentStep(2);
+        } else if (anyFailed) {
           initialSteps[2].status = "failed";
           setCurrentStep(2);
         }

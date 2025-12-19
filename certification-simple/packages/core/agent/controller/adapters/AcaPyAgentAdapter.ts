@@ -13,7 +13,7 @@ const DEFAULT_PROFILE = "issuer" as const;
 
 export type AcaPyAdapterOptions = {
   baseUrl: string;
-  profile?: "issuer" | "verifier";
+  profile?: "issuer" | "verifier" | "holder";
 };
 
 interface AgentStartResponse {
@@ -82,6 +82,10 @@ export class AcaPyAgentAdapter implements AgentAdapter {
 
   getAdminUrl(): string | undefined {
     return this.adminUrl;
+  }
+
+  getControlUrl(): string {
+    return this.baseUrl;
   }
 
   async createOutOfBandInvitation(): Promise<ControllerInvitation> {
@@ -204,27 +208,19 @@ export class AcaPyAgentAdapter implements AgentAdapter {
           "Provide one in CredentialIssuanceOptions when using ACA-Py."
       );
     }
-    const previewAttributes = payload.attributes.map(({ name, value }) => ({
-      name,
-      value: String(value),
-    }));
+    const attributeMap = payload.attributes.reduce<Record<string, string>>((acc, { name, value }) => {
+      acc[name] = String(value);
+      return acc;
+    }, {});
 
     const response = await this.post<{
       credential_exchange_id: string;
       record?: unknown;
     }>("/credentials/offer", {
       connection_id: payload.connectionId,
+      credential_definition_id: payload.credentialDefinitionId,
+      attributes: attributeMap,
       protocol_version: "v2",
-      credential_preview: {
-        "@type": "issue-credential/2.0/credential-preview",
-        attributes: previewAttributes,
-      },
-      filter: {
-        indy: {
-          cred_def_id: payload.credentialDefinitionId,
-          attributes: previewAttributes,
-        },
-      },
     });
     return {
       schemaId: payload.schemaId,

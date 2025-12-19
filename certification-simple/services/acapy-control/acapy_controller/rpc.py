@@ -43,6 +43,7 @@ class RpcRouter:
     self.router.post("/connections/receive-invitation", response_model=ReceiveInvitationResponse)(self.receive_invitation)
     self.router.post("/proofs/request", response_model=ProofExchangeResponse)(self.request_proof)
     self.router.post("/proofs/verify", response_model=ProofExchangeResponse)(self.verify_proof)
+    self.router.post("/proofs/verify-or-status", response_model=ProofExchangeResponse)(self.verify_or_status)
     self.router.post("/credentials/offer", response_model=CredentialOfferResponse)(self.offer_credential)
     self.router.get("/events/stream")(self.stream_events)
     self.router.post("/connections/wait", response_model=ConnectionRecordResponse)(self.wait_for_connection)
@@ -121,7 +122,8 @@ class RpcRouter:
     )
     resolved_id = initial_record.get("proof_exchange_id", body.proof_exchange_id)
     record = dict(initial_record)
-    if (record.get("state") or record.get("presentation_state")) == "presentation-received":
+    state = (record.get("state") or record.get("presentation_state") or "").replace("_", "-")
+    if state == "presentation-received":
       await self.manager.verify_proof(resolved_id, body.connection_id)
       try:
         record = await self.manager.get_proof(resolved_id, connection_id=body.connection_id)
@@ -135,6 +137,62 @@ class RpcRouter:
     response = ProofExchangeResponse(
       proof_exchange_id=record.get("proof_exchange_id", resolved_id),
       state=record.get("state") or record.get("presentation_state") or "unknown",
+      record=record,
+    )
+    await self.events.publish("proof_verified", response.dict())
+    return response
+
+  async def verify_or_status(self, body: ProofVerifyRequest):
+    """Non-throwing variant of verify_proof for polling.
+
+    - If the presentation is received, verify+ACK and return the updated record.
+    - If it's not received yet (or we can't find it), return the latest known record/state.
+    """
+    if not self.manager.is_running:
+      raise HTTPException(status_code=400, detail="Agent not started")
+
+    record: dict = {}
+    try:
+      record = await self.manager.wait_for_proof(
+        body.proof_exchange_id,
+        body.timeout_ms or 2000,
+        body.connection_id,
+      )
+    except Exception:
+      try:
+        record = await self.manager.get_proof(body.proof_exchange_id, connection_id=body.connection_id)
+      except Exception:
+        record = {"proof_exchange_id": body.proof_exchange_id}
+
+    resolved_id = record.get("proof_exchange_id", body.proof_exchange_id)
+    state = (record.get("state") or record.get("presentation_state") or "").replace("_", "-")
+    if state == "presentation-received":
+      try:
+        await self.manager.verify_proof(resolved_id, body.connection_id)
+      except Exception:
+        # Best-effort: even if verify fails, attempt to ACK so the prover can reach `done`.
+        try:
+          await self.manager.send_presentation_ack(resolved_id)
+        except Exception:
+          pass
+      try:
+        record = await self.manager.get_proof(resolved_id, connection_id=body.connection_id)
+      except Exception:
+        record.setdefault("proof_exchange_id", resolved_id)
+        record.setdefault("state", "presentation-received")
+    # Normalize state to the limited set the schema allows
+    normalized_state = (record.get("state") or record.get("presentation_state") or "request-sent").replace("_", "-")
+    verified = record.get("verified")
+    if normalized_state == "presentation-received" and verified is not None:
+      # Some ACA-Py builds don't advance the state to `done` quickly (or ever) after verify+ACK.
+      # If we already have a verified decision, treat it as terminal for polling callers.
+      normalized_state = "done"
+    if normalized_state not in {"request-sent", "presentation-received", "done", "abandoned"}:
+      normalized_state = "request-sent"
+
+    response = ProofExchangeResponse(
+      proof_exchange_id=record.get("proof_exchange_id", resolved_id),
+      state=normalized_state,  # type: ignore[arg-type]
       record=record,
     )
     await self.events.publish("proof_verified", response.dict())
@@ -179,7 +237,11 @@ class RpcRouter:
       except Exception as exc:  # pylint: disable=broad-except
         raise HTTPException(status_code=500, detail=f"Failed to start agent: {exc}") from exc
     try:
-      record = await self.manager.receive_invitation(body.invitation)
+      record = await self.manager.receive_invitation(
+        body.invitation,
+        auto_accept=body.auto_accept,
+        use_existing_connection=body.use_existing_connection,
+      )
       return ReceiveInvitationResponse(
         connection_id=record.get("connection_id"),
         oob_id=record.get("oob_id") or record.get("out_of_band_id"),

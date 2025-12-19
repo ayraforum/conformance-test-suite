@@ -8,8 +8,21 @@ ports:
   http: 8042
 transport:
   - http
-endpoints: []
+endpoints:
+  - http://acapy-verifier-control:8042
 genesis_url: "https://test.bcovrin.vonx.io/genesis"
 extra_args:
   - "--auto-accept-requests"
   - "--auto-respond-messages"
+  - "--auto-respond-credential-offer"
+  - "--auto-respond-credential-request"
+  - "--auto-respond-presentation-request"
+  - "--emit-new-didcomm-prefix"
+  - "--experimental-didcomm-v2"
+  - "--webhook-url"
+  - "http://acapy-verifier-control:9010/webhook"
+  - "--no-ledger"
+  - "--plugin"
+  - "acapy_agent.vc.ld_proofs"
+  - "--plugin-config"
+  - "/app/ld-proofs-config.yaml"

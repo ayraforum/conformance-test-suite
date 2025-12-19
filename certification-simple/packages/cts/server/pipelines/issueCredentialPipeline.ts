@@ -85,10 +85,12 @@ export default class IssueCredentialPipeline {
       options.credentialDefinitionId = credDefId;
     }
 
-    const referenceAgent = (process.env.REFERENCE_AGENT ?? "credo").toLowerCase();
-    const overrideAgent = (process.env.ISSUER_OVERRIDE_AGENT ?? "auto").toLowerCase();
-    const effectiveAgent =
-      (process.env.ISSUER_EFFECTIVE_AGENT ?? "").toLowerCase();
+    const normalizeEnvChoice = (value: string | undefined, fallback: string): string =>
+      (value ?? fallback).split("#")[0].trim().split(/\s+/)[0].toLowerCase();
+
+    const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
+    const overrideAgent = normalizeEnvChoice(process.env.ISSUER_OVERRIDE_AGENT, "auto");
+    const effectiveAgent = normalizeEnvChoice(process.env.ISSUER_EFFECTIVE_AGENT, "");
     const issuerAgent =
       effectiveAgent ||
       (overrideAgent === "auto" ? referenceAgent : overrideAgent);

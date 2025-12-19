@@ -88,7 +88,9 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
     super.run();
     try {
       const adapter = this.controller.getAdapter() as any;
-      if (!(adapter instanceof AcaPyAgentAdapter)) {
+      const adapterType = adapter && adapter.constructor ? adapter.constructor.name : typeof adapter;
+      const isAcaPy = adapter && (adapter instanceof AcaPyAgentAdapter || adapterType === "AcaPyAgentAdapter");
+      if (!isAcaPy) {
         throw new Error("W3C issuance requires ACA-Py adapter");
       }
       if (!connectionRecord?.id) {
