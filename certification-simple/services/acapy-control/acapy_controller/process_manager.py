@@ -106,20 +106,33 @@ class AcaPyProcessManager:
     auto_accept: Optional[bool] = None,
     use_existing_connection: Optional[bool] = None,
   ) -> dict:
-    """Accept an out-of-band invitation (simulating a holder scanning QR)."""
+    """Accept an invitation (OOB 1.1 or RFC0160 connection invitation)."""
     if not self._profile:
       raise RuntimeError("ACA-Py not started")
 
     payload = dict(invitation)
-    if auto_accept is not None:
-      payload["auto_accept"] = auto_accept
-    if use_existing_connection is not None:
-      payload["use_existing_connection"] = use_existing_connection
+    invitation_type = payload.get("@type") or payload.get("type") or ""
+    invitation_type = str(invitation_type)
+
     async with httpx.AsyncClient() as client:
-      resp = await client.post(
-        f"{self.admin_url}/out-of-band/receive-invitation",
-        json=payload,
-      )
+      # Route based on invitation type:
+      # - OOB invitations go to /out-of-band/receive-invitation
+      # - RFC0160 connection invitations go to /connections/receive-invitation
+      if "out-of-band" in invitation_type:
+        if auto_accept is not None:
+          payload["auto_accept"] = auto_accept
+        if use_existing_connection is not None:
+          payload["use_existing_connection"] = use_existing_connection
+        resp = await client.post(
+          f"{self.admin_url}/out-of-band/receive-invitation",
+          json=payload,
+        )
+      else:
+        # Don't inject OOB-only fields into RFC0160 invitation payload.
+        resp = await client.post(
+          f"{self.admin_url}/connections/receive-invitation",
+          json=payload,
+        )
       resp.raise_for_status()
       data = resp.json()
       return data.get("result") or data

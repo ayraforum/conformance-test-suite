@@ -3,7 +3,7 @@ import cors from "cors";
 import { state } from "./state";
 import http from "http";
 const serverPort: number = Number(process.env.SERVER_PORT) || 5005;
-import { run, ensureInitialized } from "./server";
+import { run, ensureInitialized, ensureAcaPyVerifierControllerInitialized } from "./server";
 import { selectPipeline } from "./state";
 import { PipelineType } from "./pipelines";
 
@@ -65,14 +65,84 @@ app.get("/api/select/pipeline", async (req, res) => {
     console.error("Failed to initialize before selecting pipeline:", error);
     return res.status(500).json({ error: "CTS server not initialized yet" });
   }
-  const pipelineName = req.query.pipeline as string;
+  // Historical clients have used different query param names; accept a few.
+  const pipelineName =
+    (req.query.pipeline as string | undefined) ??
+    (req.query.type as string | undefined) ??
+    (req.query.pipelineType as string | undefined);
   console.log("Selecting pipeline", pipelineName);
-  if (pipelineName === PipelineType.ISSUER_TEST || pipelineName === PipelineType.REGISTRY_TEST || pipelineName === PipelineType.VERIFIER_TEST) {
-    if (!state.agent) {
-      return res.status(400).json({ error: "Credo agent not available in ACA-Py mode" });
+  if (!pipelineName) {
+    return res.status(400).json({
+      error: "Missing pipeline query parameter",
+      expected: "pipeline",
+      allowed: Object.values(PipelineType),
+    });
+  }
+  if (!Object.values(PipelineType).includes(pipelineName as PipelineType)) {
+    return res.status(400).json({
+      error: `Unknown pipeline '${pipelineName}'`,
+      allowed: Object.values(PipelineType),
+    });
+  }
+  // In ACA-Py reference mode, issuer/verifier demo flows do not require a Credo agent.
+  // Registry tests still require it.
+  const referenceAgent = (process.env.REFERENCE_AGENT || "credo").split("#")[0].trim().split(/\s+/)[0].toLowerCase();
+  const issuerOverride = (process.env.REFERENCE_ISSUER_OVERRIDE_AGENT || "auto")
+    .split("#")[0]
+    .trim()
+    .split(/\s+/)[0]
+    .toLowerCase();
+  const effectiveIssuerAgent =
+    issuerOverride === "auto" ? referenceAgent : issuerOverride;
+  if (effectiveIssuerAgent !== "acapy" && effectiveIssuerAgent !== "credo") {
+    return res.status(400).json({
+      error: `Unsupported REFERENCE_ISSUER_OVERRIDE_AGENT='${issuerOverride}'`,
+      expected: ["auto", "credo", "acapy"],
+    });
+  }
+  if (pipelineName === PipelineType.REGISTRY_TEST && !state.agent) {
+    return res.status(400).json({ error: "Registry test requires a Credo agent" });
+  }
+  if (pipelineName === PipelineType.ISSUER_TEST && effectiveIssuerAgent === "credo" && !state.agent) {
+    return res.status(400).json({ error: "Issuer test requires a Credo agent" });
+  }
+  if (referenceAgent !== "acapy") {
+    if (
+      pipelineName === PipelineType.ISSUER_TEST ||
+      pipelineName === PipelineType.REGISTRY_TEST ||
+      pipelineName === PipelineType.VERIFIER_TEST
+    ) {
+      if (!state.agent) {
+        return res.status(400).json({ error: "Credo agent not initialized" });
+      }
     }
   }
-  selectPipeline(pipelineName as PipelineType);
+  if (referenceAgent === "acapy") {
+    const verifierAutoSend =
+      ((process.env.ACAPY_VERIFIER_AUTO_SEND_PROOF_REQUEST || "false").split("#")[0].trim().toLowerCase() === "true");
+    const needsDemoVerifierController =
+      pipelineName === PipelineType.VERIFIER_TEST && verifierAutoSend;
+    if (needsDemoVerifierController) {
+      try {
+        await ensureAcaPyVerifierControllerInitialized();
+      } catch (e) {
+        console.warn(
+          `[API] Demo verifier controller not available; continuing without it: ${
+            e instanceof Error ? e.message : String(e)
+          }`
+        );
+      }
+    }
+  }
+  try {
+    selectPipeline(pipelineName as PipelineType);
+  } catch (error) {
+    console.error("Failed to select pipeline:", error);
+    return res.status(500).json({
+      error: "Failed to select pipeline",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
   try {
     const { emitDAGUpdate } = await import("./ws");
     emitDAGUpdate();
@@ -91,10 +161,17 @@ app.post("/api/card-format", (req, res) => {
   if (fmt !== "anoncreds" && fmt !== "w3c") {
     return res.status(400).json({ error: "format must be 'anoncreds' or 'w3c'" });
   }
-  // In ACA-Py demo/reference mode, AnonCreds requires an explicit opt-in (it needs an AnonCreds-enabled profile).
   const referenceAgent = (process.env.REFERENCE_AGENT || "credo").split("#")[0].trim().split(/\s+/)[0].toLowerCase();
+  const issuerOverride = (process.env.REFERENCE_ISSUER_OVERRIDE_AGENT || "auto")
+    .split("#")[0]
+    .trim()
+    .split(/\s+/)[0]
+    .toLowerCase();
+  const effectiveIssuerAgent =
+    issuerOverride === "auto" ? referenceAgent : issuerOverride;
   const allowAcaPyAnonCreds = (process.env.ALLOW_ACAPY_ANONCREDS || "false").split("#")[0].trim().toLowerCase() === "true";
-  if (referenceAgent === "acapy" && !allowAcaPyAnonCreds && fmt === "anoncreds") {
+  // In ACA-Py issuer mode, AnonCreds requires an explicit opt-in (it needs an AnonCreds-enabled profile).
+  if (effectiveIssuerAgent === "acapy" && !allowAcaPyAnonCreds && fmt === "anoncreds") {
     fmt = "w3c";
   }
   const { setCredentialFormat } = require("./state");

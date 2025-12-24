@@ -14,7 +14,7 @@ import type { Config as NgrokConfig } from "@ngrok/ngrok";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from "uuid";
-import { setDAG, setPipeline, setConfig, setAgent, setController, setIssuerController, setVerifierController, setIssuerAgentType, setCredentialFormat, state as serverState } from "./state";
+import { setDAG, setPipeline, setConfig, setAgent, setController, setCredoController, setIssuerController, setVerifierController, setIssuerAgentType, setCredentialFormat, state as serverState } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
@@ -73,9 +73,21 @@ let acapyAdapter: AcaPyAgentAdapter | null = null;
 let acapyIssuerAdapter: AcaPyAgentAdapter | null = null;
 let acapyVerifierAdapter: AcaPyAgentAdapter | null = null;
 const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
-const issuerOverrideAgent = normalizeEnvChoice(process.env.ISSUER_OVERRIDE_AGENT, "auto");
+const issuerOverrideAgent = normalizeEnvChoice(process.env.REFERENCE_ISSUER_OVERRIDE_AGENT, "auto");
 console.log(`[CONFIG] Reference agent: ${referenceAgent}`);
 console.log(`[CONFIG] Issuer override agent: ${issuerOverrideAgent}`);
+
+const resolveEffectiveIssuerAgent = (): "acapy" | "credo" => {
+  const ref = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
+  const override = normalizeEnvChoice(process.env.REFERENCE_ISSUER_OVERRIDE_AGENT, "auto");
+  const effective = override === "auto" ? ref : override;
+  if (effective !== "acapy" && effective !== "credo") {
+    throw new Error(
+      `Unsupported REFERENCE_ISSUER_OVERRIDE_AGENT=${override}. Expected 'auto', 'credo', or 'acapy'.`
+    );
+  }
+  return effective;
+};
 
 const resolveReferenceAgentDomain = (): string | null =>
   process.env.REFERENCE_AGENT_NGROK_DOMAIN ??
@@ -93,19 +105,50 @@ const resolveOverrideAgentDomain = (): string | null =>
 
 const init = async () => {
   if (referenceAgent === "acapy") {
-    await initCredoAgent();
+    const issuerOverride = normalizeEnvChoice(process.env.REFERENCE_ISSUER_OVERRIDE_AGENT, "auto");
+    const verifierOverride = normalizeEnvChoice(process.env.REFERENCE_VERIFIER_OVERRIDE_AGENT, "auto");
+    const needsCredo =
+      issuerOverride === "credo" ||
+      verifierOverride === "credo";
+
+    // Only start Credo when explicitly requested for mixed-mode runs.
+    if (needsCredo) {
+      try {
+        await initCredoAgent();
+      } catch (e) {
+        console.warn(
+          `[Credo] Agent init failed; continuing in ACA-Py-only mode: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    }
     await initAcaPyController();
     await initAcaPyIssuerController();
-    await initAcaPyVerifierController();
   } else {
     await initCredoAgent();
   }
-  // Default card format: when running with ACA-Py reference agent, default to W3C
-  // unless the UI has already selected something (via /api/card-format).
-  if (!serverState.credentialFormat) {
-    setCredentialFormat(referenceAgent === "acapy" ? "w3c" : "anoncreds");
-  }
   await configureIssuerController();
+  // Default card format (can be overridden via /api/card-format).
+  if (!serverState.credentialFormat) {
+    const effectiveIssuer = resolveEffectiveIssuerAgent();
+    setCredentialFormat(effectiveIssuer === "acapy" ? "w3c" : "anoncreds");
+  }
+};
+
+let acapyVerifierInitPromise: Promise<void> | null = null;
+export const ensureAcaPyVerifierControllerInitialized = async (): Promise<void> => {
+  if (serverState.verifierController) return;
+  const baseUrl = normalizeEnvValue(process.env.ACAPY_VERIFIER_CONTROL_URL);
+  if (!baseUrl) return;
+  if (acapyVerifierInitPromise) return acapyVerifierInitPromise;
+  acapyVerifierInitPromise = (async () => {
+    await initAcaPyVerifierController();
+  })()
+    .catch((e) => {
+      // Allow retries if the demo verifier comes up later.
+      acapyVerifierInitPromise = null;
+      throw e;
+    });
+  return acapyVerifierInitPromise;
 };
 
 const initCredoAgent = async () => {
@@ -195,6 +238,7 @@ const initCredoAgent = async () => {
     setAgent(agent);
     const controller = new AgentController(new CredoAgentAdapter(agent));
     setController(controller);
+    setCredoController(controller);
     console.log("set agent and config");
   } else {
     const baseUrl = process.env.API_URL
@@ -204,8 +248,21 @@ const initCredoAgent = async () => {
       throw new Error("BASE_URL not defined");
     }
     console.log("base url", baseUrl);
+    const didcommEndpoint = (() => {
+      const explicit = normalizeEnvValue(process.env.REFERENCE_AGENT_OOB_SERVICE_ENDPOINT);
+      if (explicit) return explicit;
+      try {
+        const u = new URL(baseUrl);
+        // Credo inbound transport listens on agentPort; advertise that to wallets/agents.
+        u.port = String(agentPort);
+        return u.toString().replace(/\/$/, "");
+      } catch {
+        return `http://localhost:${agentPort}`;
+      }
+    })();
+
     const config = createAgentConfig(agentLabel, agentPort, agentId, baseUrl, [
-      baseUrl,
+      didcommEndpoint,
     ]);
     setConfig(config);
     if (!config) {
@@ -216,6 +273,7 @@ const initCredoAgent = async () => {
     setAgent(agent);
     const controller = new AgentController(new CredoAgentAdapter(agent));
     setController(controller);
+    setCredoController(controller);
   }
 };
 
@@ -247,19 +305,24 @@ const initAcaPyIssuerController = async () => {
 };
 
 const initAcaPyVerifierController = async () => {
-  const baseUrl =
-    process.env.ACAPY_VERIFIER_CONTROL_URL ||
-    process.env.ACAPY_CONTROL_URL;
-  if (!baseUrl) {
-    console.log("[ACAPY] Verifier control URL not provided; skipping verifier controller init");
-    return;
-  }
+  const baseUrl = process.env.ACAPY_VERIFIER_CONTROL_URL;
+  if (!baseUrl) return;
   const profile = normalizeProfile(process.env.ACAPY_VERIFIER_PROFILE, "verifier");
   console.log(`[ACAPY] Connecting to verifier control service at ${baseUrl} (profile: ${profile})`);
-  acapyVerifierAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
-  const controller = new AgentController(acapyVerifierAdapter);
-  setVerifierController(controller);
-  console.log("[ACAPY] Verifier controller initialized");
+  try {
+    acapyVerifierAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
+    const controller = new AgentController(acapyVerifierAdapter);
+    setVerifierController(controller);
+    console.log("[ACAPY] Verifier controller initialized");
+  } catch (e) {
+    console.warn(
+      `[ACAPY] Verifier controller init failed (is the service running?): ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+    // Optional: verifier controller is only needed for demo auto-send in verifier flow.
+    setVerifierController(undefined);
+  }
 };
 
 const shutdown = async () => {
@@ -288,29 +351,22 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 const configureIssuerController = async () => {
-  const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
-  if (issuerOverrideAgent === "auto") {
-    if (referenceAgent === "acapy" && acapyIssuerAdapter) {
-      // prefer dedicated ACA-Py issuer controller if available
+  const override = normalizeEnvChoice(process.env.REFERENCE_ISSUER_OVERRIDE_AGENT, "auto");
+  const effective = resolveEffectiveIssuerAgent();
+  setIssuerAgentType(effective);
+  process.env.ISSUER_EFFECTIVE_AGENT = effective;
+
+  if (override === "auto") {
+    console.log(`[Issuer Override] auto -> ${effective} (follows REFERENCE_AGENT)`);
+  }
+
+  if (effective === "acapy") {
+    if (acapyIssuerAdapter) {
       const issuerController = new AgentController(acapyIssuerAdapter);
       setIssuerController(issuerController);
-      setIssuerAgentType("acapy");
-      process.env.ISSUER_EFFECTIVE_AGENT = "acapy";
-      return;
-    }
-    const effective = referenceAgent === "acapy" ? "acapy" : "credo";
-    setIssuerController(undefined);
-    setIssuerAgentType(effective);
-    process.env.ISSUER_EFFECTIVE_AGENT = effective;
-    return;
-  }
-  if (issuerOverrideAgent === "acapy") {
-    if (acapyIssuerAdapter) {
-      const overrideController = new AgentController(acapyIssuerAdapter);
-      setIssuerController(overrideController);
-      console.log("[Issuer Override] Issuer controller set to ACA-Py (dedicated issuer adapter)");
-      setIssuerAgentType("acapy");
-      process.env.ISSUER_EFFECTIVE_AGENT = "acapy";
+      if (override === "acapy") {
+        console.log("[Issuer Override] Issuer controller set to ACA-Py (dedicated issuer adapter)");
+      }
       return;
     }
     if (!acapyAdapter) {
@@ -319,35 +375,30 @@ const configureIssuerController = async () => {
     if (!acapyAdapter) {
       throw new Error("[Issuer Override] ACA-Py adapter not initialized");
     }
-    const overrideController = new AgentController(acapyAdapter);
-    setIssuerController(overrideController);
-    console.log("[Issuer Override] Issuer controller set to ACA-Py (shared adapter)");
-    setIssuerAgentType("acapy");
-    process.env.ISSUER_EFFECTIVE_AGENT = "acapy";
-    return;
-  }
-  if (issuerOverrideAgent === "credo") {
-    if (!serverState.agent) {
-      throw new Error(
-        "[Issuer Override] Credo agent not initialized; cannot create issuer controller"
-      );
+    const issuerController = new AgentController(acapyAdapter);
+    setIssuerController(issuerController);
+    if (override === "acapy") {
+      console.log("[Issuer Override] Issuer controller set to ACA-Py (shared adapter)");
     }
-    const overrideController = new AgentController(
-      new CredoAgentAdapter(serverState.agent)
-    );
-    setIssuerController(overrideController);
-    console.log("[Issuer Override] Issuer controller set to Credo agent");
-    setIssuerAgentType("credo");
-    process.env.ISSUER_EFFECTIVE_AGENT = "credo";
     return;
   }
-  console.warn(
-    `[Issuer Override] Unsupported ISSUER_OVERRIDE_AGENT=${issuerOverrideAgent}; defaulting to reference controller`
-  );
-  const fallback = referenceAgent === "acapy" ? "acapy" : "credo";
-  setIssuerAgentType(fallback);
-  process.env.ISSUER_EFFECTIVE_AGENT = fallback;
-  setIssuerController(undefined);
+
+  // Credo issuer uses the shared Credo agent controller (`state.controller`), unless an explicit override is requested.
+  if (effective === "credo") {
+    if (override === "credo") {
+      if (!serverState.agent) {
+        throw new Error(
+          "[Issuer Override] Credo agent not initialized; cannot create issuer controller"
+        );
+      }
+      const overrideController = new AgentController(new CredoAgentAdapter(serverState.agent));
+      setIssuerController(overrideController);
+      console.log("[Issuer Override] Issuer controller set to Credo agent");
+      return;
+    }
+    setIssuerController(undefined);
+    return;
+  }
 };
 
 export const reset = async () => {};
@@ -366,6 +417,27 @@ export const run = async (params?: any) => {
       const pipelineType = params.pipelineType as PipelineType;
       console.log("[RUN] Pipeline override requested:", pipelineType);
       if (Object.values(PipelineType).includes(pipelineType)) {
+        const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
+        const verifierAutoSend =
+          normalizeEnvChoice(process.env.ACAPY_VERIFIER_AUTO_SEND_PROOF_REQUEST, "false") === "true";
+        const verifierOverride = normalizeEnvChoice(process.env.REFERENCE_VERIFIER_OVERRIDE_AGENT, "auto");
+        const effectiveVerifierOverride =
+          verifierOverride === "auto" ? referenceAgent : verifierOverride;
+        const needsDemoVerifierController =
+          referenceAgent === "acapy" &&
+          pipelineType === PipelineType.VERIFIER_TEST &&
+          verifierAutoSend;
+        if (needsDemoVerifierController) {
+          try {
+            await ensureAcaPyVerifierControllerInitialized();
+          } catch (e) {
+            console.warn(
+              `[RUN] Demo verifier controller not available; continuing without it: ${
+                e instanceof Error ? e.message : String(e)
+              }`
+            );
+          }
+        }
         try {
           selectPipeline(pipelineType);
         } catch (error) {

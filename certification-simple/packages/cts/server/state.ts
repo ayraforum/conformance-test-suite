@@ -21,6 +21,7 @@ export type State = {
   pipeline?: Pipeline;
   currentInvitation?: string;
   agent?: BaseAgent;
+  credoController?: AgentController;
   controller?: AgentController;
   issuerController?: AgentController;
   issuerAgentType?: "credo" | "acapy";
@@ -35,12 +36,8 @@ const normalizeEnvValue = (value?: string): string => (value ?? "").split("#")[0
 const normalizeEnvChoice = (value: string | undefined, fallback: string): string =>
   normalizeEnvValue(value || fallback).split(/\s+/)[0].toLowerCase();
 
-// Default credential format based on runtime mode. When running with ACA-Py demo/reference
-// agents, default to W3C to avoid accidentally triggering AnonCreds issuance paths.
-if (!_state.credentialFormat) {
-  const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
-  _state.credentialFormat = referenceAgent === "acapy" ? "w3c" : "anoncreds";
-}
+// NOTE: Do not set a default credential format at module load time. The server entrypoint
+// applies defaults after dotenv has been loaded, and the UI can override via `/api/card-format`.
 
 export const setDAG = (dag: DAG) => {
   _state.dag = dag;
@@ -57,6 +54,9 @@ export const setAgent = (agent: BaseAgent) => {
 
 export const setController = (controller: AgentController) => {
   _state.controller = controller;
+};
+export const setCredoController = (controller?: AgentController) => {
+  _state.credoController = controller;
 };
 export const setIssuerController = (controller?: AgentController) => {
   _state.issuerController = controller;
@@ -92,13 +92,55 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
   var pipe: Pipeline;
   switch (type) {
     case PipelineType.HOLDER_TEST:
-      if (!_state.controller) {
-        throw new Error("agent controller not defined");
+      {
+        const override = normalizeEnvChoice(process.env.REFERENCE_VERIFIER_OVERRIDE_AGENT, "auto");
+        // Default behavior: `auto` follows REFERENCE_AGENT. Mixed-mode runs are enabled by setting an override
+        // different from REFERENCE_AGENT (e.g. reference=acapy, override=credo).
+        const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
+        const desired = override === "auto" ? referenceAgent : override;
+
+        let controller: AgentController | undefined;
+        if (desired === "credo") {
+          controller = _state.credoController;
+          if (!controller) {
+            throw new Error(
+              "Holder flow requires a Credo verifier controller, but it is not initialized. " +
+                "Start CTS with the Credo agent enabled or set REFERENCE_VERIFIER_OVERRIDE_AGENT=acapy."
+            );
+          }
+        } else if (desired === "acapy") {
+          // For an ACA-Py verifier role, prefer a dedicated verifier controller if configured,
+          // otherwise fall back to the ACA-Py issuer controller (it can still run verifier steps).
+          controller = _state.verifierController || _state.issuerController;
+          if (!controller) {
+            // As a last resort, use the reference controller if it's ACA-Py.
+            const adapter = _state.controller?.getAdapter?.();
+            const adapterType =
+              adapter && (adapter as any).constructor ? (adapter as any).constructor.name : typeof adapter;
+            const isAcaPyAdapter =
+              !!adapter &&
+              (adapter instanceof AcaPyAgentAdapter || adapterType === "AcaPyAgentAdapter");
+            if (isAcaPyAdapter) {
+              controller = _state.controller;
+            }
+          }
+          if (!controller) {
+            throw new Error(
+              "Holder flow requested an ACA-Py verifier (REFERENCE_VERIFIER_OVERRIDE_AGENT=acapy), " +
+                "but no ACA-Py controller is available for verifier steps. Ensure ACAPY_CONTROL_URL is configured."
+            );
+          }
+        } else {
+          throw new Error(
+            `Unsupported REFERENCE_VERIFIER_OVERRIDE_AGENT=${override}. Expected 'auto', 'credo', or 'acapy'.`
+          );
+        }
+
+        if (!controller) {
+          throw new Error("agent controller not defined");
+        }
+        pipe = new HolderTestPipeline(controller, _state.verifyTRQP ?? false);
       }
-      pipe = new HolderTestPipeline(
-        _state.controller,
-        _state.verifyTRQP ?? false
-      );
       break;
     case PipelineType.ISSUER_TEST:
       const issuerController = _state.issuerController ?? _state.controller;
@@ -107,6 +149,15 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
       }
       {
         const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
+        const issuerOverride = normalizeEnvChoice(process.env.REFERENCE_ISSUER_OVERRIDE_AGENT, "auto");
+        const effectiveIssuerType =
+          _state.issuerAgentType ??
+          (issuerOverride === "auto" ? referenceAgent : issuerOverride);
+        if (effectiveIssuerType !== "acapy" && effectiveIssuerType !== "credo") {
+          throw new Error(
+            `Unsupported REFERENCE_ISSUER_OVERRIDE_AGENT=${issuerOverride}. Expected 'auto', 'credo', or 'acapy'.`
+          );
+        }
         const allowAcaPyAnonCreds =
           normalizeEnvChoice(process.env.ALLOW_ACAPY_ANONCREDS, "false") === "true";
         const issuerAdapter = issuerController.getAdapter?.();
@@ -119,13 +170,20 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
           (issuerAdapter instanceof AcaPyAgentAdapter ||
             issuerAdapterType === "AcaPyAgentAdapter");
 
-        // In ACA-Py demo/reference mode we default to W3C and *disallow* AnonCreds unless explicitly enabled.
-        // This avoids confusing failures like:
-        //   "AnonCreds interface requires AskarAnonCreds or KanonAnonCreds profile"
-        if (referenceAgent === "acapy" && !allowAcaPyAnonCreds) {
-          if (!isAcaPyIssuerAdapter) {
+        const selectedFormat =
+          _state.credentialFormat ??
+          (effectiveIssuerType === "acapy" ? "w3c" : "anoncreds");
+        console.log(
+          `[STATE] Issuer selection: issuerAgentType=${_state.issuerAgentType ?? "unset"} ` +
+            `effectiveIssuerType=${effectiveIssuerType} issuerAdapter=${issuerAdapterType} ` +
+            `credentialFormat=${selectedFormat} referenceAgent=${referenceAgent} allowAcaPyAnonCreds=${allowAcaPyAnonCreds}`
+        );
+
+        if (selectedFormat === "w3c") {
+          if (effectiveIssuerType !== "acapy" || !isAcaPyIssuerAdapter) {
             throw new Error(
-              `[STATE] ACA-Py mode requires an ACA-Py issuer controller for W3C issuance, but issuer adapter is ${issuerAdapterType}`
+              `[STATE] W3C issuance requires an ACA-Py issuer controller, but issuerAgentType=${effectiveIssuerType} issuerAdapter=${issuerAdapterType}. ` +
+                "Set REFERENCE_AGENT=acapy (or REFERENCE_ISSUER_OVERRIDE_AGENT=acapy) to use the ACA-Py VC-API issuer."
             );
           }
           const { IssueAcaPyW3CPipeline } = require("./pipelines");
@@ -133,38 +191,21 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
           break;
         }
 
-        // In ACA-Py demo/reference mode we do not support AnonCreds by default (it requires an
-        // AskarAnonCreds/KanonAnonCreds profile). To avoid confusing "sometimes AnonCreds" failures,
-        // force W3C unless the operator explicitly opts into AnonCreds.
-        const effectiveIssuerType =
-          _state.issuerAgentType ?? (referenceAgent === "acapy" ? "acapy" : "credo");
-        const shouldUseW3c =
-          effectiveIssuerType === "acapy" &&
-          isAcaPyIssuerAdapter &&
-          (_state.credentialFormat === "w3c" || (referenceAgent === "acapy" && !allowAcaPyAnonCreds));
-
-        console.log(
-          `[STATE] Issuer selection: issuerAgentType=${_state.issuerAgentType ?? "unset"} effectiveIssuerType=${effectiveIssuerType} issuerAdapter=${issuerAdapterType} credentialFormat=${_state.credentialFormat} referenceAgent=${referenceAgent} allowAcaPyAnonCreds=${allowAcaPyAnonCreds} -> ${shouldUseW3c ? "w3c" : "anoncreds"}`
-        );
-
-        if (shouldUseW3c) {
-          const { IssueAcaPyW3CPipeline } = require("./pipelines");
-          pipe = new IssueAcaPyW3CPipeline(issuerController);
-        } else {
-          if (referenceAgent === "acapy" && effectiveIssuerType === "acapy" && !allowAcaPyAnonCreds) {
-            console.warn(
-              "[STATE] Selecting AnonCreds issuance while in ACA-Py mode without ALLOW_ACAPY_ANONCREDS=true; issuance will likely fail."
-            );
-          }
-          if (_state.credentialFormat === "w3c" && !isAcaPyIssuerAdapter) {
-            console.warn(
-              `[STATE] W3C card format selected but issuer adapter is not ACA-Py (${issuerAdapterType}); falling back to AnonCreds issuance pipeline.`
+        if (selectedFormat === "anoncreds") {
+          if (effectiveIssuerType === "acapy" && !allowAcaPyAnonCreds) {
+            throw new Error(
+              "[STATE] AnonCreds issuance with ACA-Py requires an AnonCreds-enabled profile. " +
+                "Set ALLOW_ACAPY_ANONCREDS=true or switch the card format to W3C."
             );
           }
           pipe = new IssueCredentialPipeline(issuerController);
+          break;
         }
+        throw new Error(
+          `[STATE] Unsupported credential format '${String(selectedFormat)}'. Expected 'w3c' or 'anoncreds'.`
+        );
       }
-      break;
+      // (breaks happen above)
     case PipelineType.VERIFIER_TEST:
       {
         const referenceAgent = normalizeEnvChoice(process.env.REFERENCE_AGENT, "credo");
