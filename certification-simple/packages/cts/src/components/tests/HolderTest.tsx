@@ -774,6 +774,14 @@ export function HolderTest() {
   useEffect(() => {
     const prep = async () => {
       try {
+        // Ensure backend uses the same card format selected on the home page.
+        const stored = window?.localStorage?.getItem("ayra.cardFormat");
+        const fmt = stored === "anoncreds" || stored === "w3c" ? stored : "w3c";
+        await fetch(`${API_BASE_URL}/api/card-format`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ format: fmt }),
+        }).catch(() => {});
         await fetch(`${API_BASE_URL}/api/select/pipeline?pipeline=HOLDER_TEST`);
       } catch (e) {
         console.warn("Failed to select holder pipeline", e);
@@ -860,20 +868,21 @@ export function HolderTest() {
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
     if (!node) return "pending";
     
-    const status = node.task.state.status;
-    const runState = node.task.state.runState;
+    const status = (node.task.state.status || "").toLowerCase();
+    const runState = (node.task.state.runState || "").toLowerCase();
     
     // Handle various status combinations
-    if (runState === 'Running' || status === 'Running' || status === 'Started') {
+    // Important: tasks often set runState=completed even when they fail. Always check failure first.
+    if (status === "failed" || status === "error" || runState === "failed" || runState === "error") {
+      return "failed";
+    }
+
+    if (runState === 'running' || status === 'running' || status === 'started') {
       return "running";
     }
     
-    if (runState === 'Completed' || status === 'Completed' || status === 'Accepted' || node.finished) {
+    if (status === 'accepted' || status === 'passed') {
       return "passed";
-    }
-    
-    if (status === 'Failed' || status === 'Error' || runState === 'Failed') {
-      return "failed";
     }
     
     return "pending";
@@ -902,7 +911,19 @@ export function HolderTest() {
       id: 2,
       name: "Report",
       description: "View the test results and detailed report",
-      status: dagData && dagData.status.runState === 'Completed' ? "passed" : "pending",
+      status:
+        dagData &&
+        (dagData.nodes || []).some(
+          (n) =>
+            (n.task.state.status || "").toLowerCase() === "failed" ||
+            (n.task.state.status || "").toLowerCase() === "error" ||
+            (n.task.state.runState || "").toLowerCase() === "failed" ||
+            (n.task.state.runState || "").toLowerCase() === "error"
+        )
+          ? "failed"
+          : dagData && (dagData.status.runState || "").toLowerCase() === "completed"
+            ? "passed"
+            : "pending",
       component: <ReportStep 
         context={{}} 
         isActive={currentStep === 2} 

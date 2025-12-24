@@ -8,6 +8,7 @@ import { DetailedReport } from "@/components/common/DetailedReport";
 import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
 import { startTest, resetTest, addMessage } from "@/store/testSlice";
+import jsQR from "jsqr";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
 
@@ -37,8 +38,64 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
   const { messages } = useSelector((state: RootState) => state.test);
   const [hasStarted, setHasStarted] = useState(false);
   const [oobUrl, setOobUrl] = useState<string>("");
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [isDecodingQr, setIsDecodingQr] = useState(false);
   
   const stepMessages = messages[0] || [];
+
+  const decodeQrFile = useCallback(
+    (file: File) => {
+      setQrError(null);
+      setIsDecodingQr(true);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            setQrError("Unable to read QR image");
+            setIsDecodingQr(false);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code?.data) {
+            const decoded = code.data.trim();
+            setOobUrl(decoded);
+            dispatch(addMessage({ stepIndex: 0, message: "Decoded OOB URL from QR image" }));
+            setQrError(null);
+          } else {
+            setQrError("Could not decode a QR code from the image");
+          }
+          setIsDecodingQr(false);
+        };
+        img.onerror = () => {
+          setQrError("Failed to load QR image");
+          setIsDecodingQr(false);
+        };
+        img.src = reader.result as string;
+      };
+      reader.onerror = () => {
+        setQrError("Failed to read QR file");
+        setIsDecodingQr(false);
+      };
+      reader.readAsDataURL(file);
+    },
+    [dispatch]
+  );
+
+  const onQrFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      decodeQrFile(file);
+      // Reset the input so selecting the same file again still triggers change.
+      event.target.value = "";
+    }
+  };
 
   const startVerifierTest = async () => {
     if (!socket || !isConnected) {
@@ -91,7 +148,7 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="font-semibold text-blue-900 mb-2">Setup Connection</h4>
         <p className="text-blue-800 text-sm">
-          This step will process your verifier's OOB URL and establish a connection for testing.
+          This step processes the verifier's DIDComm v2 OOB invitation and establishes a connection for the Ayra card proof.
         </p>
       </div>
       
@@ -116,6 +173,27 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
               placeholder="Enter the out-of-band URL from your verifier"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+          </div>
+          <div>
+            <label htmlFor="oobQr" className="block text-sm font-medium text-gray-700 mb-2">
+              Or upload a QR code image
+            </label>
+            <input
+              id="oobQr"
+              type="file"
+              accept="image/*"
+              onChange={onQrFileSelected}
+              className="block w-full text-sm text-gray-700"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              We will decode the QR and populate the invitation URL automatically.
+            </p>
+            {isDecodingQr && (
+              <p className="text-sm text-blue-600 mt-1">Decoding QR image…</p>
+            )}
+            {qrError && (
+              <p className="text-sm text-red-600 mt-1">{qrError}</p>
+            )}
           </div>
           
           <button
@@ -225,18 +303,23 @@ export function VerifierTest() {
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
-    switch (node.task.state.status) {
-      case "passed":
-        return "passed";
-      case "failed":
-        return "failed";
-      case "running":
-        return "running";
-      case "waiting":
-        return "waiting";
-      default:
-        return "pending";
+    const status = (node.task.state.status || "").toLowerCase();
+    const runState = (node.task.state.runState || "").toLowerCase();
+
+    // Important: tasks often set runState=completed even when they fail. Always check failure first.
+    if (status === "failed" || status === "error" || runState === "failed" || runState === "error") {
+      return "failed";
     }
+    if (status === "accepted" || status === "passed") {
+      return "passed";
+    }
+    if (status === "waiting") {
+      return "waiting";
+    }
+    if (status === "running" || status === "started" || runState === "running") {
+      return "running";
+    }
+    return "pending";
   };
 
   const updateStepStatus = (node: TaskNode, index: number): void => {
@@ -261,12 +344,21 @@ export function VerifierTest() {
   // Initialize steps
   useEffect(() => {
     const stepDefinitions = [
-      { name: "Self-Issue Credential", description: "Create test credential with schema and credential definition" },
-      { name: "Establish Connection", description: "Receive invitation and establish connection with verifier" },
-      { name: "Combine Data", description: "Combine credential information with connection for presentation" },
-      { name: "Send Presentation", description: "Send the requested presentation to the verifier" },
-      { name: "Evaluate Results", description: "Evaluate verifier's conformance based on test results" }
+      { name: "Accept Invitation", description: "Consume the verifier's DIDComm v2 OOB invitation and connect" },
+      { name: "Await Proof Request", description: "Wait for a Presentation Exchange v2 request for the Ayra Business Card" },
+      { name: "Send Presentation", description: "Respond with the Ayra Business Card (Ed25519Signature2020) presentation" },
+      { name: "Wait for Verification", description: "Wait for the verifier to process and verify the presentation" },
+      { name: "Evaluate Results", description: "Evaluate verifier conformance from the exchange" }
     ];
+
+    const dagNodes = dag?.nodes || [];
+    const resolvedStepDefinitions = Array.from(
+      { length: Math.max(stepDefinitions.length, dagNodes.length || 0) },
+      (_, i) => ({
+        name: stepDefinitions[i]?.name || dagNodes[i]?.task?.metadata?.name || `Step ${i + 1}`,
+        description: stepDefinitions[i]?.description || dagNodes[i]?.task?.metadata?.description || "",
+      })
+    );
 
     const initialSteps: TestStep[] = [];
 
@@ -286,20 +378,20 @@ export function VerifierTest() {
       taskData: dag?.nodes?.[0]
     });
 
-    // Add backend pipeline steps (6 steps from our verifier pipeline)
-    for (let i = 0; i < stepDefinitions.length; i++) {
+    // Add backend pipeline steps derived from the DAG
+    for (let i = 0; i < resolvedStepDefinitions.length; i++) {
       const stepNum = i + 1;
       initialSteps.push({
         id: stepNum + 1,
-        name: stepDefinitions[i].name,
-        description: stepDefinitions[i].description,
+        name: resolvedStepDefinitions[i].name,
+        description: resolvedStepDefinitions[i].description,
         status: currentStep > stepNum ? "passed" : currentStep === stepNum ? "running" : "pending",
         component: (
           <GenericVerifierStep
             isActive={currentStep === stepNum}
             stepIndex={stepNum}
-            title={stepDefinitions[i].name}
-            description={stepDefinitions[i].description}
+            title={resolvedStepDefinitions[i].name}
+            description={resolvedStepDefinitions[i].description}
             taskData={dag?.nodes?.[i]}
           />
         ),
@@ -309,7 +401,7 @@ export function VerifierTest() {
     }
 
     // Add report step (after all 6 backend steps)
-    const reportStepIndex = stepDefinitions.length + 1;
+    const reportStepIndex = resolvedStepDefinitions.length + 1;
     initialSteps.push({
       id: reportStepIndex + 1,
       name: "Report",

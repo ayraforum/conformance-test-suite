@@ -13,7 +13,7 @@ const DEFAULT_PROFILE = "issuer" as const;
 
 export type AcaPyAdapterOptions = {
   baseUrl: string;
-  profile?: "issuer" | "verifier";
+  profile?: "issuer" | "verifier" | "holder";
 };
 
 interface AgentStartResponse {
@@ -82,6 +82,10 @@ export class AcaPyAgentAdapter implements AgentAdapter {
 
   getAdminUrl(): string | undefined {
     return this.adminUrl;
+  }
+
+  getControlUrl(): string {
+    return this.baseUrl;
   }
 
   async createOutOfBandInvitation(): Promise<ControllerInvitation> {
@@ -180,21 +184,39 @@ export class AcaPyAgentAdapter implements AgentAdapter {
         connection_id: connectionId,
         protocol_version: protocolVersion,
         proof_formats: proof.proofFormats,
+        // Keep the exchange record around so CTS can poll and verify deterministically.
+        // This avoids races where the record gets auto-removed before we can observe state transitions.
+        auto_verify: false,
+        auto_remove: false,
       }
     );
-    const verifyResp = await this.post("/proofs/verify", {
-      proof_exchange_id: response.proof_exchange_id,
-      connection_id: connectionId,
-    });
-    // Try to return whatever verify provided; fall back to request response
-    if (verifyResp) {
-      const record =
-        (verifyResp as any).record ||
-        (verifyResp as any).result ||
-        verifyResp;
-      return record;
+
+    const overallTimeoutMs = 180_000;
+    const deadline = Date.now() + overallTimeoutMs;
+    let last: any = null;
+
+    while (Date.now() < deadline) {
+      const verifyResp = await this.post("/proofs/verify-or-status", {
+        proof_exchange_id: response.proof_exchange_id,
+        connection_id: connectionId,
+        timeout_ms: 2_000,
+      });
+      last = verifyResp;
+      const record = (verifyResp as any)?.record || (verifyResp as any)?.result || verifyResp;
+      const state = String((verifyResp as any)?.state || record?.state || "").toLowerCase();
+      if (state === "done") return record;
+      if (state === "abandoned") {
+        throw new Error("Verifier abandoned the proof exchange");
+      }
+      await new Promise((r) => setTimeout(r, 1_500));
     }
-    return response;
+
+    const record = last?.record || last?.result || last;
+    throw new Error(
+      `Timed out waiting for ACA-Py proof exchange to complete (proof_exchange_id=${response.proof_exchange_id}, state=${String(
+        last?.state || record?.state || "unknown"
+      )})`
+    );
   }
 
   async issueCredential(payload: CredentialOfferPayload): Promise<CredentialOfferResult> {
@@ -204,27 +226,19 @@ export class AcaPyAgentAdapter implements AgentAdapter {
           "Provide one in CredentialIssuanceOptions when using ACA-Py."
       );
     }
-    const previewAttributes = payload.attributes.map(({ name, value }) => ({
-      name,
-      value: String(value),
-    }));
+    const attributeMap = payload.attributes.reduce<Record<string, string>>((acc, { name, value }) => {
+      acc[name] = String(value);
+      return acc;
+    }, {});
 
     const response = await this.post<{
       credential_exchange_id: string;
       record?: unknown;
     }>("/credentials/offer", {
       connection_id: payload.connectionId,
+      credential_definition_id: payload.credentialDefinitionId,
+      attributes: attributeMap,
       protocol_version: "v2",
-      credential_preview: {
-        "@type": "issue-credential/2.0/credential-preview",
-        attributes: previewAttributes,
-      },
-      filter: {
-        indy: {
-          cred_def_id: payload.credentialDefinitionId,
-          attributes: previewAttributes,
-        },
-      },
     });
     return {
       schemaId: payload.schemaId,

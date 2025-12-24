@@ -22,7 +22,5 @@ extra_args:
   - "--webhook-url"
   - "http://acapy-control:9001/webhook"
   - "--no-ledger"
-  - "--plugin"
-  - "acapy_agent.vc.ld_proofs"
   - "--plugin-config"
   - "/app/ld-proofs-config.yaml"

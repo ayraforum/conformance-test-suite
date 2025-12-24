@@ -30,7 +30,7 @@ const agentLabel = deriveAgentLabel();
 
 function shouldUseAcaPy(): boolean {
   const referenceAgent = (process.env.REFERENCE_AGENT || "credo").toLowerCase();
-  const overrideAgent = (process.env.ISSUER_OVERRIDE_AGENT || "auto").toLowerCase();
+  const overrideAgent = (process.env.REFERENCE_ISSUER_OVERRIDE_AGENT || "auto").toLowerCase();
   const effectiveAgent = (process.env.ISSUER_EFFECTIVE_AGENT || "").toLowerCase();
   const issuerAgent =
     effectiveAgent ||
@@ -158,6 +158,9 @@ async function initializeServer() {
           return;
         }
         try {
+          if (!issuerPipeline) {
+            throw new Error("Issuer pipeline not initialized");
+          }
           const dag = issuerPipeline.dag();
           const nodes = dag.getNodes();
           const connectionNode = nodes.find((node: TaskRunnerNode) => node.task.metadata.name === "Setup Connection");
@@ -220,6 +223,9 @@ async function initializeServer() {
           return;
         }
         try {
+          if (!issuerPipeline) {
+            throw new Error("Issuer pipeline not initialized");
+          }
           const dag = issuerPipeline.dag();
           const nodes = dag.getNodes();
           const credentialNode = nodes.find((node: TaskRunnerNode) => node.task.metadata.name === "Issue Credential");

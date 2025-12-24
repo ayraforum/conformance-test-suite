@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class AgentStartRequest(BaseModel):
-  profile: Literal["issuer", "verifier"] = "issuer"
+  profile: Literal["issuer", "verifier", "holder"] = "issuer"
   use_ledger: bool = False
 
 
@@ -34,6 +34,8 @@ class ProofRequest(BaseModel):
   proof_formats: Optional[dict] = None
   presentation_request: Optional[dict] = None
   comment: Optional[str] = None
+  auto_verify: Optional[bool] = None
+  auto_remove: Optional[bool] = None
 
 
 class ProofExchangeResponse(BaseModel):
@@ -74,6 +76,8 @@ class ConnectionRecordResponse(BaseModel):
 
 class ReceiveInvitationRequest(BaseModel):
   invitation: dict
+  auto_accept: Optional[bool] = None
+  use_existing_connection: Optional[bool] = None
 
 
 class ReceiveInvitationResponse(BaseModel):

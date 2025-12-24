@@ -1,11 +1,20 @@
 import HolderTestPipeline from "./holderTestPipeline";
 import VerifierTestPipeline from "./verifierTestPipeline";
+import VerifierAcaPyPipeline from "./verifierAcaPyPipeline";
 import TRQPTesterPipeline from "./trqpTesterPipeline";
 import IssueCredentialPipeline from "./issueCredentialPipeline";
 import RegistryTestPipeline from "./trqpTesterPipeline";
 import IssueAcaPyW3CPipeline from "./issueAcaPyW3CPipeline";
 
-export { HolderTestPipeline, VerifierTestPipeline, TRQPTesterPipeline, IssueCredentialPipeline, RegistryTestPipeline, IssueAcaPyW3CPipeline };
+export {
+  HolderTestPipeline,
+  VerifierTestPipeline,
+  VerifierAcaPyPipeline,
+  TRQPTesterPipeline,
+  IssueCredentialPipeline,
+  RegistryTestPipeline,
+  IssueAcaPyW3CPipeline,
+};
 
 export enum PipelineType {
   HOLDER_TEST = "HOLDER_TEST",
