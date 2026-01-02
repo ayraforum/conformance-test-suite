@@ -13,6 +13,7 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
   private controller: AgentController;
   private credential?: unknown;
   private verified = false;
+  private credExId?: string;
 
   constructor(controller: AgentController, name: string, description?: string) {
     super(name, description);
@@ -55,6 +56,7 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
   }
 
   private buildCredential(issuerDid: string, subjectDid: string, inlineContext: any) {
+    const ayraSchemaId = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
     return {
       "@context": [
         "https://www.w3.org/ns/credentials/v2",
@@ -62,6 +64,8 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
         "https://w3id.org/security/suites/ed25519-2020/v1",
       ],
       type: ["VerifiableCredential", "AyraBusinessCard"],
+      // Include credentialSchema so ACA-Py DIF matching succeeds (ACA-Py #4006 workaround).
+      credentialSchema: { id: ayraSchemaId, type: "JsonSchema" },
       issuer: { id: issuerDid },
       validFrom: "2025-01-01T00:00:00Z",
       validUntil: "2026-01-01T00:00:00Z",
@@ -84,11 +88,84 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
     };
   }
 
+  private extractCredExId(issued: any): string | undefined {
+    const id =
+      issued?.cred_ex_id ||
+      issued?.cred_ex_record?.cred_ex_id ||
+      issued?.credential_exchange_id ||
+      issued?.credential_exchange?.credential_exchange_id ||
+      issued?.result?.cred_ex_id;
+    return typeof id === "string" && id.length > 0 ? id : undefined;
+  }
+
+  private async fetchJson(url: string, opts: RequestInit): Promise<any> {
+    const resp = await fetch(url, {
+      ...opts,
+      headers: {
+        "Content-Type": "application/json",
+        ...(opts.headers || {}),
+      },
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`ACA-Py admin request failed (${resp.status} ${resp.statusText}): ${text}`);
+    }
+    const contentType = resp.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) return resp.json();
+    return undefined;
+  }
+
+  private async waitForCredentialExchangeDone(adminUrl: string, credExId: string): Promise<any> {
+    const base = adminUrl.replace(/\/$/, "");
+    const deadline = Date.now() + 300_000;
+    let last: any;
+
+    while (Date.now() < deadline) {
+      last = await this.fetchJson(`${base}/issue-credential-2.0/records/${credExId}`, {
+        method: "GET",
+      }).catch(() => null);
+
+      const record =
+        last?.result ||
+        last?.record ||
+        last?.results ||
+        last?.cred_ex_record ||
+        last;
+      const state = (record?.state || "").toLowerCase();
+      if (state) {
+        if (
+          [
+            "done",
+            "credential-issued",
+            "credential_issued",
+            "credential-received",
+            "credential_received",
+            "issued",
+          ].includes(state)
+        ) {
+          return record;
+        }
+        if (["abandoned", "declined"].includes(state) || state.includes("problem")) {
+          throw new Error(`Credential exchange failed in state '${record?.state}'`);
+        }
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    const record = last?.result || last?.record || last?.results || last?.cred_ex_record || last;
+    const state = record?.state || "unknown";
+    throw new Error(
+      `Timed out waiting for credential exchange ${credExId} to complete (last state: ${state})`
+    );
+  }
+
   async run(connectionRecord?: ConnectionRecord): Promise<void> {
     super.run();
     try {
       const adapter = this.controller.getAdapter() as any;
-      if (!(adapter instanceof AcaPyAgentAdapter)) {
+      const adapterType = adapter && adapter.constructor ? adapter.constructor.name : typeof adapter;
+      const isAcaPy = adapter && (adapter instanceof AcaPyAgentAdapter || adapterType === "AcaPyAgentAdapter");
+      if (!isAcaPy) {
         throw new Error("W3C issuance requires ACA-Py adapter");
       }
       if (!connectionRecord?.id) {
@@ -122,6 +199,8 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
       const issued: any = await adapter.issueLdProofCredential({
         connection_id: connectionRecord.id,
         comment: "Ayra Business Card (LDP)",
+        auto_issue: true,
+        auto_remove: false,
         credential_preview: {
           "@type": "issue-credential/2.0/credential-preview",
           attributes: [],
@@ -138,8 +217,37 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
         },
       });
 
-      this.credential = issued;
+      this.credExId = this.extractCredExId(issued);
+      if (!this.credExId) {
+        throw new Error("ACA-Py did not return a credential exchange id (cred_ex_id)");
+      }
+
+      const adminUrl = (adapter as AcaPyAgentAdapter).getAdminUrl?.();
+      if (!adminUrl) {
+        throw new Error("ACA-Py admin URL missing; cannot confirm credential issuance");
+      }
+
+      this.addMessage(`Waiting for issuance to complete (cred_ex_id=${this.credExId})`);
+      const finalRecord = await this.waitForCredentialExchangeDone(adminUrl, this.credExId);
+
+      this.credential = finalRecord;
       this.verified = true;
+
+      const issuedSummary = {
+        credExId: this.credExId,
+        issuer: issuerDid,
+        subject: credential?.credentialSubject?.id ?? "unknown",
+      };
+      this.addMessage(
+        `Issued Ayra Business Card (W3C): ${JSON.stringify(issuedSummary)}`
+      );
+      this.addMessage(`Issued credential payload:\n${JSON.stringify(credential, null, 2)}`);
+      console.log("[IssueAyraW3CTask] Issued credential payload", credential);
+      console.log(
+        "[IssueAyraW3CTask] Issued credential payload (json)",
+        JSON.stringify(credential, null, 2)
+      );
+      console.log("[IssueAyraW3CTask] Issued credential", issuedSummary);
 
       this.setCompleted();
       this.setAccepted();
@@ -158,6 +266,7 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
       author: "IssueAyraW3CTask",
       value: {
         verified: this.verified,
+        credExId: this.credExId,
         credential: this.credential,
       },
     };

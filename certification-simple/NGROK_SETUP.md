@@ -88,7 +88,7 @@ NGROK_REGION=us
 SERVER_NGROK_DOMAIN=cts-server.your-org.ngrok.app
 REFERENCE_AGENT_NGROK_DOMAIN=reference.your-org.ngrok.app
 VERIFIER_TEST_NGROK_DOMAIN=verifier.your-org.ngrok.app
-ISSUER_OVERRIDE_NGROK_DOMAIN=issuer.your-org.ngrok.app   # optional; only used when ISSUER_OVERRIDE_AGENT=credo
+ISSUER_OVERRIDE_NGROK_DOMAIN=issuer.your-org.ngrok.app   # optional; only used when REFERENCE_ISSUER_OVERRIDE_AGENT=credo
 NGROK_POOLING_ENABLED=false
 ```
 
@@ -117,9 +117,9 @@ Both tunnels retain their reserved domains, keeping QR codes and webhook targets
 | `VERIFIER_TEST_NGROK_DOMAIN` | Reserved domain for the standalone verifier test tunnel |
 | `NGROK_POOLING_ENABLED` | Set to `false` for one-to-one reserved domains; leave `true` for pooled listeners |
 | `REFERENCE_AGENT_NGROK_DOMAIN` | Domain used by whatever agent is configured as `REFERENCE_AGENT` (Credo or ACA-Py) |
-| `ISSUER_OVERRIDE_NGROK_DOMAIN` | Domain used by the override issuer agent when `ISSUER_OVERRIDE_AGENT=credo` |
+| `ISSUER_OVERRIDE_NGROK_DOMAIN` | Domain used by the override issuer agent when `REFERENCE_ISSUER_OVERRIDE_AGENT=credo` |
 
-> **ACA-Py Holder Flow:** When `REFERENCE_AGENT=acapy`, the compose stack automatically starts an `acapy-ngrok` sidecar that forwards the ACA-Py HTTP inbound port (8041) to NGROK. Set `REFERENCE_AGENT_NGROK_DOMAIN` in the root `.env` to the reserved domain you want the QR codes to use (e.g. `reference-cts.ngrok.app`). If you also enable `ISSUER_OVERRIDE_AGENT=credo`, provide a distinct `ISSUER_OVERRIDE_NGROK_DOMAIN` so the Credo issuer can host its own invitations without colliding with the ACA-Py tunnel.
+> **ACA-Py Holder Flow:** When `REFERENCE_AGENT=acapy`, the compose stack automatically starts an `acapy-ngrok` sidecar that forwards the ACA-Py HTTP inbound port (8041) to NGROK. Set `REFERENCE_AGENT_NGROK_DOMAIN` in the root `.env` to the reserved domain you want the QR codes to use (e.g. `reference-cts.ngrok.app`). If you also enable `REFERENCE_ISSUER_OVERRIDE_AGENT=credo`, provide a distinct `ISSUER_OVERRIDE_NGROK_DOMAIN` so the Credo issuer can host its own invitations without colliding with the ACA-Py tunnel.
 
 ## 6. Troubleshooting
 

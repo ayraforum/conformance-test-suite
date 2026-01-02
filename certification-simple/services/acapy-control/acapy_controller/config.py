@@ -83,6 +83,23 @@ class ProfileConfig:
     if os.getenv("ACAPY_NO_LEDGER", "").lower() == "true":
       args.append("--no-ledger")
 
+    log_level = os.getenv("ACAPY_LOG_LEVEL")
+    if log_level:
+      args.extend(["--log-level", log_level])
+
+    trace_enabled = os.getenv("ACAPY_TRACE", "").lower() == "true"
+    if trace_enabled:
+      args.append("--trace")
+      trace_target = os.getenv("ACAPY_TRACE_TARGET")
+      if trace_target:
+        args.extend(["--trace-target", trace_target])
+      trace_tag = os.getenv("ACAPY_TRACE_TAG")
+      if trace_tag:
+        args.extend(["--trace-tag", trace_tag])
+      trace_label = os.getenv("ACAPY_TRACE_LABEL")
+      if trace_label:
+        args.extend(["--trace-label", trace_label])
+
     args.extend(self.extra_args)
     return args
 

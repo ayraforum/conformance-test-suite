@@ -127,8 +127,15 @@ export default class BaseRunnableTask implements RunnableTask {
     this.update();
   }
 
-  protected addError(error: string): string[] {
-    return [...this.state.errors, error];
+  protected addError(error: unknown): string[] {
+    const message = error instanceof Error ? error.message : String(error);
+    const errors = [...this.state.errors, message];
+    this.state = {
+      ...this.state,
+      errors,
+    };
+    this.update();
+    return errors;
   }
 
   // Run method (Async)
