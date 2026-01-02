@@ -56,6 +56,7 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
   }
 
   private buildCredential(issuerDid: string, subjectDid: string, inlineContext: any) {
+    const ayraSchemaId = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
     return {
       "@context": [
         "https://www.w3.org/ns/credentials/v2",
@@ -63,6 +64,8 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
         "https://w3id.org/security/suites/ed25519-2020/v1",
       ],
       type: ["VerifiableCredential", "AyraBusinessCard"],
+      // Include credentialSchema so ACA-Py DIF matching succeeds (ACA-Py #4006 workaround).
+      credentialSchema: { id: ayraSchemaId, type: "JsonSchema" },
       issuer: { id: issuerDid },
       validFrom: "2025-01-01T00:00:00Z",
       validUntil: "2026-01-01T00:00:00Z",

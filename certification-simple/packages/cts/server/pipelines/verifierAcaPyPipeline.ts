@@ -32,6 +32,14 @@ type PresentationResult = {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const POLL_INTERVAL_MS = 2000;
+const VERIFIED_GRACE_MS = (() => {
+  const raw = process.env.ACAPY_VERIFIED_GRACE_MS;
+  if (!raw) return 2000;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return 2000;
+  return parsed;
+})();
 
 function decodeOobFromUrl(oobUrl: string): any {
   const url = new URL(oobUrl.trim());
@@ -323,9 +331,44 @@ class AwaitProofRequestTask extends BaseRunnableTask {
 
     const domain = "https://cts.verifier";
     const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
+    const vcTypeUri = "https://www.w3.org/ns/credentials#VerifiableCredential";
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const challenge = randomUUID();
+      const presentationRequest = {
+        dif: {
+          options: {
+            challenge,
+            domain,
+          },
+          presentation_definition: {
+            name: "Ayra Business Card LDP",
+            purpose: "Present an Ayra Business Card signed as a Linked Data Proof VC",
+            format: { ldp_vp: { proof_type: ["Ed25519Signature2020"] } },
+            input_descriptors: [
+              {
+                id: "ayra-business-card",
+                purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
+                // ACA-Py issue #4006: DIF handler crashes if schema is omitted.
+                // Use expanded type URIs (see #3441); when fixed, we can drop schema and rely on constraints.
+                schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
+                constraints: {
+                  fields: [
+                    {
+                      path: ["$.type", "$.vc.type", "$.credential.type"],
+                      filter: { type: "array", contains: { const: "AyraBusinessCard" } },
+                    },
+                    {
+                      path: ["$.proof.type", "$.proof[0].type"],
+                      filter: { type: "string", const: "Ed25519Signature2020" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      };
       const proofRequest = {
         connection_id: verifierConnectionId,
         protocol_version: "v2",
@@ -335,42 +378,7 @@ class AwaitProofRequestTask extends BaseRunnableTask {
         // in `presentation-received` until it's verified.
         auto_verify: false,
         comment: `CTS demo verifier proof request (attempt ${attempt}/${maxAttempts})`,
-        proof_formats: {
-          dif: {
-            options: {
-              challenge,
-              domain,
-            },
-            presentation_definition: {
-              name: "Ayra Business Card LDP",
-              purpose: "Present an Ayra Business Card signed as a Linked Data Proof VC",
-              format: { ldp_vp: { proof_type: ["Ed25519Signature2020"] } },
-              input_descriptors: [
-                {
-                  id: "ayra-business-card",
-                  purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
-                  schema: [
-                    // ACA-Py indexes W3C credentials by expanded type URIs.
-                    { uri: ayraTypeUri },
-                    { uri: "https://www.w3.org/2018/credentials#VerifiableCredential" },
-                  ],
-                  constraints: {
-                    fields: [
-                      {
-                        path: ["$.type", "$.vc.type", "$.credential.type"],
-                        filter: { type: "array", contains: { const: "AyraBusinessCard" } },
-                      },
-                      {
-                        path: ["$.proof.type", "$.proof[0].type"],
-                        filter: { type: "string", const: "Ed25519Signature2020" },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        },
+          proof_formats: presentationRequest,
       };
 
       const response = await fetchJson(`${verifierControl}/proofs/request`, {
@@ -665,6 +673,8 @@ class SendPresentationViaAcaPyTask extends BaseRunnableTask {
     await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}/send-presentation`, {
       method: "POST",
       body: JSON.stringify({
+        // Keep the holder record until the verifier ACKs to avoid double-delete errors.
+        auto_remove: false,
         dif: recordIds.length > 0 ? { record_ids: { "ayra-business-card": recordIds } } : {},
       }),
     });
@@ -706,7 +716,7 @@ class SendPresentationViaAcaPyTask extends BaseRunnableTask {
   }
 }
 
-class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
+export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
   private adapter: AcaPyAgentAdapter;
   private demoVerifierAdapter?: AcaPyAgentAdapter;
   private verified = false;
@@ -725,29 +735,39 @@ class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
 
   async run(input?: any): Promise<void> {
     super.run();
-    const exchangeId = input?.presentationExchangeId;
-    if (!exchangeId) {
-      const error = new Error("presentationExchangeId missing from presentation step");
-      this.addError(error.message);
+    try {
+      const exchangeId = input?.presentationExchangeId;
+      if (!exchangeId) {
+        const error = new Error("presentationExchangeId missing from presentation step");
+        this.addError(error.message);
+        this.setFailed();
+        this.setCompleted();
+        throw error;
+      }
+
+      const adminUrl = this.adapter.getAdminUrl();
+      if (!adminUrl) {
+        throw new Error("ACA-Py admin URL missing");
+      }
+      const baseUrl = adminUrl.replace(/\/$/, "");
+
+      const record = await this.waitForDone(baseUrl, exchangeId, input?.demoVerifier);
+      const state = record?.state || record?.result?.state;
+      const verifiedRaw = record?.verified ?? record?.result?.verified;
+      this.verified = verifiedRaw === true || verifiedRaw === "true";
+      this.finalState = state;
+      this.addMessage(`Verification state: ${state}, verified=${this.verified}`);
+      if (!this.verified) {
+        throw new Error("Verifier record did not include verified=true");
+      }
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      this.addError(err);
       this.setFailed();
       this.setCompleted();
-      throw error;
+      throw err;
     }
-
-    const adminUrl = this.adapter.getAdminUrl();
-    if (!adminUrl) {
-      throw new Error("ACA-Py admin URL missing");
-    }
-    const baseUrl = adminUrl.replace(/\/$/, "");
-
-    const record = await this.waitForDone(baseUrl, exchangeId, input?.demoVerifier);
-    const state = record?.state || record?.result?.state;
-    const verifiedRaw = record?.verified ?? record?.result?.verified;
-    this.verified = verifiedRaw === true || verifiedRaw === "true";
-    this.finalState = state;
-    this.addMessage(`Verification state: ${state}, verified=${this.verified}`);
-    this.setAccepted();
-    this.setCompleted();
   }
 
   private async waitForDone(
@@ -759,32 +779,152 @@ class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
       this.demoVerifierAdapter && demoVerifier?.connectionId
         ? this.demoVerifierAdapter.getControlUrl().replace(/\/$/, "")
         : null;
-    let verifierProofExchangeId = demoVerifier?.proofExchangeId || exchangeId;
+    let verifierProofExchangeId = demoVerifier?.proofExchangeId;
     const verifierConnectionId = demoVerifier?.connectionId;
     let loggedDemoAssist = false;
+    let loggedMissingVerifierId = false;
+    let verifyTriggered = false;
+    let verifyTriggerId: string | null = null;
 
     const deadline = Date.now() + 180_000;
+    const verifiedGraceMs = VERIFIED_GRACE_MS;
+    const missingGraceMs = 6_000;
+    const summarizeRecord = (record: any): string => {
+      if (!record || typeof record !== "object") return "null";
+      const summary = {
+        state: record?.state || record?.presentation_state,
+        verified: record?.verified,
+        pres_ex_id: record?.pres_ex_id || record?.presentation_exchange_id,
+        proof_exchange_id: record?.proof_exchange_id,
+        thread_id: record?.thread_id,
+        updated_at: record?.updated_at,
+      };
+      return JSON.stringify(summary);
+    };
+    const logSnapshot = (source: string, record: any, extra?: Record<string, unknown>) => {
+      const payload = {
+        source,
+        exchangeId,
+        threadId: record?.thread_id ?? null,
+        state: record?.state ?? record?.presentation_state ?? null,
+        verified: record?.verified ?? null,
+        timestamp: new Date().toISOString(),
+        ...extra,
+      };
+      this.addMessage(`Proof exchange update: ${JSON.stringify(payload)}`);
+    };
+    const normalizeState = (value: any): string | null => {
+      if (!value || typeof value !== "string") return null;
+      return value.replace(/_/g, "-").toLowerCase();
+    };
+    const isVerified = (value: any): boolean => value === true || value === "true";
+
     let last: any;
+    let lastHolderRecord: any | null = null;
+    let lastHolderSeenAt: number | null = null;
     let lastHolderState: string | null = null;
+    let lastHolderVerified: any = null;
     let lastVerifierState: string | null = null;
+    let lastVerifierRecord: any | null = null;
+    let doneSeenAt: number | null = null;
+    let doneSeenSource: "holder" | "verifier" | null = null;
+    let verifiedSeenAt: number | null = null;
+    let missingSeenAt: number | null = null;
     while (Date.now() < deadline) {
       last = await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}`, { method: "GET" }).catch(() => null);
-      const state = last?.state || last?.result?.state;
-      if (state && state !== lastHolderState) {
-        lastHolderState = state;
-        this.addMessage(`Holder exchange state: ${state}`);
+      const holderRecord = last?.result || last;
+      const holderState = normalizeState(holderRecord?.state || holderRecord?.result?.state);
+      const holderVerified = holderRecord?.verified ?? holderRecord?.result?.verified;
+      if (holderRecord) {
+        lastHolderRecord = holderRecord;
+        lastHolderSeenAt = Date.now();
+        if (missingSeenAt) {
+          this.addMessage(
+            `Proof exchange record reappeared after ${Date.now() - missingSeenAt}ms (exchangeId=${exchangeId})`
+          );
+          missingSeenAt = null;
+        }
+        if (holderState && holderState !== lastHolderState) {
+          lastHolderState = holderState;
+          logSnapshot("holder", holderRecord, { normalizedState: holderState });
+        }
+        lastHolderVerified = holderVerified;
+        if (isVerified(holderVerified)) {
+          verifiedSeenAt = Date.now();
+          logSnapshot("holder", holderRecord, { normalizedState: holderState, verifiedObserved: true });
+          return holderRecord;
+        }
+        if (holderState === "abandoned") {
+          const lastSeenAt = lastHolderSeenAt ? new Date(lastHolderSeenAt).toISOString() : "unknown";
+          throw new Error(
+            `Verifier abandoned proof exchange (lastSeenAt=${lastSeenAt}, lastRecord=${summarizeRecord(
+              lastHolderRecord
+            )})`
+          );
+        }
+        if (holderState === "done" && !isVerified(holderVerified) && doneSeenAt === null) {
+          doneSeenAt = Date.now();
+          doneSeenSource = "holder";
+          this.addMessage(`Verifier record reached done (source=holder, ts=${new Date(doneSeenAt).toISOString()})`);
+        }
+      } else if (lastHolderSeenAt) {
+        if (!missingSeenAt) {
+          missingSeenAt = Date.now();
+          this.addMessage(
+            `Proof exchange record missing (exchangeId=${exchangeId}, lastState=${lastHolderState ?? "unknown"})`
+          );
+        }
       }
-      if (state === "done" || state === "abandoned") {
-        return last?.result || last;
-      }
-      if (verifierControl && verifierConnectionId) {
+
+      if (verifierControl && verifierConnectionId && verifierProofExchangeId) {
         if (!loggedDemoAssist) {
           this.addMessage(
             `Demo verifier assist: polling verifier state (connection_id=${verifierConnectionId}${
-              demoVerifier?.proofExchangeId ? `, proof_exchange_id=${demoVerifier.proofExchangeId}` : ""
+              verifierProofExchangeId ? `, proof_exchange_id=${verifierProofExchangeId}` : ""
             })`
           );
           loggedDemoAssist = true;
+        }
+        if (!verifyTriggered) {
+          verifyTriggered = true;
+          verifyTriggerId = verifierProofExchangeId;
+          this.addMessage(
+            `Demo verifier assist: triggering verifier /proofs/verify (proof_exchange_id=${verifierProofExchangeId})`
+          );
+          void fetchJson(`${verifierControl}/proofs/verify`, {
+            method: "POST",
+            body: JSON.stringify({
+              proof_exchange_id: verifierProofExchangeId,
+              connection_id: verifierConnectionId,
+              timeout_ms: 120_000,
+            }),
+          })
+            .then((resp) => {
+              const record = (resp as any)?.record || (resp as any)?.result || resp;
+              const verifierState = normalizeState(
+                record?.state || record?.presentation_state || (resp as any)?.state || "request-sent"
+              );
+              const verifierVerified = record?.verified;
+              this.addMessage(
+                `Demo verifier assist: /proofs/verify response (state=${verifierState || "unknown"}, verified=${String(
+                  verifierVerified
+                )})`
+              );
+              if (isVerified(verifierVerified)) {
+                verifiedSeenAt = Date.now();
+              }
+            })
+            .catch((e) => {
+              this.addMessage(
+                `Demo verifier assist: /proofs/verify failed (proof_exchange_id=${verifierProofExchangeId}, error=${
+                  e instanceof Error ? e.message : String(e)
+                })`
+              );
+            });
+        } else if (verifyTriggerId && verifierProofExchangeId !== verifyTriggerId) {
+          this.addMessage(
+            `Demo verifier assist: proof_exchange_id updated after verify trigger (from=${verifyTriggerId} to=${verifierProofExchangeId})`
+          );
         }
         const verifierResp = await fetchJson(`${verifierControl}/proofs/verify-or-status`, {
           method: "POST",
@@ -804,31 +944,73 @@ class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
             verifierProofExchangeId = resolvedId;
             this.addMessage(`Demo verifier assist: resolved proof_exchange_id=${resolvedId}`);
           }
-          const verifierState =
-            record?.state ||
-            record?.presentation_state ||
-            (verifierResp as any)?.state ||
-            "request-sent";
+          const verifierState = normalizeState(
+            record?.state || record?.presentation_state || (verifierResp as any)?.state || "request-sent"
+          );
+          if (record) {
+            lastVerifierRecord = record;
+          }
           if (verifierState && verifierState !== lastVerifierState) {
             lastVerifierState = verifierState;
-            this.addMessage(`Demo verifier state: ${verifierState}`);
+            logSnapshot("verifier", record, { normalizedState: verifierState });
           }
           const verifierVerified = record?.verified;
-          if (verifierVerified === true || verifierVerified === "true") {
+          if (isVerified(verifierVerified)) {
             this.addMessage(
               `Demo verifier assist: verifier reports verified=true (state=${verifierState || "unknown"}). Proceeding.`
             );
+            verifiedSeenAt = Date.now();
             return { state: "done", verified: true, record };
           }
-          if (verifierState === "done") {
-            return { state: "done", verified: verifierVerified === true || verifierVerified === "true", record };
+          if (verifierState === "done" && doneSeenAt === null) {
+            doneSeenAt = Date.now();
+            doneSeenSource = "verifier";
+            this.addMessage(
+              `Verifier record reached done (source=verifier, ts=${new Date(doneSeenAt).toISOString()})`
+            );
           }
           if (verifierState === "abandoned") {
-            return { state: "abandoned", verified: false, record };
+            const holderSummary = summarizeRecord(lastHolderRecord);
+            throw new Error(
+              `Verifier abandoned proof exchange (verifierState=abandoned, lastHolderRecord=${holderSummary})`
+            );
           }
         }
+      } else if (verifierControl && verifierConnectionId && !loggedMissingVerifierId) {
+        this.addMessage(
+          "Demo verifier assist: proof_exchange_id missing; skipping verifier polling and waiting on holder state"
+        );
+        loggedMissingVerifierId = true;
       }
-      await sleep(2000);
+      if (missingSeenAt) {
+        if (verifiedSeenAt) {
+          this.addMessage("Proof exchange record missing after verified=true observed; proceeding.");
+          return lastHolderRecord || { state: "done", verified: true };
+        }
+        const missingForMs = Date.now() - missingSeenAt;
+        if (missingForMs >= missingGraceMs) {
+          const lastSeenAt = lastHolderSeenAt ? new Date(lastHolderSeenAt).toISOString() : "unknown";
+          throw new Error(
+            `Verifier record disappeared before verified=true (missingForMs=${missingForMs}, lastSeenAt=${lastSeenAt}, lastState=${
+              lastHolderState ?? "unknown"
+            }, lastVerified=${String(lastHolderVerified)}) lastRecord=${summarizeRecord(lastHolderRecord)}`
+          );
+        }
+      }
+      if (doneSeenAt !== null && !isVerified(lastHolderVerified)) {
+        const waitedMs = Date.now() - doneSeenAt;
+        if (waitedMs >= verifiedGraceMs) {
+          const doneIso = new Date(doneSeenAt).toISOString();
+          const holderSummary = summarizeRecord(lastHolderRecord);
+          const verifierSummary = summarizeRecord(lastVerifierRecord);
+          throw new Error(
+            `Verified grace window elapsed without verified=true (doneSeenAt=${doneIso}, waitedMs=${waitedMs}, graceMs=${verifiedGraceMs}, doneSource=${
+              doneSeenSource ?? "unknown"
+            }, lastHolderRecord=${holderSummary}, lastVerifierRecord=${verifierSummary})`
+          );
+        }
+      }
+      await sleep(POLL_INTERVAL_MS);
     }
     throw new Error(
       `Timed out waiting for verifier response (holderState=${lastHolderState ?? "unknown"}, verifierState=${
@@ -861,7 +1043,13 @@ class VerifierAcaPyEvaluationTask extends BaseRunnableTask {
     super.run();
     this._pipelineResults = input || {};
     this.addMessage("Verifier conformance flow (ACA-Py holder) completed");
-    this.setAccepted();
+    if (this._pipelineResults?.verified === true) {
+      this.setAccepted();
+    } else {
+      const state = this._pipelineResults?.state ? `state=${this._pipelineResults.state}` : "state=unknown";
+      this.addError(`Verifier did not verify presentation (${state})`);
+      this.setFailed();
+    }
     this.setCompleted();
   }
 

@@ -212,6 +212,8 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
     await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}/send-presentation`, {
       method: "POST",
       body: JSON.stringify({
+        // Keep the holder exchange record until CTS finishes verification.
+        auto_remove: false,
         dif: { record_ids: { [opts.inputDescriptorId]: chosenRecordIds } },
       }),
     });
@@ -387,7 +389,7 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
     const payload = { issuer: issuerDid, type: credType, credential: vc };
 
     this.addMessage("TRQP authorization check started");
-    const authResp = await fetch(`${baseUrl.replace(/\/$/, "")}/trqp/authorization`, {
+    const authResp = await fetch(`${baseUrl.replace(/\/$/, "")}/authorization`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -399,7 +401,7 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
     this.addMessage("TRQP authorization check passed");
 
     this.addMessage("TRQP recognition check started");
-    const recResp = await fetch(`${baseUrl.replace(/\/$/, "")}/trqp/recognition`, {
+    const recResp = await fetch(`${baseUrl.replace(/\/$/, "")}/recognition`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -513,6 +515,7 @@ export default class HolderTestPipeline {
     };
 
     const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
+    const vcTypeUri = "https://www.w3.org/ns/credentials#VerifiableCredential";
     const difProof = {
       protocolVersion: "v2",
       proofFormats: {
@@ -533,11 +536,9 @@ export default class HolderTestPipeline {
               {
                 id: "ayra-business-card",
                 purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
-                schema: [
-                  // ACA-Py indexes W3C credentials by expanded type URIs.
-                  { uri: ayraTypeUri },
-                  { uri: "https://www.w3.org/2018/credentials#VerifiableCredential" },
-                ],
+                // ACA-Py issue #4006: DIF handler crashes if schema is omitted.
+                // Use expanded type URIs (see #3441); when fixed, we can drop schema and rely on constraints.
+                schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
                 constraints: {
                   fields: [
                     {
@@ -583,10 +584,8 @@ export default class HolderTestPipeline {
               {
                 id: "ayra-business-card",
                 purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
-                schema: [
-                  { uri: "https://www.w3.org/2018/credentials/v1" },
-                  { uri: "https://www.w3.org/ns/credentials/v2" },
-                ],
+                // Keep schema aligned with expanded type to avoid ACA-Py DIF matching issues.
+                schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
                 constraints: {
                   fields: [
                     {

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 import os
+import json
+import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from httpx import HTTPStatusError
@@ -27,6 +28,8 @@ from app.schemas.agents import (
   ReceiveInvitationRequest,
   ReceiveInvitationResponse,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class RpcRouter:
@@ -124,7 +127,28 @@ class RpcRouter:
     record = dict(initial_record)
     state = (record.get("state") or record.get("presentation_state") or "").replace("_", "-")
     if state == "presentation-received":
-      await self.manager.verify_proof(resolved_id, body.connection_id)
+      LOGGER.info(
+        "ACA-Py verify request: endpoint=/present-proof-2.0/records/%s/verify-presentation connection_id=%s",
+        resolved_id,
+        body.connection_id,
+      )
+      try:
+        await self.manager.verify_proof(resolved_id, body.connection_id)
+      except HTTPStatusError as exc:
+        LOGGER.error(
+          "ACA-Py verify failed (proof_exchange_id=%s, status=%s, body=%s)",
+          resolved_id,
+          exc.response.status_code,
+          exc.response.text,
+        )
+        raise
+      except Exception as exc:
+        LOGGER.error(
+          "ACA-Py verify failed (proof_exchange_id=%s, error=%s)",
+          resolved_id,
+          exc,
+        )
+        raise
       try:
         record = await self.manager.get_proof(resolved_id, connection_id=body.connection_id)
       except HTTPStatusError as exc:
@@ -134,6 +158,13 @@ class RpcRouter:
         record["presentation_state"] = "done"
         record["verified"] = record.get("verified") or "true"
         record["proof_exchange_id"] = resolved_id
+      verified_flag = record.get("verified")
+      LOGGER.info(
+        "ACA-Py verify response: proof_exchange_id=%s state=%s verified=%s",
+        resolved_id,
+        record.get("state") or record.get("presentation_state"),
+        verified_flag,
+      )
     response = ProofExchangeResponse(
       proof_exchange_id=record.get("proof_exchange_id", resolved_id),
       state=record.get("state") or record.get("presentation_state") or "unknown",
@@ -143,57 +174,101 @@ class RpcRouter:
     return response
 
   async def verify_or_status(self, body: ProofVerifyRequest):
-    """Non-throwing variant of verify_proof for polling.
+    """Polling-friendly variant of verify_proof.
 
-    - If the presentation is received, verify+ACK and return the updated record.
-    - If it's not received yet (or we can't find it), return the latest known record/state.
+    - Returns the latest record/state only; verification is triggered via /proofs/verify.
+    - If already done, return a no-op status.
+    - If abandoned, return an error payload.
     """
     if not self.manager.is_running:
       raise HTTPException(status_code=400, detail="Agent not started")
 
     record: dict = {}
+    action = "waiting"
+    error_payload: dict | None = None
+    state_before: str | None = None
+    state_after: str | None = None
     try:
       record = await self.manager.wait_for_proof(
         body.proof_exchange_id,
         body.timeout_ms or 2000,
         body.connection_id,
       )
-    except Exception:
+    except Exception as exc:
       try:
         record = await self.manager.get_proof(body.proof_exchange_id, connection_id=body.connection_id)
-      except Exception:
+      except Exception as fetch_exc:
+        LOGGER.warning(
+          "ACA-Py verify-or-status: unable to load proof record (proof_exchange_id=%s, error=%s)",
+          body.proof_exchange_id,
+          fetch_exc,
+        )
         record = {"proof_exchange_id": body.proof_exchange_id}
 
     resolved_id = record.get("proof_exchange_id", body.proof_exchange_id)
-    state = (record.get("state") or record.get("presentation_state") or "").replace("_", "-")
-    if state == "presentation-received":
-      try:
-        await self.manager.verify_proof(resolved_id, body.connection_id)
-      except Exception:
-        # Best-effort: even if verify fails, attempt to ACK so the prover can reach `done`.
-        try:
-          await self.manager.send_presentation_ack(resolved_id)
-        except Exception:
-          pass
-      try:
-        record = await self.manager.get_proof(resolved_id, connection_id=body.connection_id)
-      except Exception:
-        record.setdefault("proof_exchange_id", resolved_id)
-        record.setdefault("state", "presentation-received")
+    state_raw = record.get("state") or record.get("presentation_state") or ""
+    state_before = state_raw.replace("_", "-").lower() if state_raw else None
+    LOGGER.info(
+      "ACA-Py verify-or-status: state_before=%s proof_exchange_id=%s connection_id=%s",
+      state_before,
+      resolved_id,
+      body.connection_id,
+    )
+    if state_before == "presentation-received":
+      LOGGER.info(
+        "ACA-Py verify-or-status: state presentation-received; status only (proof_exchange_id=%s)",
+        resolved_id,
+      )
+      action = "waiting"
+    elif state_before == "done":
+      LOGGER.info(
+        "ACA-Py verify-or-status: state already done; no-op (proof_exchange_id=%s)",
+        resolved_id,
+      )
+      action = "no-op"
+    elif state_before == "abandoned":
+      LOGGER.info(
+        "ACA-Py verify-or-status: state abandoned (proof_exchange_id=%s)",
+        resolved_id,
+      )
+      action = "error"
+      error_payload = {
+        "message": "Proof exchange abandoned",
+        "state": state_before,
+      }
+    else:
+      LOGGER.info(
+        "ACA-Py verify-or-status: waiting (proof_exchange_id=%s, state_before=%s)",
+        resolved_id,
+        state_before,
+      )
+      action = "waiting"
+
+    state_after_raw = record.get("state") or record.get("presentation_state") or state_before or "request-sent"
+    state_after = state_after_raw.replace("_", "-").lower() if state_after_raw else None
     # Normalize state to the limited set the schema allows
-    normalized_state = (record.get("state") or record.get("presentation_state") or "request-sent").replace("_", "-")
-    verified = record.get("verified")
-    if normalized_state == "presentation-received" and verified is not None:
-      # Some ACA-Py builds don't advance the state to `done` quickly (or ever) after verify+ACK.
-      # If we already have a verified decision, treat it as terminal for polling callers.
-      normalized_state = "done"
+    normalized_state = state_after or state_before or "request-sent"
     if normalized_state not in {"request-sent", "presentation-received", "done", "abandoned"}:
       normalized_state = "request-sent"
-
+    verified_raw = record.get("verified")
+    verified_flag = True if verified_raw in (True, "true") else False if verified_raw in (False, "false") else None
     response = ProofExchangeResponse(
       proof_exchange_id=record.get("proof_exchange_id", resolved_id),
       state=normalized_state,  # type: ignore[arg-type]
       record=record,
+      action=action,
+      state_before=state_before,
+      state_after=state_after,
+      verified=verified_flag,
+      error=error_payload,
+    )
+    LOGGER.info(
+      "ACA-Py verify-or-status: proof_exchange_id=%s action=%s state_before=%s state_after=%s verified=%s",
+      response.proof_exchange_id,
+      action,
+      state_before,
+      state_after,
+      verified_flag,
     )
     await self.events.publish("proof_verified", response.dict())
     return response

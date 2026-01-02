@@ -240,8 +240,16 @@ function GenericVerifierStep({
 
   if (!isActive) return null;
 
-  const isProcessing = taskData?.task?.state?.status === 'Running' || taskData?.task?.state?.status === 'Started';
-  const isCompleted = taskData?.task?.state?.status === 'Accepted' || taskData?.task?.state?.status === 'Completed';
+  const statusValue = (taskData?.task?.state?.status || "").toLowerCase();
+  const runStateValue = (taskData?.task?.state?.runState || "").toLowerCase();
+  const isProcessing = statusValue === "running" || statusValue === "started" || runStateValue === "running";
+  const isCompleted = statusValue === "accepted" || statusValue === "completed";
+  const isFailed = statusValue === "failed" || statusValue === "error" || runStateValue === "failed";
+  const showFailure = title === "Wait for Verification" && isFailed;
+  const failureMessage =
+    taskData?.task?.state?.errors?.[0] ||
+    taskData?.task?.state?.messages?.slice(-1)?.[0] ||
+    "Verification failed.";
 
   return (
     <div className="space-y-4">
@@ -251,7 +259,12 @@ function GenericVerifierStep({
       </div>
       
       <div className="text-center py-4">
-        {isCompleted ? (
+        {showFailure ? (
+          <div className="inline-flex items-center text-red-600">
+            <span className="mr-2 text-lg">❌</span>
+            <span className="font-medium">Verification failed</span>
+          </div>
+        ) : isCompleted ? (
           <div className="inline-flex items-center text-green-600">
             <svg className="h-6 w-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -277,6 +290,12 @@ function GenericVerifierStep({
         )}
       </div>
 
+      {showFailure && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {failureMessage}
+        </div>
+      )}
+
       <MessageRenderer messages={stepMessages} title={`${title} Log`} />
     </div>
   );
@@ -300,6 +319,7 @@ export function VerifierTest() {
   const { currentStep } = useSelector((state: RootState) => state.test);
   const { dag } = useSelector((state: RootState) => state.dag);
   const [steps, setSteps] = useState<TestStep[]>([]);
+  const [effectiveCurrentStep, setEffectiveCurrentStep] = useState(currentStep);
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
@@ -360,6 +380,15 @@ export function VerifierTest() {
       })
     );
 
+    const waitStepIndex = resolvedStepDefinitions.findIndex(
+      (step) => step.name === "Wait for Verification"
+    );
+    const waitStepNode = waitStepIndex >= 0 ? dagNodes[waitStepIndex] : undefined;
+    const waitStepStatus = waitStepNode ? getStepStatusFromNode(waitStepNode) : null;
+    const forcedStepIndex = waitStepStatus === "failed" ? waitStepIndex + 1 : null;
+    const computedCurrentStep = forcedStepIndex ?? currentStep;
+    setEffectiveCurrentStep(computedCurrentStep);
+
     const initialSteps: TestStep[] = [];
 
     // Add the connection step (uses OOB URL input)
@@ -367,36 +396,41 @@ export function VerifierTest() {
       id: 1,
       name: "Setup Test",
       description: "Process OOB URL and initialize verifier test",
-      status: currentStep > 0 ? "passed" : currentStep === 0 ? "running" : "pending",
+      status: computedCurrentStep > 0 ? "passed" : computedCurrentStep === 0 ? "running" : "pending",
       component: (
         <VerifierConnectionStep
-          isActive={currentStep === 0}
+          isActive={computedCurrentStep === 0}
           taskData={dag?.nodes?.[0]}
         />
       ),
-      isActive: currentStep === 0,
+      isActive: computedCurrentStep === 0,
       taskData: dag?.nodes?.[0]
     });
 
     // Add backend pipeline steps derived from the DAG
     for (let i = 0; i < resolvedStepDefinitions.length; i++) {
       const stepNum = i + 1;
+      const node = dagNodes[i];
+      const defaultStatus =
+        computedCurrentStep > stepNum ? "passed" : computedCurrentStep === stepNum ? "running" : "pending";
+      const isWaitStep = resolvedStepDefinitions[i].name === "Wait for Verification";
+      const status = isWaitStep && node ? getStepStatusFromNode(node) : defaultStatus;
       initialSteps.push({
         id: stepNum + 1,
         name: resolvedStepDefinitions[i].name,
         description: resolvedStepDefinitions[i].description,
-        status: currentStep > stepNum ? "passed" : currentStep === stepNum ? "running" : "pending",
+        status,
         component: (
-          <GenericVerifierStep
-            isActive={currentStep === stepNum}
+            <GenericVerifierStep
+            isActive={computedCurrentStep === stepNum}
             stepIndex={stepNum}
             title={resolvedStepDefinitions[i].name}
             description={resolvedStepDefinitions[i].description}
-            taskData={dag?.nodes?.[i]}
+            taskData={node}
           />
         ),
-        isActive: currentStep === stepNum,
-        taskData: dag?.nodes?.[i]
+        isActive: computedCurrentStep === stepNum,
+        taskData: node
       });
     }
 
@@ -406,15 +440,15 @@ export function VerifierTest() {
       id: reportStepIndex + 1,
       name: "Report",
       description: "Review the complete test results and conformance report",
-      status: currentStep === reportStepIndex ? "passed" : "pending",
+      status: computedCurrentStep === reportStepIndex ? "passed" : "pending",
       component: (
         <ReportStep
-          isActive={currentStep === reportStepIndex}
+          isActive={computedCurrentStep === reportStepIndex}
           onRestart={handleRestart}
           dagData={dag}
         />
       ),
-      isActive: currentStep === reportStepIndex
+      isActive: computedCurrentStep === reportStepIndex
     });
 
     // Update step statuses based on DAG data
@@ -435,7 +469,7 @@ export function VerifierTest() {
         node.task.state.status === 'Error'
       );
       
-      if (allNodesComplete && currentStep < reportStepIndex) {
+      if (allNodesComplete && computedCurrentStep < reportStepIndex) {
         // Auto-advance to report step when all backend steps are done
         console.log('All verifier pipeline steps complete, showing report');
         // Note: In a real app, you might dispatch an action to advance the step
@@ -452,7 +486,7 @@ export function VerifierTest() {
         title="Verifier Conformance Test"
         description="This test verifies if a Verifier implements the required functionality for connection, presentation request, and verification."
         steps={steps}
-        currentStep={currentStep}
+        currentStep={effectiveCurrentStep}
         onRestart={handleRestart}
       />
     </div>

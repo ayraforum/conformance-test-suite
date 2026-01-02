@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import signal
 from pathlib import Path
@@ -27,6 +28,23 @@ class AcaPyProcessManager:
     self._oob_by_invitation: dict[str, str] = {}
     # Track presentations we've already attempted to verify (verifier demo mode)
     self._auto_verified_presentations: set[str] = set()
+    # Dedupe webhook events by exchange/state/timestamp to keep handlers idempotent.
+    self._proof_event_cache: dict[str, float] = {}
+
+  def _dedupe_proof_event(self, pres_ex_id: str, state: str, updated_at: Optional[str]) -> bool:
+    """Return True if this webhook event appears to be a duplicate."""
+    if not pres_ex_id or not state:
+      return False
+    key = f"{pres_ex_id}|{state}|{updated_at or ''}"
+    now = time.time()
+    last = self._proof_event_cache.get(key)
+    if last and (now - last) < 300:
+      return True
+    self._proof_event_cache[key] = now
+    if len(self._proof_event_cache) > 2000:
+      cutoff = now - 900
+      self._proof_event_cache = {k: v for k, v in self._proof_event_cache.items() if v >= cutoff}
+    return False
 
   @property
   def admin_url(self) -> str:
@@ -323,12 +341,13 @@ class AcaPyProcessManager:
         self._active_connections.add(conn_id)
 
   async def maybe_auto_verify_from_webhook(self, topic: str, body: dict) -> None:
-    """Best-effort auto-verify for verifier demo agent.
+    """Webhook hook for verifier demo agent.
 
-    Some ACA-Py versions do not auto-verify DIF/LD presentations reliably even when
-    `auto_verify` is set on the exchange. This hook ensures the verifier completes
-    the protocol so the holder side reaches `done` (or `abandoned` on failure).
+    Auto-verify is disabled; verification is triggered explicitly via /proofs/verify.
     """
+    # Verification is now triggered explicitly via /proofs/verify to avoid duplicate
+    # verify-presentation calls. Keep this hook as a no-op.
+    return
     if not self._profile:
       return
 
@@ -354,6 +373,11 @@ class AcaPyProcessManager:
       or body.get("thread_id")
     )
     if not pres_ex_id or pres_ex_id in self._auto_verified_presentations:
+      return
+
+    updated_at = body.get("updated_at") or body.get("created_at") or body.get("timestamp")
+    if self._dedupe_proof_event(pres_ex_id, normalized_state, str(updated_at) if updated_at else None):
+      LOGGER.info("Duplicate present_proof_v2_0 webhook ignored (pres_ex_id=%s, state=%s)", pres_ex_id, normalized_state)
       return
 
     self._auto_verified_presentations.add(pres_ex_id)
@@ -497,17 +521,62 @@ class AcaPyProcessManager:
   async def verify_proof(self, proof_exchange_id: str, connection_id: Optional[str] = None) -> dict:
     if not self._profile:
       raise RuntimeError("ACA-Py not started")
-    async with httpx.AsyncClient() as client:
-      resp = await client.post(
-        f"{self.admin_url}/present-proof-2.0/records/{proof_exchange_id}/verify-presentation"
+    record: dict = {}
+    try:
+      record = await self.get_proof(proof_exchange_id, connection_id=connection_id)
+    except HTTPStatusError as exc:
+      if exc.response.status_code != 404:
+        raise
+    state = (record.get("state") or record.get("presentation_state") or "").replace("_", "-")
+    LOGGER.info(
+      "verify_proof: proof_exchange_id=%s state=%s connection_id=%s",
+      proof_exchange_id,
+      state or "unknown",
+      connection_id,
+    )
+    verified_flag = record.get("verified")
+    if verified_flag is not None:
+      LOGGER.info(
+        "verify_proof: skip verify (verified=%s) proof_exchange_id=%s",
+        verified_flag,
+        proof_exchange_id,
       )
-      resp.raise_for_status()
-      # Ensure the prover side reaches 'done' when confirmation is requested.
+      return record
+    if state and state != "presentation-received":
+      LOGGER.info(
+        "verify_proof: skip verify (state=%s) proof_exchange_id=%s",
+        state,
+        proof_exchange_id,
+      )
+      return record
+    async with httpx.AsyncClient() as client:
       try:
-        await self.send_presentation_ack(proof_exchange_id)
+        LOGGER.info(
+          "verify_proof: POST /present-proof-2.0/records/%s/verify-presentation",
+          proof_exchange_id,
+        )
+        resp = await client.post(
+          f"{self.admin_url}/present-proof-2.0/records/{proof_exchange_id}/verify-presentation"
+        )
+        resp.raise_for_status()
+        LOGGER.info(
+          "verify_proof: verify response status=%s proof_exchange_id=%s",
+          resp.status_code,
+          proof_exchange_id,
+        )
+        # Ensure the prover side reaches 'done' when confirmation is requested.
+        try:
+          await self.send_presentation_ack(proof_exchange_id)
+        except Exception:
+          pass
+        result = resp.json()
+        LOGGER.info(
+          "verify_proof: verify response payload=%s",
+          json.dumps(result, sort_keys=True, default=str),
+        )
+        return result
       except Exception:
-        pass
-      return resp.json()
+        raise
 
   async def get_proof(self, proof_exchange_id: str, connection_id: Optional[str] = None) -> dict:
     if not self._profile:

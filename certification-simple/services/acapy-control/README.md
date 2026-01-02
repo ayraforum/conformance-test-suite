@@ -41,4 +41,15 @@ The FastAPI app is the integration point for CTS; the TypeScript controller will
 issue RPCs against these endpoints to drive ACA-Py in the same way it currently
 drives Credo.
 
+### Logging and tracing env vars
+
+The control service passes these environment variables through to the managed ACA-Py process:
+
+* `ACAPY_LOG_LEVEL` (default in compose: `DEBUG`)
+* `ACAPY_TRACE` (`true` enables ACA-Py tracing)
+* `ACAPY_TRACE_TARGET` (default in compose: `log`)
+* `ACAPY_TRACE_TAG` (default: `cts`)
+* `ACAPY_TRACE_LABEL` (default: `cts-acapy`)
+* `ACAPY_WEBHOOK_DUMP_PAYLOADS` (set to `true` to log full webhook payloads; summary logs are always on)
+
 > **Networking note:** ACA-Py still hosts its DIDComm HTTP inbound transport on ports `8041/8042`. The compose service now publishes those ports (`8041:8041`, `8042:8042`) so you can point ngrok (or another tunnel) at them. Set `REFERENCE_AGENT_NGROK_DOMAIN` in the root `.env` so invitations reference the reachable HTTPS URL. If you force `REFERENCE_ISSUER_OVERRIDE_AGENT=credo`, also provide `ISSUER_OVERRIDE_NGROK_DOMAIN` for the Credo issuer tunnel. The legacy `ISSUER_NGROK_DOMAIN` / `VERIFIER_NGROK_DOMAIN` variables are still honored as fallbacks but the new names are preferred.

@@ -114,7 +114,7 @@ export class RequestProofTask extends BaseRunnableTask {
     // Authorization check
     this.addMessage("TRQP authorization check started");
     try {
-      const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/trqp/authorization`, {
+      const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/authorization`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -132,7 +132,7 @@ export class RequestProofTask extends BaseRunnableTask {
     // Recognition check
     this.addMessage("TRQP recognition check started");
     try {
-      const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/trqp/recognition`, {
+      const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/recognition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

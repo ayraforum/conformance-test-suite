@@ -16,6 +16,7 @@ extra_args:
   - "--auto-respond-credential-offer"
   - "--auto-respond-presentation-request"
   - "--auto-store-credential"
+  - "--preserve-exchange-records"
   - "--emit-new-didcomm-prefix"
   - "--experimental-didcomm-v2"
   - "--webhook-url"

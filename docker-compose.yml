@@ -107,6 +107,7 @@ services:
       - "8042:8042"
     environment:
       PYTHONUNBUFFERED: "1"
+      UVICORN_LOG_LEVEL: ${UVICORN_LOG_LEVEL:-info}
       REFERENCE_AGENT_NGROK_DOMAIN: ${REFERENCE_AGENT_NGROK_DOMAIN:-}
       VERIFIER_TEST_NGROK_DOMAIN: ${VERIFIER_TEST_NGROK_DOMAIN:-}
       ISSUER_NGROK_DOMAIN: ${ISSUER_NGROK_DOMAIN:-${REFERENCE_AGENT_NGROK_DOMAIN:-}}
@@ -115,6 +116,24 @@ services:
       ACAPY_INVITE_BASE_URL: ${ACAPY_INVITE_BASE_URL:-}
       ACAPY_ADMIN_HOST: ${ACAPY_ADMIN_HOST:-acapy-control}
       ACAPY_PROFILE: ${ACAPY_PROFILE:-issuer}
+      ACAPY_LOG_LEVEL: ${ACAPY_LOG_LEVEL:-DEBUG}
+      ACAPY_TRACE: ${ACAPY_TRACE:-true}
+      ACAPY_TRACE_TARGET: ${ACAPY_TRACE_TARGET:-log}
+      ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
+      ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
+      ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9001",
+        "--log-level",
+        "${UVICORN_LOG_LEVEL:-info}",
+        "--access-log",
+      ]
 
   acapy-holder-control:
     build:
@@ -127,11 +146,29 @@ services:
       - "8043:8043"
     environment:
       PYTHONUNBUFFERED: "1"
+      UVICORN_LOG_LEVEL: ${UVICORN_LOG_LEVEL:-info}
       ACAPY_ADMIN_HOST: ${ACAPY_HOLDER_ADMIN_HOST:-acapy-holder-control}
       ACAPY_PROFILE: ${ACAPY_HOLDER_PROFILE:-holder}
       ACAPY_ENDPOINT: ${ACAPY_HOLDER_ENDPOINT:-http://acapy-holder-control:8043}
       ACAPY_INVITE_BASE_URL: ${ACAPY_HOLDER_INVITE_BASE_URL:-http://acapy-holder-control:8043}
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9003"]
+      ACAPY_LOG_LEVEL: ${ACAPY_LOG_LEVEL:-DEBUG}
+      ACAPY_TRACE: ${ACAPY_TRACE:-true}
+      ACAPY_TRACE_TARGET: ${ACAPY_TRACE_TARGET:-log}
+      ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
+      ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
+      ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9003",
+        "--log-level",
+        "${UVICORN_LOG_LEVEL:-info}",
+        "--access-log",
+      ]
 
   acapy-verifier-control:
     build:
@@ -144,11 +181,29 @@ services:
       - "8142:8042"
     environment:
       PYTHONUNBUFFERED: "1"
+      UVICORN_LOG_LEVEL: ${UVICORN_LOG_LEVEL:-info}
       ACAPY_ADMIN_HOST: ${ACAPY_VERIFIER_ADMIN_HOST:-acapy-verifier-control}
       ACAPY_PROFILE: ${ACAPY_VERIFIER_PROFILE:-verifier}
       ACAPY_ENDPOINT: ${ACAPY_VERIFIER_ENDPOINT:-http://acapy-verifier-control:8042}
       ACAPY_INVITE_BASE_URL: ${ACAPY_VERIFIER_INVITE_BASE_URL:-http://acapy-verifier-control:8042}
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9010"]
+      ACAPY_LOG_LEVEL: ${ACAPY_LOG_LEVEL:-DEBUG}
+      ACAPY_TRACE: ${ACAPY_TRACE:-true}
+      ACAPY_TRACE_TARGET: ${ACAPY_TRACE_TARGET:-log}
+      ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
+      ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
+      ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9010",
+        "--log-level",
+        "${UVICORN_LOG_LEVEL:-info}",
+        "--access-log",
+      ]
 
   acapy-ngrok:
     image: ngrok/ngrok:alpine

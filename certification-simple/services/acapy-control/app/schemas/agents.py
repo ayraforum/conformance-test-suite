@@ -42,6 +42,11 @@ class ProofExchangeResponse(BaseModel):
   proof_exchange_id: str
   state: Literal["request-sent", "presentation-received", "done", "abandoned"]
   record: dict
+  action: Optional[Literal["verified", "no-op", "waiting", "error"]] = None
+  state_before: Optional[str] = None
+  state_after: Optional[str] = None
+  verified: Optional[bool] = None
+  error: Optional[dict] = None
 
 class ProofVerifyRequest(BaseModel):
   proof_exchange_id: str
