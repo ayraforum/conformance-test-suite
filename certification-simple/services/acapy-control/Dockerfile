@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 # Base tooling and Hyperledger Indy repo
 RUN apt-get update \
@@ -26,9 +26,16 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt .
+COPY vendor/ /app/vendor/
 RUN pip install --no-cache-dir -r requirements.txt \
+  && wheel="$(ls /app/vendor/acapy_agent*.whl /app/vendor/acapy-agent*.whl 2>/dev/null | head -n 1)" \
+  && if [ -n "$wheel" ]; then \
+       echo "Installing local ACA-Py wheel: $wheel"; \
+       pip install --no-cache-dir "$wheel"; \
+     else \
+       pip install --no-cache-dir "acapy-agent[indy,bbs,askar]==1.4.0"; \
+     fi \
   && pip install --no-cache-dir \
-     "acapy-agent[indy,bbs,askar]==1.4.0" \
      "didcomm-messaging==0.1.1a0" \
      anoncreds \
      indy-credx \
