@@ -104,12 +104,26 @@ async function findAyraW3cCredentialRecordIds(baseUrl: string): Promise<string[]
   }).catch(() => null);
 
   const records = (list?.results || list?.records || []) as any[];
+  const ayraSchemaUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
   const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
+  const ayraTypeFragmentUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
+  const ayraSchemaIdUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.json";
   const matching = records.filter((record) => {
     const expandedTypes = record?.expanded_types;
-    if (Array.isArray(expandedTypes) && expandedTypes.includes(ayraTypeUri)) return true;
+    if (
+      Array.isArray(expandedTypes) &&
+      (expandedTypes.includes(ayraTypeUri) || expandedTypes.includes(ayraTypeFragmentUri))
+    )
+      return true;
+    const schemaIds = record?.schema_ids;
+    if (Array.isArray(schemaIds) && (schemaIds.includes(ayraSchemaUri) || schemaIds.includes(ayraSchemaIdUri)))
+      return true;
     const proofTypes = record?.proof_types;
-    if (Array.isArray(proofTypes) && proofTypes.includes("Ed25519Signature2020")) return true;
+    if (
+      Array.isArray(proofTypes) &&
+      proofTypes.includes("Ed25519Signature2020")
+    )
+      return true;
     return false;
   });
 
@@ -123,6 +137,7 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
   inputDescriptorId: string;
   timeoutMs?: number;
 }): Promise<void> {
+  const logPrefix = "[autoPresentWithInternalAcaPyHolder]";
   const holderController = serverState.controller;
   if (!holderController) return;
   const holderAdapter = holderController.getAdapter?.() as any;
@@ -181,6 +196,9 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
   if (!exchangeId) {
     throw new Error("Internal holder proof exchange id missing");
   }
+  console.log(
+    `${logPrefix} exchangeId=${exchangeId} state=${exchange?.state || exchange?.result?.state || "unknown"}`
+  );
 
   const current = await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}`, {
     method: "GET",
@@ -191,9 +209,15 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
     await sleep(1500);
   }
 
-  const credsResp = await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}/credentials`, {
-    method: "GET",
-  }).catch(() => null);
+  const credsResp = await fetchJson(
+    `${baseUrl}/present-proof-2.0/records/${exchangeId}/credentials`,
+    {
+      method: "GET",
+    }
+  ).catch(() => null);
+  console.log(
+    `${logPrefix} credentials response exchangeId=${exchangeId} payload=${JSON.stringify(credsResp)}`
+  );
   const candidates =
     (credsResp?.results ||
       credsResp?.records ||
@@ -202,24 +226,45 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
       credsResp?.cred_info ||
       []) as any[];
   const recordIds = selectAyraDifRecordIds(Array.isArray(candidates) ? candidates : []);
+  console.log(
+    `${logPrefix} exchangeId=${exchangeId} difCandidateIds=${JSON.stringify(recordIds)}`
+  );
   const chosenRecordIds =
     recordIds.length > 0 ? recordIds : await findAyraW3cCredentialRecordIds(baseUrl);
+  if (recordIds.length === 0) {
+    console.log(
+      `${logPrefix} exchangeId=${exchangeId} fallbackW3cIds=${JSON.stringify(chosenRecordIds)}`
+    );
+  }
   if (chosenRecordIds.length === 0) {
     throw new Error("Internal holder could not find an Ayra credential record to present");
   }
 
   try {
-    await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}/send-presentation`, {
-      method: "POST",
-      body: JSON.stringify({
-        // Keep the holder exchange record until CTS finishes verification.
-        auto_remove: false,
-        dif: { record_ids: { [opts.inputDescriptorId]: chosenRecordIds } },
-      }),
-    });
+    const payload = {
+      // Keep the holder exchange record until CTS finishes verification.
+      auto_remove: false,
+      dif: { record_ids: { [opts.inputDescriptorId]: chosenRecordIds } },
+    };
+    console.log(
+      `${logPrefix} exchangeId=${exchangeId} send-presentation payload=${JSON.stringify(payload)}`
+    );
+    const sendResp = await fetchJson(
+      `${baseUrl}/present-proof-2.0/records/${exchangeId}/send-presentation`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    console.log(
+      `${logPrefix} exchangeId=${exchangeId} send-presentation response=${JSON.stringify(sendResp)}`
+    );
   } catch (err: any) {
     const message = String(err?.message || "");
     if (message.includes("presentation-sent")) return;
+    console.log(
+      `${logPrefix} exchangeId=${exchangeId} send-presentation error=${message}`
+    );
     throw err;
   }
 
@@ -514,8 +559,9 @@ export default class HolderTestPipeline {
       },
     };
 
+    const ayraSchemaUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
     const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
-    const vcTypeUri = "https://www.w3.org/ns/credentials#VerifiableCredential";
+    const vcTypeUri = "https://www.w3.org/2018/credentials#VerifiableCredential";
     const difProof = {
       protocolVersion: "v2",
       proofFormats: {
@@ -538,7 +584,7 @@ export default class HolderTestPipeline {
                 purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
                 // ACA-Py issue #4006: DIF handler crashes if schema is omitted.
                 // Use expanded type URIs (see #3441); when fixed, we can drop schema and rely on constraints.
-                schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
+                schema: [{ uri: ayraSchemaUri }, { uri: vcTypeUri }],
                 constraints: {
                   fields: [
                     {
@@ -585,7 +631,7 @@ export default class HolderTestPipeline {
                 id: "ayra-business-card",
                 purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
                 // Keep schema aligned with expanded type to avoid ACA-Py DIF matching issues.
-                schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
+                schema: [{ uri: ayraSchemaUri }, { uri: vcTypeUri }],
                 constraints: {
                   fields: [
                     {

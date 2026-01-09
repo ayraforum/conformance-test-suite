@@ -28,6 +28,10 @@ export type State = {
   credentialFormat?: "anoncreds" | "w3c";
   verifyTRQP?: boolean;
   verifierController?: AgentController;
+  lastIssuedCredentialId?: string;
+  lastIssuedCredentialSource?: string;
+  lastIssuedWalletRecordId?: string;
+  holderPresentationDid?: string;
 };
 
 const _state: State = {};
@@ -63,6 +67,21 @@ export const setIssuerController = (controller?: AgentController) => {
 };
 export const setVerifierController = (controller?: AgentController) => {
   _state.verifierController = controller;
+};
+
+export const setLastIssuedCredentialId = (
+  id?: string,
+  source?: string
+): void => {
+  _state.lastIssuedCredentialId = id;
+  _state.lastIssuedCredentialSource = source;
+};
+
+export const setLastIssuedWalletRecordId = (id?: string): void => {
+  _state.lastIssuedWalletRecordId = id;
+  if (id) {
+    _state.lastIssuedCredentialSource = "wallet-record";
+  }
 };
 
 export const setIssuerAgentType = (

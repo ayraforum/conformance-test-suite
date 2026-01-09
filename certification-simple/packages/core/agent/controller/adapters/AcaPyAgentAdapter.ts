@@ -155,7 +155,8 @@ export class AcaPyAgentAdapter implements AgentAdapter {
     const response = await this.post<{ did: string }>(
       "/wallet/did/create",
       {
-        key_type: keyType,
+        method: "key",
+        options: { key_type: keyType },
       }
     );
     return response.did;

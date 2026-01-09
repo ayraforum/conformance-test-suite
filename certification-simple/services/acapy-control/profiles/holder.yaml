@@ -14,7 +14,6 @@ extra_args:
   - "--auto-accept-requests"
   # For internal reference holder, auto-respond to offers and auto-store to keep flows hands-free
   - "--auto-respond-credential-offer"
-  - "--auto-respond-presentation-request"
   - "--auto-store-credential"
   - "--preserve-exchange-records"
   - "--emit-new-didcomm-prefix"

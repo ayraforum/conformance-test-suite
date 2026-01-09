@@ -4,6 +4,7 @@ import { DAG } from "@demo/core/pipeline/src/dag";
 import { Results } from "@demo/core/pipeline/src/types";
 import { AgentController, AcaPyAgentAdapter } from "@demo/core";
 import { randomUUID } from "crypto";
+import { state as serverState } from "../state";
 
 type ConnectionResult = {
   connectionId: string;
@@ -330,8 +331,10 @@ class AwaitProofRequestTask extends BaseRunnableTask {
     }
 
     const domain = "https://cts.verifier";
+    const ayraSchemaUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
     const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
-    const vcTypeUri = "https://www.w3.org/ns/credentials#VerifiableCredential";
+    const ayraSchemaIdUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.json";
+    const vcTypeUri = "https://www.w3.org/2018/credentials#VerifiableCredential";
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const challenge = randomUUID();
@@ -349,18 +352,14 @@ class AwaitProofRequestTask extends BaseRunnableTask {
               {
                 id: "ayra-business-card",
                 purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
-                // ACA-Py issue #4006: DIF handler crashes if schema is omitted.
-                // Use expanded type URIs (see #3441); when fixed, we can drop schema and rely on constraints.
+                // Multi-URI schema list with oneof_filter (OR semantics).
                 schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
+                oneof_filter: true,
                 constraints: {
                   fields: [
                     {
-                      path: ["$.type", "$.vc.type", "$.credential.type"],
-                      filter: { type: "array", contains: { const: "AyraBusinessCard" } },
-                    },
-                    {
-                      path: ["$.proof.type", "$.proof[0].type"],
-                      filter: { type: "string", const: "Ed25519Signature2020" },
+                      path: ["$.type[*]", "$.vc.type[*]", "$.credential.type[*]"],
+                      filter: { type: "string", const: "AyraBusinessCard" },
                     },
                   ],
                 },
@@ -517,28 +516,50 @@ class SendPresentationViaAcaPyTask extends BaseRunnableTask {
 
   async prepare(): Promise<void> {
     super.prepare();
-    this.addMessage("Ready to send Ayra card presentation (Ed25519, PE v2)");
+    this.addMessage("Ready to send Ayra card presentation (Ed25519Signature2020, PE v2)");
   }
 
-  private async findAyraW3cCredentialRecordIds(baseUrl: string): Promise<string[]> {
+  private async listW3cCredentialRecords(baseUrl: string): Promise<any[]> {
     const list = await fetchJson(`${baseUrl}/credentials/w3c`, {
       method: "POST",
       body: JSON.stringify({}),
     }).catch(() => null);
 
-    const records = (list?.results || list?.records || []) as any[];
+    return (list?.results || list?.records || []) as any[];
+  }
+
+  private selectAyraW3cRecordIds(records: any[]): string[] {
+    const ayraSchemaUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
     const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
+    const ayraTypeFragmentUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
+    const ayraSchemaIdUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.json";
     const matching = records.filter((record) => {
       const expandedTypes = record?.expanded_types;
-      if (Array.isArray(expandedTypes) && expandedTypes.includes(ayraTypeUri)) return true;
+      if (
+        Array.isArray(expandedTypes) &&
+        (expandedTypes.includes(ayraTypeUri) || expandedTypes.includes(ayraTypeFragmentUri))
+      )
+        return true;
+      const schemaIds = record?.schema_ids;
+      if (Array.isArray(schemaIds) && (schemaIds.includes(ayraSchemaUri) || schemaIds.includes(ayraSchemaIdUri)))
+        return true;
       const proofTypes = record?.proof_types;
-      if (Array.isArray(proofTypes) && proofTypes.includes("Ed25519Signature2020")) return true;
+      if (
+        Array.isArray(proofTypes) &&
+        proofTypes.includes("Ed25519Signature2020")
+      )
+        return true;
       return false;
     });
 
     return matching
       .map((record) => record?.record_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
+  }
+
+  private async findAyraW3cCredentialRecordIds(baseUrl: string): Promise<string[]> {
+    const records = await this.listW3cCredentialRecords(baseUrl);
+    return this.selectAyraW3cRecordIds(records);
   }
 
   private async findDifCredentialsForExchange(baseUrl: string, exchangeId: string): Promise<any[]> {
@@ -647,8 +668,22 @@ class SendPresentationViaAcaPyTask extends BaseRunnableTask {
       await this.waitForState(baseUrl, exchangeId, ["request-received"]);
     }
 
+    const logPayload = (label: string, payload: unknown) => {
+      let serialized: string;
+      try {
+        serialized = JSON.stringify(payload);
+      } catch {
+        serialized = String(payload);
+      }
+      const message = `${label}: ${serialized}`;
+      this.addMessage(message);
+      console.info(message);
+    };
+
     const difCandidates = await this.findDifCredentialsForExchange(baseUrl, exchangeId);
+    logPayload("SendPresentation: dif credentials response", difCandidates);
     const difRecordIds = this.selectAyraDifRecordIds(difCandidates);
+    logPayload("SendPresentation: dif record_ids", difRecordIds);
     if (difCandidates.length > 0) {
       this.addMessage(`Found ${difCandidates.length} present-proof credential candidate(s) for this exchange`);
     } else {
@@ -658,10 +693,29 @@ class SendPresentationViaAcaPyTask extends BaseRunnableTask {
     let recordIds: string[] = difRecordIds;
     if (recordIds.length === 0) {
       // Fallback: older ACA-Py versions may not return DIF candidates; try scanning stored W3C credentials directly.
-      recordIds = await this.findAyraW3cCredentialRecordIds(baseUrl);
+      const w3cRecords = await this.listW3cCredentialRecords(baseUrl);
+      logPayload("SendPresentation: w3c credentials response", w3cRecords);
+      recordIds = this.selectAyraW3cRecordIds(w3cRecords);
+      logPayload("SendPresentation: w3c record_ids", recordIds);
       if (recordIds.length > 0) {
         this.addMessage(`Fallback: found ${recordIds.length} stored W3C credential record(s) for Ayra`);
       }
+    }
+
+    const walletRecordId = serverState.lastIssuedWalletRecordId;
+    if (walletRecordId) {
+      recordIds = [walletRecordId];
+      this.addMessage(`Using holder wallet record_id (primary): ${walletRecordId}`);
+      console.info(`[SendPresentationViaAcaPyTask] Using holder wallet record_id (primary): ${walletRecordId}`);
+      logPayload("SendPresentation: wallet record_id", walletRecordId);
+    } else if (serverState.lastIssuedCredentialId) {
+      const issuedCredentialId = serverState.lastIssuedCredentialId;
+      recordIds = [issuedCredentialId];
+      this.addMessage(`Using issued credential_id from issuance flow: ${issuedCredentialId}`);
+      console.info(
+        `[SendPresentationViaAcaPyTask] Using issued credential_id from issuance flow: ${issuedCredentialId}`
+      );
+      logPayload("SendPresentation: issued credential_id", issuedCredentialId);
     }
 
     if (recordIds.length > 0) {
@@ -670,13 +724,30 @@ class SendPresentationViaAcaPyTask extends BaseRunnableTask {
       this.addMessage("No matching credential record ids found; sending empty DIF spec (likely empty presentation)");
     }
 
+    let presentationDid = serverState.holderPresentationDid;
+    if (!presentationDid) {
+      presentationDid = await this.adapter.createDidKey("ed25519");
+      serverState.holderPresentationDid = presentationDid;
+      this.addMessage(`Using holder presentation DID: ${presentationDid}`);
+      console.info(`[SendPresentationViaAcaPyTask] Using holder presentation DID: ${presentationDid}`);
+    }
+
+    const sendPayload = {
+      // Keep the holder record until the verifier ACKs to avoid double-delete errors.
+      auto_remove: false,
+      dif: recordIds.length > 0
+        ? { issuer_id: presentationDid, record_ids: { "ayra-business-card": recordIds } }
+        : { issuer_id: presentationDid },
+    };
+    logPayload("SendPresentation: send-presentation payload", {
+      exchangeId,
+      recordIds,
+      payload: sendPayload,
+    });
+
     await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}/send-presentation`, {
       method: "POST",
-      body: JSON.stringify({
-        // Keep the holder record until the verifier ACKs to avoid double-delete errors.
-        auto_remove: false,
-        dif: recordIds.length > 0 ? { record_ids: { "ayra-business-card": recordIds } } : {},
-      }),
+      body: JSON.stringify(sendPayload),
     });
     this.addMessage("Presentation sent via ACA-Py");
 
