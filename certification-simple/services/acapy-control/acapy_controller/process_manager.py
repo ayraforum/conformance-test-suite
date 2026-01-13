@@ -476,17 +476,23 @@ class AcaPyProcessManager:
       data = resp.json()
       return data.get("result") or data.get("record") or data
 
-  async def create_did_key(self, key_type: str = "ed25519") -> str:
+  async def create_did(self, method: str, key_type: str = "ed25519", options: Optional[dict] = None) -> str:
     if not self._profile:
       raise RuntimeError("ACA-Py not started")
+    payload_options = dict(options or {})
+    if key_type and "key_type" not in payload_options:
+      payload_options["key_type"] = key_type
     async with httpx.AsyncClient() as client:
       resp = await client.post(
         f"{self.admin_url}/wallet/did/create",
-        json={"method": "key", "options": {"key_type": key_type}},
+        json={"method": method, "options": payload_options},
       )
       resp.raise_for_status()
       data = resp.json()
       return (data.get("result") or {}).get("did")
+
+  async def create_did_key(self, key_type: str = "ed25519") -> str:
+    return await self.create_did("key", key_type)
 
   async def wait_for_proof(self, proof_exchange_id: str, timeout_ms: int = 120000, connection_id: Optional[str] = None) -> dict:
     deadline = time.monotonic() + timeout_ms / 1000

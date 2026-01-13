@@ -363,7 +363,25 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
       }
 
       const inlineContext = this.loadContext();
-      const issuerDid = await adapter.createDidKey("ed25519");
+      const issuerDidMethod = (process.env.CTS_ISSUER_DID_METHOD || "key").trim();
+      const issuerDidOptionsRaw = (process.env.CTS_ISSUER_DID_OPTIONS || "").trim();
+      let issuerDidOptions: Record<string, unknown> = {};
+      if (issuerDidOptionsRaw) {
+        try {
+          issuerDidOptions = JSON.parse(issuerDidOptionsRaw);
+        } catch (error) {
+          throw new Error(
+            `CTS_ISSUER_DID_OPTIONS must be valid JSON: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      }
+      if (issuerDidMethod !== "key") {
+        this.addMessage(`Using issuer DID method: ${issuerDidMethod}`);
+        console.info(`[IssueAyraW3CTask] Using issuer DID method: ${issuerDidMethod}`);
+      }
+      const issuerDid = await adapter.createDid(issuerDidMethod, "ed25519", issuerDidOptions);
       const fragment = issuerDid.split(":").pop();
       if (!fragment) {
         throw new Error(`Could not derive verification method fragment for ${issuerDid}`);

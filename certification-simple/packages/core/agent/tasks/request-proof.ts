@@ -6,6 +6,8 @@ import { RunnableState } from "../../pipeline/src/types";
 import { AgentController } from "../controller";
 import type { ControllerConnectionRecord } from "../controller/types";
 
+const normalizeEnvValue = (value?: string): string => (value ?? "").split("#")[0].trim();
+
 type RequestProofOptionsWithoutConnectionId = Omit<
   CredoRequestProofOptions,
   "connectionId"
@@ -107,9 +109,37 @@ export class RequestProofTask extends BaseRunnableTask {
       this.addError("TRQP check skipped: no verifiable credential found in presentation");
       return;
     }
-    const issuerDid = vc.issuer?.id || vc.issuer;
-    const credType = Array.isArray(vc.type) ? vc.type.join(",") : String(vc.type || "");
-    const payload = { issuer: issuerDid, type: credType, credential: vc };
+    const entityId = normalizeEnvValue(process.env.TRQP_ENTITY_ID);
+    const authorityId = normalizeEnvValue(process.env.TRQP_AUTHORITY_ID);
+    const action = normalizeEnvValue(process.env.TRQP_ACTION);
+    const resource = normalizeEnvValue(process.env.TRQP_RESOURCE);
+    const contextRaw = normalizeEnvValue(process.env.TRQP_CONTEXT_JSON);
+
+    const missing = [];
+    if (!entityId) missing.push("TRQP_ENTITY_ID");
+    if (!authorityId) missing.push("TRQP_AUTHORITY_ID");
+    if (!action) missing.push("TRQP_ACTION");
+    if (!resource) missing.push("TRQP_RESOURCE");
+    if (missing.length > 0) {
+      throw new Error(`TRQP check failed: missing required fields (${missing.join(", ")})`);
+    }
+
+    let context: any | undefined;
+    if (contextRaw) {
+      try {
+        context = JSON.parse(contextRaw);
+      } catch {
+        context = contextRaw;
+      }
+    }
+
+    const payload: Record<string, unknown> = {
+      entity_id: entityId,
+      authority_id: authorityId,
+      action,
+      resource,
+    };
+    if (context !== undefined) payload.context = context;
 
     // Authorization check
     this.addMessage("TRQP authorization check started");

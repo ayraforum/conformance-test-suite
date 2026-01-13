@@ -299,7 +299,8 @@ class RpcRouter:
   async def create_did(self, body: CreateDidRequest):
     if not self.manager.is_running:
       raise HTTPException(status_code=400, detail="Agent not started")
-    did = await self.manager.create_did_key(body.key_type)
+    method = (body.method or "key").strip()
+    did = await self.manager.create_did(method, body.key_type, body.options)
     return CreateDidResponse(did=did)
 
   async def receive_invitation(self, body: ReceiveInvitationRequest):

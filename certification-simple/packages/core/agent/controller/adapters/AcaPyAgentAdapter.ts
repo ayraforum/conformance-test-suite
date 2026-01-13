@@ -151,15 +151,24 @@ export class AcaPyAgentAdapter implements AgentAdapter {
     };
   }
 
-  async createDidKey(keyType: "ed25519" | "bls12381g2" = "ed25519"): Promise<string> {
-    const response = await this.post<{ did: string }>(
-      "/wallet/did/create",
-      {
-        method: "key",
-        options: { key_type: keyType },
-      }
-    );
+  async createDid(
+    method: string,
+    keyType: "ed25519" | "bls12381g2" = "ed25519",
+    options: Record<string, unknown> = {}
+  ): Promise<string> {
+    const mergedOptions: Record<string, unknown> = { ...options };
+    if (keyType && !Object.prototype.hasOwnProperty.call(mergedOptions, "key_type")) {
+      mergedOptions.key_type = keyType;
+    }
+    const response = await this.post<{ did: string }>("/wallet/did/create", {
+      method,
+      options: mergedOptions,
+    });
     return response.did;
+  }
+
+  async createDidKey(keyType: "ed25519" | "bls12381g2" = "ed25519"): Promise<string> {
+    return this.createDid("key", keyType);
   }
 
   async issueLdpCredential(payload: unknown): Promise<unknown> {

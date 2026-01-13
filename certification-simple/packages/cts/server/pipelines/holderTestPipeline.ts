@@ -229,22 +229,57 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
   console.log(
     `${logPrefix} exchangeId=${exchangeId} difCandidateIds=${JSON.stringify(recordIds)}`
   );
-  const chosenRecordIds =
+  let chosenRecordIds =
     recordIds.length > 0 ? recordIds : await findAyraW3cCredentialRecordIds(baseUrl);
   if (recordIds.length === 0) {
     console.log(
       `${logPrefix} exchangeId=${exchangeId} fallbackW3cIds=${JSON.stringify(chosenRecordIds)}`
     );
   }
+
+  const walletRecordId = serverState.lastIssuedWalletRecordId;
+  if (walletRecordId) {
+    chosenRecordIds = [walletRecordId];
+    console.log(
+      `${logPrefix} exchangeId=${exchangeId} using wallet record_id=${walletRecordId}`
+    );
+  } else if (serverState.lastIssuedCredentialId) {
+    const issuedCredentialId = serverState.lastIssuedCredentialId;
+    chosenRecordIds = [issuedCredentialId];
+    console.log(
+      `${logPrefix} exchangeId=${exchangeId} using issued credential_id=${issuedCredentialId}`
+    );
+  }
+
   if (chosenRecordIds.length === 0) {
     throw new Error("Internal holder could not find an Ayra credential record to present");
+  }
+
+  let presentationDid = serverState.holderPresentationDid;
+  if (!presentationDid) {
+    const didResp = await fetchJson(`${baseUrl}/wallet/did/create`, {
+      method: "POST",
+      body: JSON.stringify({ key_type: "ed25519" }),
+    }).catch(() => null);
+    presentationDid =
+      didResp?.did || didResp?.result?.did || didResp?.did_info?.did;
+    if (!presentationDid) {
+      throw new Error("Internal holder did not return a presentation DID");
+    }
+    serverState.holderPresentationDid = presentationDid;
+    console.log(
+      `${logPrefix} exchangeId=${exchangeId} using presentation DID=${presentationDid}`
+    );
   }
 
   try {
     const payload = {
       // Keep the holder exchange record until CTS finishes verification.
       auto_remove: false,
-      dif: { record_ids: { [opts.inputDescriptorId]: chosenRecordIds } },
+      dif: {
+        issuer_id: presentationDid,
+        record_ids: { [opts.inputDescriptorId]: chosenRecordIds },
+      },
     };
     console.log(
       `${logPrefix} exchangeId=${exchangeId} send-presentation payload=${JSON.stringify(payload)}`
@@ -355,8 +390,9 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
       this.addMessage("Waiting for verifier to receive and verify presentation");
       const overallTimeoutMs = 180_000;
       const deadline = Date.now() + overallTimeoutMs;
+      let verifyTriggered = false;
       while (Date.now() < deadline) {
-        const verifyResp = await fetchJson(`${controlUrl}/proofs/verify-or-status`, {
+        const statusResp = await fetchJson(`${controlUrl}/proofs/verify-or-status`, {
           method: "POST",
           body: JSON.stringify({
             proof_exchange_id: proofExchangeId,
@@ -365,10 +401,29 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
           }),
         });
 
-        this.presentationRecord = verifyResp?.record || verifyResp;
-        const state = String(verifyResp?.state || this.presentationRecord?.state || "").toLowerCase();
-        if (state === "done") break;
-        if (state === "abandoned") {
+        this.presentationRecord = statusResp?.record || statusResp;
+        const state = String(
+          statusResp?.state || this.presentationRecord?.state || this.presentationRecord?.presentation_state || ""
+        ).toLowerCase();
+        if (state === "presentation-received" && !verifyTriggered) {
+          verifyTriggered = true;
+          this.addMessage("Presentation received; triggering verification");
+          const verifyResp = await fetchJson(`${controlUrl}/proofs/verify`, {
+            method: "POST",
+            body: JSON.stringify({
+              proof_exchange_id: proofExchangeId,
+              connection_id: connectionId,
+              timeout_ms: 120_000,
+            }),
+          });
+          this.presentationRecord = verifyResp?.record || verifyResp;
+          const verifyState = String(
+            verifyResp?.state || this.presentationRecord?.state || this.presentationRecord?.presentation_state || ""
+          ).toLowerCase();
+          if (verifyState === "done") break;
+        } else if (state === "done") {
+          break;
+        } else if (state === "abandoned") {
           throw new Error("Verifier abandoned the proof exchange");
         }
         await sleep(1500);
@@ -377,9 +432,19 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
       if (!this.presentationRecord) {
         throw new Error("No proof record returned while waiting for verifier response");
       }
-      const finalState = String(this.presentationRecord?.state || "").toLowerCase();
+      const finalState = String(
+        this.presentationRecord?.state || this.presentationRecord?.presentation_state || ""
+      ).toLowerCase();
       if (finalState !== "done") {
         throw new Error("Timed out waiting for verifier to verify presentation");
+      }
+      const verifiedRaw =
+        this.presentationRecord?.verified ??
+        this.presentationRecord?.record?.verified ??
+        (this.presentationRecord?.presentation ?? this.presentationRecord)?.verified;
+      const verified = verifiedRaw === true || verifiedRaw === "true";
+      if (!verified) {
+        throw new Error(`Proof verification failed: verified=${String(verifiedRaw)}`);
       }
       const isDifProof = Boolean((this.options.proof as any)?.proofFormats?.dif);
       const vc = this.extractVc(this.presentationRecord);
@@ -429,9 +494,37 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
     if (!vc) {
       throw new Error("TRQP check failed: no verifiable credential found in presentation");
     }
-    const issuerDid = vc.issuer?.id || vc.issuer;
-    const credType = Array.isArray(vc.type) ? vc.type.join(",") : String(vc.type || "");
-    const payload = { issuer: issuerDid, type: credType, credential: vc };
+    const entityId = normalizeEnvValue(process.env.TRQP_ENTITY_ID);
+    const authorityId = normalizeEnvValue(process.env.TRQP_AUTHORITY_ID);
+    const action = normalizeEnvValue(process.env.TRQP_ACTION);
+    const resource = normalizeEnvValue(process.env.TRQP_RESOURCE);
+    const contextRaw = normalizeEnvValue(process.env.TRQP_CONTEXT_JSON);
+
+    const missing = [];
+    if (!entityId) missing.push("TRQP_ENTITY_ID");
+    if (!authorityId) missing.push("TRQP_AUTHORITY_ID");
+    if (!action) missing.push("TRQP_ACTION");
+    if (!resource) missing.push("TRQP_RESOURCE");
+    if (missing.length > 0) {
+      throw new Error(`TRQP check failed: missing required fields (${missing.join(", ")})`);
+    }
+
+    let context: any | undefined;
+    if (contextRaw) {
+      try {
+        context = JSON.parse(contextRaw);
+      } catch {
+        context = contextRaw;
+      }
+    }
+
+    const payload: Record<string, unknown> = {
+      entity_id: entityId,
+      authority_id: authorityId,
+      action,
+      resource,
+    };
+    if (context !== undefined) payload.context = context;
 
     this.addMessage("TRQP authorization check started");
     const authResp = await fetch(`${baseUrl.replace(/\/$/, "")}/authorization`, {
@@ -559,8 +652,8 @@ export default class HolderTestPipeline {
       },
     };
 
-    const ayraSchemaUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
     const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
+    const ayraSchemaIdUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.json";
     const vcTypeUri = "https://www.w3.org/2018/credentials#VerifiableCredential";
     const difProof = {
       protocolVersion: "v2",
@@ -584,21 +677,15 @@ export default class HolderTestPipeline {
                 purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
                 // ACA-Py issue #4006: DIF handler crashes if schema is omitted.
                 // Use expanded type URIs (see #3441); when fixed, we can drop schema and rely on constraints.
-                schema: [{ uri: ayraSchemaUri }, { uri: vcTypeUri }],
+                schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
+                oneof_filter: true,
                 constraints: {
                   fields: [
                     {
-                      path: ["$.type", "$.vc.type", "$.credential.type"],
-                      filter: {
-                        type: "array",
-                        contains: { const: "AyraBusinessCard" },
-                      },
-                    },
-                    {
-                      path: ["$.proof.type", "$.proof[0].type"],
+                      path: ["$.type[*]", "$.vc.type[*]", "$.credential.type[*]"],
                       filter: {
                         type: "string",
-                        const: "Ed25519Signature2020",
+                        const: "AyraBusinessCard",
                       },
                     },
                   ],
@@ -631,21 +718,14 @@ export default class HolderTestPipeline {
                 id: "ayra-business-card",
                 purpose: "Must be an Ayra Business Card with Ed25519Signature2020",
                 // Keep schema aligned with expanded type to avoid ACA-Py DIF matching issues.
-                schema: [{ uri: ayraSchemaUri }, { uri: vcTypeUri }],
+                schema: [{ uri: ayraTypeUri }, { uri: vcTypeUri }],
                 constraints: {
                   fields: [
                     {
-                      path: ["$.type", "$.vc.type", "$.credential.type"],
-                      filter: {
-                        type: "array",
-                        contains: { const: "AyraBusinessCard" },
-                      },
-                    },
-                    {
-                      path: ["$.proof.type", "$.proof[0].type"],
+                      path: ["$.type[*]", "$.vc.type[*]", "$.credential.type[*]"],
                       filter: {
                         type: "string",
-                        const: "Ed25519Signature2020",
+                        const: "AyraBusinessCard",
                       },
                     },
                   ],

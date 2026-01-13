@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -92,7 +92,9 @@ class ReceiveInvitationResponse(BaseModel):
 
 
 class CreateDidRequest(BaseModel):
+  method: Optional[str] = "key"
   key_type: Literal["ed25519", "bls12381g2"] = "ed25519"
+  options: Optional[Dict[str, Any]] = None
 
 
 class CreateDidResponse(BaseModel):
