@@ -64,6 +64,21 @@ services:
         pnpm --filter @demo/core run build
         pnpm --filter cts-3 run start:server &
         SERVER_PID=$!
+        if [ "${CTS_ISSUER_DID_METHOD:-}" = "web" ] || [ "${CTS_ISSUER_DID_METHOD:-}" = "webvh" ]; then
+          echo "Generating DID document for ${CTS_ISSUER_DID_METHOD}..."
+          DID_DOC_OK=false
+          for i in $(seq 1 30); do
+            if pnpm --filter cts-3 run generate:did-doc; then
+              DID_DOC_OK=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$$DID_DOC_OK" != "true" ]; then
+            echo "Failed to generate DID document after retries" >&2
+            exit 1
+          fi
+        fi
         pnpm --filter cts-3 dev &
         CLIENT_PID=$!
         trap "kill $SERVER_PID $CLIENT_PID" EXIT
@@ -252,9 +267,11 @@ services:
     restart: unless-stopped
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTH_TOKEN}
-    command: http --domain=auto 5005
+      DID_WEB_NGROK_DOMAIN: ${DID_WEB_NGROK_DOMAIN:-}
+      SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
+    command: http --domain=${DID_WEB_NGROK_DOMAIN:-${SERVER_NGROK_DOMAIN:-auto}} http://app:5005
     depends_on:
-      - dev
+      - app
     profiles: ["with-ngrok"]
 
 volumes:

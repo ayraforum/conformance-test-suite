@@ -87,6 +87,9 @@ VERIFIER_TEST_NGROK_DOMAIN=verifier.example.ngrok.app # Domain for the test-veri
 REFERENCE_ISSUER_OVERRIDE_AGENT=credo|acapy|auto # (optional) force the issuer controller
 ISSUER_OVERRIDE_NGROK_DOMAIN=issuer.example.ngrok.app # Domain for the override issuer tunnel
 SERVER_NGROK_DOMAIN=cts-server.example.ngrok.app      # Domain for API callbacks
+CTS_ISSUER_DID_METHOD=key|web|webvh   # Issuer DID method (set to web for did:web issuance)
+CTS_ISSUER_DID_OPTIONS={"did":"did:web:your.domain:issuer"} # Required when CTS_ISSUER_DID_METHOD=web
+DID_WEB_NGROK_DOMAIN=issuer.example.ngrok.app          # Public domain for hosting the DID document
 ```
 
 For NGROK domain planning, tunnel rotation, and the full list of optional variables see `certification-simple/NGROK_SETUP.md`.
@@ -97,6 +100,16 @@ For NGROK domain planning, tunnel rotation, and the full list of optional variab
 - `REFERENCE_ISSUER_OVERRIDE_AGENT` (default `auto`) lets you force the credential issuer to Credo or ACA-Py independently of the reference agent. When set to `credo`, also provide `ISSUER_OVERRIDE_NGROK_DOMAIN` so the override agent has a unique tunnel; otherwise the UI QR codes collide.
 - `REFERENCE_AGENT_NGROK_DOMAIN` is the hostname wallets use to reach the reference agent. When ACA-Py is the reference agent, the `acapy-ngrok` sidecar automatically advertises this domain.
 - `VERIFIER_TEST_NGROK_DOMAIN` is only used by the standalone `test-verifier` container (the legacy CLI harness); it does not affect the UI flows.
+
+### DID:web Issuer (optional)
+
+When issuing W3C LDP credentials with a `did:web` issuer, the DID document must be hosted over HTTPS.
+
+```bash
+COMPOSE_PROFILES=with-ngrok docker compose up --build app ngrok acapy-control acapy-holder-control acapy-verifier-control
+```
+
+The DID document is served by the CTS API (default `https://<domain>/issuer/did.json`) and is generated automatically on container start when `CTS_ISSUER_DID_METHOD` is `web` or `webvh`.
 
 ### Access Points (default ports)
 - Frontend: http://localhost:3000

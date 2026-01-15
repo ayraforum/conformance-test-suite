@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { state } from "./state";
 import http from "http";
+import { loadDidDocument, resolveDidDocumentRoutes } from "./didDocument";
 const serverPort: number = Number(process.env.SERVER_PORT) || 5005;
 import { run, ensureInitialized, ensureAcaPyVerifierControllerInitialized } from "./server";
 import { selectPipeline } from "./state";
@@ -13,6 +14,22 @@ const app: Express = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+const didRoutes = resolveDidDocumentRoutes();
+const didHandler = (req: express.Request, res: express.Response) => {
+  const doc = loadDidDocument();
+  if (!doc) {
+    return res.status(404).json({
+      error: "DID document not found",
+      hint: "Generate did.json and ensure CTS_DID_DOCUMENT_PATH is correct",
+    });
+  }
+  return res.json(doc);
+};
+
+didRoutes.forEach((route) => {
+  app.get(route, didHandler);
+});
 
 // Add a root route for debugging
 app.get('/', (req, res) => {
