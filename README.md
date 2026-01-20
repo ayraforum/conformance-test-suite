@@ -68,7 +68,7 @@ docker compose up --build app
 3) Start with ACA-Py Reference Agent(s) (alternate)
 ```bash
 # Set REFERENCE_AGENT=acapy in .env and provide REFERENCE_AGENT_NGROK_DOMAIN
-# Optionally set ISSUER_OVERRIDE_AGENT/ISSUER_OVERRIDE_NGROK_DOMAIN if Credo issues
+# Optionally set REFERENCE_ISSUER_OVERRIDE_AGENT/ISSUER_OVERRIDE_NGROK_DOMAIN if Credo issues
 docker compose up --build acapy-control acapy-ngrok app
 ```
 
@@ -84,7 +84,7 @@ NGROK_AUTH_TOKEN=your_token_here      # NGROK authentication token (required whe
 REFERENCE_AGENT=credo|acapy           # Which agent drives holder/verifier flows
 REFERENCE_AGENT_NGROK_DOMAIN=ref.example.ngrok.app   # Domain for the reference agent tunnel
 VERIFIER_TEST_NGROK_DOMAIN=verifier.example.ngrok.app # Domain for the test-verifier container
-ISSUER_OVERRIDE_AGENT=credo|acapy|auto # (optional) force the issuer controller
+REFERENCE_ISSUER_OVERRIDE_AGENT=credo|acapy|auto # (optional) force the issuer controller
 ISSUER_OVERRIDE_NGROK_DOMAIN=issuer.example.ngrok.app # Domain for the override issuer tunnel
 SERVER_NGROK_DOMAIN=cts-server.example.ngrok.app      # Domain for API callbacks
 ```
@@ -94,7 +94,7 @@ For NGROK domain planning, tunnel rotation, and the full list of optional variab
 ### Reference Agents & Issuer Override
 
 - `REFERENCE_AGENT` selects which controller powers the holder and verifier flows. `credo` uses the built-in Credo agent; `acapy` connects to the ACA-Py control service.
-- `ISSUER_OVERRIDE_AGENT` (default `auto`) lets you force the credential issuer to Credo or ACA-Py independently of the reference agent. When set to `credo`, also provide `ISSUER_OVERRIDE_NGROK_DOMAIN` so the override agent has a unique tunnel; otherwise the UI QR codes collide.
+- `REFERENCE_ISSUER_OVERRIDE_AGENT` (default `auto`) lets you force the credential issuer to Credo or ACA-Py independently of the reference agent. When set to `credo`, also provide `ISSUER_OVERRIDE_NGROK_DOMAIN` so the override agent has a unique tunnel; otherwise the UI QR codes collide.
 - `REFERENCE_AGENT_NGROK_DOMAIN` is the hostname wallets use to reach the reference agent. When ACA-Py is the reference agent, the `acapy-ngrok` sidecar automatically advertises this domain.
 - `VERIFIER_TEST_NGROK_DOMAIN` is only used by the standalone `test-verifier` container (the legacy CLI harness); it does not affect the UI flows.
 

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
 class AgentStartRequest(BaseModel):
-  profile: Literal["issuer", "verifier"] = "issuer"
+  profile: Literal["issuer", "verifier", "holder"] = "issuer"
   use_ledger: bool = False
 
 
@@ -34,12 +34,19 @@ class ProofRequest(BaseModel):
   proof_formats: Optional[dict] = None
   presentation_request: Optional[dict] = None
   comment: Optional[str] = None
+  auto_verify: Optional[bool] = None
+  auto_remove: Optional[bool] = None
 
 
 class ProofExchangeResponse(BaseModel):
   proof_exchange_id: str
   state: Literal["request-sent", "presentation-received", "done", "abandoned"]
   record: dict
+  action: Optional[Literal["verified", "no-op", "waiting", "error"]] = None
+  state_before: Optional[str] = None
+  state_after: Optional[str] = None
+  verified: Optional[bool] = None
+  error: Optional[dict] = None
 
 class ProofVerifyRequest(BaseModel):
   proof_exchange_id: str
@@ -74,6 +81,8 @@ class ConnectionRecordResponse(BaseModel):
 
 class ReceiveInvitationRequest(BaseModel):
   invitation: dict
+  auto_accept: Optional[bool] = None
+  use_existing_connection: Optional[bool] = None
 
 
 class ReceiveInvitationResponse(BaseModel):
@@ -83,7 +92,9 @@ class ReceiveInvitationResponse(BaseModel):
 
 
 class CreateDidRequest(BaseModel):
+  method: Optional[str] = "key"
   key_type: Literal["ed25519", "bls12381g2"] = "ed25519"
+  options: Optional[Dict[str, Any]] = None
 
 
 class CreateDidResponse(BaseModel):

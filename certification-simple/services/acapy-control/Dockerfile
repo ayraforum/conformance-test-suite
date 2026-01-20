@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 # Base tooling and Hyperledger Indy repo
 RUN apt-get update \
@@ -26,9 +26,10 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt .
+COPY vendor/ /app/vendor/
 RUN pip install --no-cache-dir -r requirements.txt \
+  && pip install --no-cache-dir "acapy-agent[indy,bbs,askar]==1.4.0" \
   && pip install --no-cache-dir \
-     "acapy-agent[indy,bbs,askar]==1.4.0" \
      "didcomm-messaging==0.1.1a0" \
      anoncreds \
      indy-credx \

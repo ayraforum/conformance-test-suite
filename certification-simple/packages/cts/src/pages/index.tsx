@@ -5,19 +5,19 @@ import { useEffect, useState } from "react";
 import { SOCKET_SERVER_URL } from "../utils/env";
 
 export default function HomePage() {
-  const [cardFormat, setCardFormat] = useState<"anoncreds" | "w3c">("anoncreds");
+  const [cardFormat, setCardFormat] = useState<"anoncreds" | "w3c">("w3c");
 
   useEffect(() => {
     const stored = window?.localStorage?.getItem("ayra.cardFormat");
-    if (stored === "anoncreds" || stored === "w3c") {
-      setCardFormat(stored);
-      // Attempt to inform the backend
-      fetch(`${SOCKET_SERVER_URL}/api/card-format`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format: stored }),
-      }).catch(() => {});
-    }
+    const initial = stored === "anoncreds" || stored === "w3c" ? stored : "w3c";
+    setCardFormat(initial);
+    window?.localStorage?.setItem("ayra.cardFormat", initial);
+    // Attempt to inform the backend
+    fetch(`${SOCKET_SERVER_URL}/api/card-format`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ format: initial }),
+    }).catch(() => {});
   }, []);
 
   const handleFormatChange = async (next: "anoncreds" | "w3c") => {

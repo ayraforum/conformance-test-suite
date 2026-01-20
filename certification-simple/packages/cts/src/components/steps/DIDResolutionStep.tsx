@@ -87,7 +87,7 @@ export function DIDResolutionStep({ context, controller }: DIDResolutionStepProp
 
         try {
             const document = await resolveDIDService(didValue, resolverUrlValue);
-
+            console.log("Resolved DID Document:", JSON.stringify(document, null, 2));
             if (!document) {
                 throw new Error(`Failed to resolve DID using ${resolverUrlValue}`);
             }

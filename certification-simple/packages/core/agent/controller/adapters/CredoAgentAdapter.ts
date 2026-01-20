@@ -9,6 +9,7 @@ import {
   CredentialPreviewAttributeOptions,
   CredentialState,
   type CredentialStateChangedEvent,
+  HandshakeProtocol,
   KeyType,
   ProofEventTypes,
   ProofState,
@@ -47,6 +48,24 @@ import type {
 export class CredoAgentAdapter implements AgentAdapter {
   constructor(private readonly agent: BaseAgent) {}
 
+  private static decodeBase64Url(value: string): string {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    return Buffer.from(padded, "base64").toString("utf8");
+  }
+
+  private static tryExtractOobFromInvitationUrl(invitationUrl: string): unknown | null {
+    try {
+      const url = new URL(invitationUrl);
+      const encoded = url.searchParams.get("oob");
+      if (!encoded) return null;
+      const decoded = CredoAgentAdapter.decodeBase64Url(encoded);
+      return JSON.parse(decoded);
+    } catch {
+      return null;
+    }
+  }
+
   private static isCredentialEvent(
     event: BaseEvent
   ): event is CredentialStateChangedEvent {
@@ -62,13 +81,27 @@ export class CredoAgentAdapter implements AgentAdapter {
   }
 
   async createOutOfBandInvitation(): Promise<ControllerInvitation> {
-    const record = await this.agent.agent.oob.createInvitation();
+    const record = await this.agent.agent.oob.createInvitation({
+      autoAcceptConnection: true,
+      multiUseInvitation: false,
+      // CTS only supports OOB + DIDExchange for establishing connections.
+      // Legacy RFC0160 (connections/1.0) is intentionally not used.
+      handshakeProtocols: [HandshakeProtocol.DidExchange],
+    });
+    const invitationUrl = record.outOfBandInvitation.toUrl({
+      domain: this.agent.config?.domain ?? "",
+    });
+    const invitationJson =
+      CredoAgentAdapter.tryExtractOobFromInvitationUrl(invitationUrl) ??
+      (typeof (record as any)?.outOfBandInvitation?.toJSON === "function"
+        ? (record as any).outOfBandInvitation.toJSON()
+        : (record as any).outOfBandInvitation);
     return {
       id: record.id,
-      url: record.outOfBandInvitation.toUrl({
-        domain: this.agent.config?.domain ?? "",
-      }),
-      raw: record,
+      url: invitationUrl,
+      // For cross-agent interoperability, `raw` should be the invitation message itself.
+      // CTS uses this to auto-post the invitation to the internal ACA-Py holder.
+      raw: invitationJson,
     };
   }
 
@@ -146,6 +179,8 @@ export class CredoAgentAdapter implements AgentAdapter {
       parentThreadId,
       state: ProofState.PresentationReceived,
     });
+    // Avoid unhandled promise rejections if `requestProof` throws before we can await.
+    void proofRecordPromise.catch(() => undefined);
 
     const protocolVersion = proof.protocolVersion ?? "v2";
     if (protocolVersion !== "v2") {
