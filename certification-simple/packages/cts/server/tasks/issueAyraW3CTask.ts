@@ -72,6 +72,12 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
     inlineContext: any,
     contextVersion: "v1" | "v2"
   ) {
+    const normalizeEnvValue = (value?: string): string =>
+      (value ?? "").split("#")[0].trim();
+    const trustNetworkDid =
+      normalizeEnvValue(process.env.AYRA_TRUST_NETWORK_DID) || "did:web:ayra.forum";
+    const ecosystemId =
+      normalizeEnvValue(process.env.AYRA_ECOSYSTEM_DID) || "did:web:ecosystem.example";
     const ayraSchemaId = "https://schema.affinidi.io/AyraBusinessCardV1R0.json";
     const w3cContext =
       contextVersion === "v1"
@@ -98,13 +104,12 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
           }),
       credentialSubject: {
         id: subjectDid,
-        ayra_trust_network_did: "did:web:ayra.forum",
+        ayra_trust_network_did: trustNetworkDid,
         ayra_assurance_level: 0,
         ayra_card_type: "businesscard",
         ayra_card_version: "1.0.0",
         ayra_card_type_version: "1.0.0",
-        authority_trust_registry: "https://trust-reg.example/registry",
-        ecosystem_id: "did:web:ecosystem.example",
+        ecosystem_id: ecosystemId,
         issuer_id: issuerDid,
         display_name: "Example Holder",
         company_display_name: "Example Corp",

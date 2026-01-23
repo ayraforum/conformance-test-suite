@@ -73,3 +73,15 @@ The DID document generator runs on startup when `CTS_ISSUER_DID_METHOD` is `web`
 ```bash
 docker compose exec app pnpm --filter cts-3 run generate:did-doc
 ```
+
+## Ayra VC TRQP Inputs
+
+When issuing Ayra credentials for TRQP checks, CTS embeds two DIDs into the VC. Set them in the root `.env`:
+- `AYRA_TRUST_NETWORK_DID`: stored as `credentialSubject.ayra_trust_network_did`; used as the recognition authority DID.
+- `AYRA_ECOSYSTEM_DID`: stored as `credentialSubject.ecosystem_id`; used to resolve the TRQP endpoint from its DID document.
+
+Make sure the ecosystem DID resolves to a DID document that includes a TRQP service endpoint.
+
+**CTS issuer vs external issuer**
+- **CTS issues the credential:** Set `AYRA_TRUST_NETWORK_DID` and `AYRA_ECOSYSTEM_DID` so the VC contains the correct DIDs for TRQP lookups.
+- **External issuer / existing Ayra card:** These env vars are not used by the holder flow. CTS reads `credentialSubject.ayra_trust_network_did` and `credentialSubject.ecosystem_id` from the presented VC. Ensure the external VC includes those fields and that the ecosystem DID resolves to a TRQP endpoint.

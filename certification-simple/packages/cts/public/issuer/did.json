@@ -9,7 +9,7 @@
       "id": "did:web:ayra-cts-issuer.ngrok.app:issuer#issuer",
       "type": "Ed25519VerificationKey2020",
       "controller": "did:web:ayra-cts-issuer.ngrok.app:issuer",
-      "publicKeyMultibase": "z6MkuBQELF2XpxwqcZVNJinn7Pouh2KaoZaRUNzsgzB4P5uj"
+      "publicKeyMultibase": "z6MkmgtSLdaL4XDpown5n8FBPcFhBDw48CmjPhCo4T1dpoPL"
     }
   ],
   "authentication": [
