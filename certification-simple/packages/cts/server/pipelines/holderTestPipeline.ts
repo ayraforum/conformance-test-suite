@@ -482,73 +482,209 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
   }
 
   private async runTrqpChecks(proofRecord: any, vcOverride?: any): Promise<void> {
-    const baseUrl =
-      this.options.trqpURL ||
-      process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT ||
-      process.env.NEXT_PUBLIC_TRQP_LOCAL_URL;
-    if (!baseUrl) {
-      this.addMessage("TRQP check skipped: no TRQP endpoint configured");
-      return;
-    }
     const vc = vcOverride || this.extractVc(proofRecord);
     if (!vc) {
       throw new Error("TRQP check failed: no verifiable credential found in presentation");
     }
-    const entityId = normalizeEnvValue(process.env.TRQP_ENTITY_ID);
-    const authorityId = normalizeEnvValue(process.env.TRQP_AUTHORITY_ID);
-    const action = normalizeEnvValue(process.env.TRQP_ACTION);
-    const resource = normalizeEnvValue(process.env.TRQP_RESOURCE);
-    const contextRaw = normalizeEnvValue(process.env.TRQP_CONTEXT_JSON);
+    const { authorizationPayload, recognitionPayload, ecosystemId } = this.buildTrqpPayloads(vc);
+    const baseUrl = await this.resolveTrqpEndpoint(ecosystemId);
 
-    const missing = [];
-    if (!entityId) missing.push("TRQP_ENTITY_ID");
-    if (!authorityId) missing.push("TRQP_AUTHORITY_ID");
-    if (!action) missing.push("TRQP_ACTION");
-    if (!resource) missing.push("TRQP_RESOURCE");
-    if (missing.length > 0) {
-      throw new Error(`TRQP check failed: missing required fields (${missing.join(", ")})`);
-    }
-
-    let context: any | undefined;
-    if (contextRaw) {
-      try {
-        context = JSON.parse(contextRaw);
-      } catch {
-        context = contextRaw;
-      }
-    }
-
-    const payload: Record<string, unknown> = {
-      entity_id: entityId,
-      authority_id: authorityId,
-      action,
-      resource,
-    };
-    if (context !== undefined) payload.context = context;
+    this.addMessage(
+      `TRQP mapping: entity_id=${authorizationPayload.entity_id} authority_id=${authorizationPayload.authority_id} action=${authorizationPayload.action} resource=${authorizationPayload.resource}`
+    );
 
     this.addMessage("TRQP authorization check started");
-    const authResp = await fetch(`${baseUrl.replace(/\/$/, "")}/authorization`, {
+    const authResp = await fetch(`${baseUrl}/authorization`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(authorizationPayload),
     });
+    const authBody = await this.readJsonSafe(authResp);
     if (!authResp.ok) {
-      const text = await authResp.text();
-      throw new Error(`TRQP authorization failed: ${authResp.status} ${text}`);
+      throw new Error(
+        `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+      );
+    }
+    const authorized = this.extractAuthorizationResult(authBody.json);
+    if (!authorized) {
+      throw new Error(`TRQP authorization failed: authorized=false`);
     }
     this.addMessage("TRQP authorization check passed");
 
     this.addMessage("TRQP recognition check started");
-    const recResp = await fetch(`${baseUrl.replace(/\/$/, "")}/recognition`, {
+    const recResp = await fetch(`${baseUrl}/recognition`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(recognitionPayload),
     });
+    const recBody = await this.readJsonSafe(recResp);
     if (!recResp.ok) {
-      const text = await recResp.text();
-      throw new Error(`TRQP recognition failed: ${recResp.status} ${text}`);
+      throw new Error(
+        `TRQP recognition failed: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
+      );
+    }
+    const recognized = this.extractRecognitionResult(recBody.json);
+    if (!recognized) {
+      throw new Error("TRQP recognition failed: recognized=false");
     }
     this.addMessage("TRQP recognition check passed");
+  }
+
+  private buildTrqpPayloads(vc: any) {
+    const issuerDid = this.extractIssuerDid(vc);
+    const subject = this.extractCredentialSubject(vc);
+    const subjectIssuer = typeof subject?.issuer_id === "string" ? subject.issuer_id : "";
+    if (subjectIssuer && subjectIssuer !== issuerDid) {
+      throw new Error(
+        `TRQP mapping failed: credentialSubject.issuer_id (${subjectIssuer}) does not match issuer (${issuerDid})`
+      );
+    }
+    const ecosystemId = typeof subject?.ecosystem_id === "string" ? subject.ecosystem_id : "";
+    if (!ecosystemId) {
+      throw new Error("TRQP mapping failed: credentialSubject.ecosystem_id missing");
+    }
+    const atnDid = typeof subject?.ayra_trust_network_did === "string" ? subject.ayra_trust_network_did : "";
+    if (!atnDid) {
+      throw new Error("TRQP mapping failed: credentialSubject.ayra_trust_network_did missing");
+    }
+    const cardType = typeof subject?.ayra_card_type === "string" ? subject.ayra_card_type : "";
+    if (!cardType) {
+      throw new Error("TRQP mapping failed: credentialSubject.ayra_card_type missing");
+    }
+    const issuanceTime = this.extractIssuanceTime(vc);
+    const authorizationPayload = {
+      entity_id: issuerDid,
+      authority_id: ecosystemId,
+      action: "issue",
+      resource: `ayracard:${cardType}`,
+    };
+    const recognitionPayload: Record<string, unknown> = {
+      entity_id: ecosystemId,
+      authority_id: atnDid,
+      action: "member-of",
+      resource: "ayratrustnetwork",
+    };
+    if (issuanceTime) {
+      recognitionPayload.context = { time: issuanceTime };
+    }
+    return { authorizationPayload, recognitionPayload, ecosystemId };
+  }
+
+  private extractIssuerDid(vc: any): string {
+    const issuer = vc?.issuer;
+    if (typeof issuer === "string" && issuer.trim()) return issuer;
+    if (issuer && typeof issuer.id === "string" && issuer.id.trim()) return issuer.id;
+    throw new Error("TRQP mapping failed: issuer DID missing from credential");
+  }
+
+  private extractCredentialSubject(vc: any): any {
+    const subject = vc?.credentialSubject;
+    if (Array.isArray(subject)) {
+      if (subject.length === 0) {
+        throw new Error("TRQP mapping failed: credentialSubject array is empty");
+      }
+      return subject[0];
+    }
+    if (!subject) {
+      throw new Error("TRQP mapping failed: credentialSubject missing");
+    }
+    return subject;
+  }
+
+  private extractIssuanceTime(vc: any): string | null {
+    const issuanceDate = typeof vc?.issuanceDate === "string" ? vc.issuanceDate : "";
+    if (issuanceDate) return issuanceDate;
+    const validFrom = typeof vc?.validFrom === "string" ? vc.validFrom : "";
+    if (validFrom) return validFrom;
+    return null;
+  }
+
+  private async resolveTrqpEndpoint(ecosystemDid: string): Promise<string> {
+    this.addMessage(`Resolving TRQP endpoint from ecosystem DID: ${ecosystemDid}`);
+    const ecosystemDoc = await this.resolveDidDocument(ecosystemDid);
+    let endpoint = this.extractTrqpServiceEndpoint(ecosystemDoc);
+    if (!endpoint) {
+      throw new Error("TRQP endpoint not found in ecosystem DID document");
+    }
+    if (endpoint.startsWith("did:")) {
+      this.addMessage(`Resolving TRQP endpoint DID: ${endpoint}`);
+      const registryDoc = await this.resolveDidDocument(endpoint);
+      const registryEndpoint = this.extractTrqpServiceEndpoint(registryDoc);
+      if (!registryEndpoint) {
+        throw new Error("TRQP endpoint DID did not expose a TRQP service endpoint");
+      }
+      endpoint = registryEndpoint;
+    }
+    const normalized = endpoint.replace(/\/$/, "");
+    this.addMessage(`TRQP endpoint resolved: ${normalized}`);
+    return normalized;
+  }
+
+  private async resolveDidDocument(did: string): Promise<any> {
+    const resolverUrl =
+      normalizeEnvValue(process.env.NEXT_PUBLIC_DID_RESOLVER_URL) ||
+      "https://dev.uniresolver.io/1.0/identifiers";
+    const endpoint = `${resolverUrl.replace(/\/$/, "")}/${did}`;
+    const resp = await fetch(endpoint);
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(
+        `DID resolution failed (${did}): ${resp.status} ${resp.statusText} ${text}`
+      );
+    }
+    const data = await resp.json();
+    return data?.didDocument || data;
+  }
+
+  private extractTrqpServiceEndpoint(doc: any): string | null {
+    const services = doc?.service;
+    if (!Array.isArray(services)) return null;
+    for (const service of services) {
+      const types = Array.isArray(service?.type) ? service.type : [service?.type];
+      const matches = types.some((type: string) => {
+        const normalized = String(type || "").toLowerCase();
+        return normalized === "trqp" || normalized === "trustregistryservice";
+      });
+      if (!matches) continue;
+      const endpoint = this.extractServiceEndpointValue(service?.serviceEndpoint);
+      if (endpoint) return endpoint;
+    }
+    return null;
+  }
+
+  private extractServiceEndpointValue(endpoint: any): string | null {
+    if (!endpoint) return null;
+    if (typeof endpoint === "string") return endpoint;
+    if (typeof endpoint?.uri === "string") return endpoint.uri;
+    if (typeof endpoint?.url === "string") return endpoint.url;
+    return null;
+  }
+
+  private async readJsonSafe(resp: Response): Promise<{ json: any; raw: string }> {
+    const raw = await resp.text().catch(() => "");
+    if (!raw) return { json: null, raw: "" };
+    try {
+      return { json: JSON.parse(raw), raw };
+    } catch {
+      return { json: null, raw };
+    }
+  }
+
+  private extractAuthorizationResult(payload: any): boolean {
+    if (Array.isArray(payload)) {
+      return payload.some((item) => item?.authorized === true);
+    }
+    if (payload && typeof payload === "object") {
+      return payload.authorized === true;
+    }
+    return false;
+  }
+
+  private extractRecognitionResult(payload: any): boolean {
+    if (payload && typeof payload === "object") {
+      return payload.recognized === true;
+    }
+    return false;
   }
 
   private extractVc(proofRecord: any): any | null {

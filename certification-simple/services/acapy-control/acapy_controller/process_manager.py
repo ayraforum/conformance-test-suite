@@ -483,13 +483,37 @@ class AcaPyProcessManager:
     if key_type and "key_type" not in payload_options:
       payload_options["key_type"] = key_type
     async with httpx.AsyncClient() as client:
-      resp = await client.post(
-        f"{self.admin_url}/wallet/did/create",
-        json={"method": method, "options": payload_options},
-      )
-      resp.raise_for_status()
-      data = resp.json()
-      return (data.get("result") or {}).get("did")
+      try:
+        resp = await client.post(
+          f"{self.admin_url}/wallet/did/create",
+          json={"method": method, "options": payload_options},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return (data.get("result") or {}).get("did")
+      except HTTPStatusError as exc:
+        if exc.response is not None and exc.response.status_code == 400:
+          text = (exc.response.text or "").lower()
+          if "did already present" in text:
+            existing_did = payload_options.get("did")
+            if isinstance(existing_did, str) and existing_did:
+              try:
+                list_resp = await client.get(f"{self.admin_url}/wallet/did")
+                if list_resp.status_code == 200:
+                  data = list_resp.json()
+                  records = data.get("results") or data.get("result") or data.get("records") or []
+                  if isinstance(records, list):
+                    for record in records:
+                      if record.get("did") == existing_did:
+                        LOGGER.info("DID already present; returning existing DID %s", existing_did)
+                        return existing_did
+              except Exception as list_error:  # pylint: disable=broad-except
+                LOGGER.warning(
+                  "DID already present; failed to list DIDs (%s). Returning provided DID.",
+                  list_error,
+                )
+              return existing_did
+        raise
 
   async def create_did_key(self, key_type: str = "ed25519") -> str:
     return await self.create_did("key", key_type)

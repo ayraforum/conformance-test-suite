@@ -51,3 +51,37 @@ If you leave `REFERENCE_AGENT=credo`, you only need one NGROK domain. When you e
 - Use the root `.env` to configure tunnels. (The legacy `certification-simple/.env` is still read by some scripts but the compose services honor the root file.)
 - Free-plan users must alternate issuer and verifier tunnels; follow the docker compose steps in [`NGROK_SETUP.md`](./NGROK_SETUP.md) to start and stop the services on the host.
 - Paid-plan users can reserve domains and run both tunnels in parallel; instructions and example `.env` values are also in [`NGROK_SETUP.md`](./NGROK_SETUP.md).
+
+## DID:web Issuer (W3C LDP)
+
+When you want ACA-Py to issue W3C LDP credentials with a `did:web` issuer, you must host a DID document over HTTPS. The `app` container can generate and serve the DID document, and the optional `ngrok` sidecar can expose it.
+
+**Required .env values**
+- `CTS_ISSUER_DID_METHOD=web`
+- `CTS_ISSUER_DID_OPTIONS={"did":"did:web:ayra-cts-issuer.ngrok.app:issuer"}`
+- `DID_WEB_NGROK_DOMAIN=ayra-cts-issuer.ngrok.app`
+
+**Run with the ngrok sidecar**
+```bash
+COMPOSE_PROFILES=with-ngrok docker compose up --build app ngrok acapy-control acapy-holder-control
+```
+
+The DID document is served by the CTS API at:
+- `https://ayra-cts-issuer.ngrok.app/issuer/did.json` (derived from the DID path)
+
+The DID document generator runs on startup when `CTS_ISSUER_DID_METHOD` is `web` (or `webvh`). You can re-run it manually:
+```bash
+docker compose exec app pnpm --filter cts-3 run generate:did-doc
+```
+
+## Ayra VC TRQP Inputs
+
+When issuing Ayra credentials for TRQP checks, CTS embeds two DIDs into the VC. Set them in the root `.env`:
+- `AYRA_TRUST_NETWORK_DID`: stored as `credentialSubject.ayra_trust_network_did`; used as the recognition authority DID.
+- `AYRA_ECOSYSTEM_DID`: stored as `credentialSubject.ecosystem_id`; used to resolve the TRQP endpoint from its DID document.
+
+Make sure the ecosystem DID resolves to a DID document that includes a TRQP service endpoint.
+
+**CTS issuer vs external issuer**
+- **CTS issues the credential:** Set `AYRA_TRUST_NETWORK_DID` and `AYRA_ECOSYSTEM_DID` so the VC contains the correct DIDs for TRQP lookups.
+- **External issuer / existing Ayra card:** These env vars are not used by the holder flow. CTS reads `credentialSubject.ayra_trust_network_did` and `credentialSubject.ecosystem_id` from the presented VC. Ensure the external VC includes those fields and that the ecosystem DID resolves to a TRQP endpoint.
