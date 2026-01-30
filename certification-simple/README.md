@@ -85,3 +85,17 @@ Make sure the ecosystem DID resolves to a DID document that includes a TRQP serv
 **CTS issuer vs external issuer**
 - **CTS issues the credential:** Set `AYRA_TRUST_NETWORK_DID` and `AYRA_ECOSYSTEM_DID` so the VC contains the correct DIDs for TRQP lookups.
 - **External issuer / existing Ayra card:** These env vars are not used by the holder flow. CTS reads `credentialSubject.ayra_trust_network_did` and `credentialSubject.ecosystem_id` from the presented VC. Ensure the external VC includes those fields and that the ecosystem DID resolves to a TRQP endpoint.
+
+## Verifier TRQP Enforcement (Two-Run)
+
+When the Verifier UI toggle is enabled, CTS runs the verifier flow twice: once with the issuer authorized in the trust registry and once after CTS removes that authorization. This proves whether the verifier consulted TRQP by comparing run outcomes.
+
+Requirements:
+- **ACA-Py holder mode** (`REFERENCE_AGENT=acapy`), because CTS must observe `verified` from ACA-Py records.
+- Two distinct verifier OOB URLs (one for each run).
+- TRQP admin API access for toggling authorization state.
+
+Relevant `.env` settings:
+- `TRQP_ADMIN_BASE_URL` (example: `https://sandbox-tr.ayra.network/admin`)
+- `TRQP_ADMIN_AUTH_HEADER` (default: `Authorization`)
+- `TRQP_ADMIN_AUTH_TOKEN` (if your admin API requires auth)

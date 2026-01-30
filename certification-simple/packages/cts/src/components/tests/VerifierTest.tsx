@@ -40,6 +40,10 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
   const [oobUrl, setOobUrl] = useState<string>("");
   const [qrError, setQrError] = useState<string | null>(null);
   const [isDecodingQr, setIsDecodingQr] = useState(false);
+  const defaultTRQP =
+    Boolean(process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT) ||
+    Boolean(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
+  const [verifyTrqp, setVerifyTrqp] = useState(defaultTRQP);
   
   const stepMessages = messages[0] || [];
 
@@ -110,6 +114,9 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
 
     setHasStarted(true);
     dispatch(addMessage({ stepIndex: 0, message: 'Starting verifier test...' }));
+    if (verifyTrqp) {
+      dispatch(addMessage({ stepIndex: 0, message: 'TRQP enforcement enabled: verifier flow will run twice on the same connection' }));
+    }
     dispatch(startTest());
     
     try {
@@ -126,7 +133,11 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
         const runResponse = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ oobUrl, pipelineType: 'VERIFIER_TEST' }),
+          body: JSON.stringify({
+            oobUrl,
+            pipelineType: 'VERIFIER_TEST',
+            verifyTRQP: verifyTrqp,
+          }),
         });
         if (!runResponse.ok) {
           throw new Error(`Failed to start pipeline: ${runResponse.statusText}`);
@@ -174,6 +185,24 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
+          <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+            <input
+              id="verifyTrqp"
+              type="checkbox"
+              checked={verifyTrqp}
+              onChange={(e) => setVerifyTrqp(e.target.checked)}
+              className="h-4 w-4 text-blue-600"
+            />
+            <label htmlFor="verifyTrqp" className="text-sm text-gray-700">
+              Enforce Trust Registry (TRQP) checks for the verifier
+            </label>
+          </div>
+          {verifyTrqp && (
+            <p className="text-xs text-gray-500">
+              TRQP enforcement runs the verifier flow twice and reuses the same connection. Send a second proof
+              request on the existing connection after CTS disables authorization.
+            </p>
+          )}
           <div>
             <label htmlFor="oobQr" className="block text-sm font-medium text-gray-700 mb-2">
               Or upload a QR code image
@@ -372,16 +401,15 @@ export function VerifierTest() {
     ];
 
     const dagNodes = dag?.nodes || [];
-    const resolvedStepDefinitions = Array.from(
-      { length: Math.max(stepDefinitions.length, dagNodes.length || 0) },
-      (_, i) => ({
-        name: stepDefinitions[i]?.name || dagNodes[i]?.task?.metadata?.name || `Step ${i + 1}`,
-        description: stepDefinitions[i]?.description || dagNodes[i]?.task?.metadata?.description || "",
-      })
-    );
+    const resolvedStepDefinitions = dagNodes.length
+      ? dagNodes.map((node) => ({
+          name: node.task?.metadata?.name || node.name || "Step",
+          description: node.task?.metadata?.description || node.description || "",
+        }))
+      : stepDefinitions;
 
-    const waitStepIndex = resolvedStepDefinitions.findIndex(
-      (step) => step.name === "Wait for Verification"
+    const waitStepIndex = resolvedStepDefinitions.findIndex((step) =>
+      step.name.toLowerCase().includes("wait for verification")
     );
     const waitStepNode = waitStepIndex >= 0 ? dagNodes[waitStepIndex] : undefined;
     const waitStepStatus = waitStepNode ? getStepStatusFromNode(waitStepNode) : null;
