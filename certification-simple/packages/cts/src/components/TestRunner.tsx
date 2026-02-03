@@ -40,11 +40,14 @@ export function TestRunner({
     if (step.status === "skipped") {
       return { className: "bg-gray-400 text-white", label: "–" };
     }
+    if (step.status === "waiting") {
+      return { className: "border-2 border-blue-400 text-blue-600 bg-white", label: "…" };
+    }
+    if (step.status === "running") {
+      return { className: "bg-blue-500 text-white", label: "•" };
+    }
     if (index === currentStep) {
       return { className: "bg-blue-500 text-white", label: index + 1 };
-    }
-    if (index < currentStep) {
-      return { className: "bg-green-500 text-white", label: "✓" };
     }
     return { className: "bg-white border-2 border-gray-300 text-gray-500", label: index + 1 };
   };

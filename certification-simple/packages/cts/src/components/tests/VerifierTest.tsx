@@ -274,11 +274,12 @@ function GenericVerifierStep({
   const isProcessing = statusValue === "running" || statusValue === "started" || runStateValue === "running";
   const isCompleted = statusValue === "accepted" || statusValue === "completed";
   const isFailed = statusValue === "failed" || statusValue === "error" || runStateValue === "failed";
-  const showFailure = title === "Wait for Verification" && isFailed;
+  const isVerifierResponseStep = title.toLowerCase().includes("verifier response") || title.toLowerCase().includes("wait for verification");
+  const showFailure = isVerifierResponseStep && isFailed;
   const failureMessage =
     taskData?.task?.state?.errors?.[0] ||
     taskData?.task?.state?.messages?.slice(-1)?.[0] ||
-    "Verification failed.";
+    (isVerifierResponseStep ? "Verifier response indicated a failure." : "Step failed.");
 
   return (
     <div className="space-y-4">
@@ -291,14 +292,18 @@ function GenericVerifierStep({
         {showFailure ? (
           <div className="inline-flex items-center text-red-600">
             <span className="mr-2 text-lg">❌</span>
-            <span className="font-medium">Verification failed</span>
+            <span className="font-medium">
+              {isVerifierResponseStep ? "Verifier response failed" : "Step failed"}
+            </span>
           </div>
         ) : isCompleted ? (
           <div className="inline-flex items-center text-green-600">
             <svg className="h-6 w-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span className="font-medium">Step completed successfully!</span>
+            <span className="font-medium">
+              {isVerifierResponseStep ? "Verifier response observed" : "Step completed successfully!"}
+            </span>
           </div>
         ) : isProcessing ? (
           <div className="inline-flex items-center text-blue-600">
@@ -396,20 +401,53 @@ export function VerifierTest() {
       { name: "Accept Invitation", description: "Consume the verifier's DIDComm v2 OOB invitation and connect" },
       { name: "Await Proof Request", description: "Wait for a Presentation Exchange v2 request for the Ayra Business Card" },
       { name: "Send Presentation", description: "Respond with the Ayra Business Card (Ed25519Signature2020) presentation" },
-      { name: "Wait for Verification", description: "Wait for the verifier to process and verify the presentation" },
-      { name: "Evaluate Results", description: "Evaluate verifier conformance from the exchange" }
+      {
+        name: "Await Verifier Response",
+        description:
+          "Wait for an ack or problem report from the verifier.",
+      },
+      { name: "Evaluate Results", description: "Evaluate verifier conformance from observable evidence" },
     ];
+
+    const mapStepDefinition = (name: string, description: string) => {
+      const lower = name.toLowerCase();
+      const runSuffixMatch = name.match(/\(run\s+\d+\)/i);
+      const runSuffix = runSuffixMatch ? ` ${runSuffixMatch[0]}` : "";
+
+      if (lower.includes("wait for verification")) {
+        return {
+          name: `Await Verifier Response${runSuffix}`,
+          description:
+            "Wait for an ack or problem report from the verifier.",
+        };
+      }
+      if (lower.includes("evaluate trqp enforcement")) {
+        return {
+          name: "Evaluate TRQP Evidence",
+          description:
+            "Compare run 1 vs run 2 outcomes using observable protocol evidence and TRQP admin changes.",
+        };
+      }
+      if (lower.includes("prepare trqp enforcement")) {
+        return {
+          name: "Prepare TRQP Evidence",
+          description: "Resolve TRQP endpoint and verify issuer authorization via trust registry admin APIs.",
+        };
+      }
+      return { name, description };
+    };
 
     const dagNodes = dag?.nodes || [];
     const resolvedStepDefinitions = dagNodes.length
-      ? dagNodes.map((node) => ({
-          name: node.task?.metadata?.name || node.name || "Step",
-          description: node.task?.metadata?.description || node.description || "",
-        }))
+      ? dagNodes.map((node) => {
+          const rawName = node.task?.metadata?.name || node.name || "Step";
+          const rawDescription = node.task?.metadata?.description || node.description || "";
+          return mapStepDefinition(rawName, rawDescription);
+        })
       : stepDefinitions;
 
     const waitStepIndex = resolvedStepDefinitions.findIndex((step) =>
-      step.name.toLowerCase().includes("wait for verification")
+      step.name.toLowerCase().includes("verifier response")
     );
     const waitStepNode = waitStepIndex >= 0 ? dagNodes[waitStepIndex] : undefined;
     const waitStepStatus = waitStepNode ? getStepStatusFromNode(waitStepNode) : null;
@@ -512,7 +550,7 @@ export function VerifierTest() {
     <div>
       <TestRunner
         title="Verifier Conformance Test"
-        description="This test verifies if a Verifier implements the required functionality for connection, presentation request, and verification."
+        description="This test verifies if a Verifier implements the required functionality for connection, presentation request, and response handling."
         steps={steps}
         currentStep={effectiveCurrentStep}
         onRestart={handleRestart}

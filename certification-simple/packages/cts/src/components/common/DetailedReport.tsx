@@ -68,6 +68,7 @@ export function DetailedReport({
   className = "" 
 }: DetailedReportProps) {
   const [showFullReport, setShowFullReport] = useState(false);
+  const isVerifierReport = testType.toLowerCase().includes("verifier");
 
   const formatTimestamp = (timestamp: string) => {
     return new Date(timestamp).toLocaleString();
@@ -192,6 +193,21 @@ export function DetailedReport({
       };
     });
     
+    const defaultRecommendations =
+      overallStatus === 'passed'
+        ? [
+            `${testType} demonstrates full compliance with required protocols`,
+            'All test steps completed successfully',
+            'Proper connection and proof exchange protocols followed',
+          ]
+        : [
+            `Review failed steps and address identified issues`,
+            'Check agent logs for detailed error information',
+            'Ensure all required dependencies are properly configured',
+          ];
+
+    const recommendations = defaultRecommendations;
+
     return {
       testType: testType,
       status: overallStatus.toUpperCase(),
@@ -205,13 +221,7 @@ export function DetailedReport({
       stepResults: stepResults,
       conformanceLevel: overallStatus === 'passed' ? 'Full' : 
                        overallStatus === 'failed' ? 'Failed' : 'Partial',
-      recommendations: overallStatus === 'passed' ? 
-        [`${testType} demonstrates full compliance with required protocols`,
-         'All test steps completed successfully',
-         'Proper connection and proof exchange protocols followed'] :
-        [`Review failed steps and address identified issues`, 
-         'Check agent logs for detailed error information',
-         'Ensure all required dependencies are properly configured']
+      recommendations
     };
   };
 
@@ -237,6 +247,35 @@ export function DetailedReport({
   }
 
   const overallStatus = getOverallStatus();
+  const formatVerifierNode = (node: TaskNode) => {
+    if (!isVerifierReport) {
+      return { name: node.name, description: node.description };
+    }
+    const lower = node.name.toLowerCase();
+    const runSuffixMatch = node.name.match(/\(run\s+\d+\)/i);
+    const runSuffix = runSuffixMatch ? ` ${runSuffixMatch[0]}` : "";
+    if (lower.includes("wait for verification")) {
+      return {
+        name: `Await Verifier Response${runSuffix}`,
+        description:
+          "Wait for an ack or problem report from the verifier.",
+      };
+    }
+    if (lower.includes("evaluate trqp enforcement")) {
+      return {
+        name: "Evaluate TRQP Evidence",
+        description:
+          "Compare run 1 vs run 2 outcomes using observable protocol evidence and TRQP admin changes.",
+      };
+    }
+    if (lower.includes("prepare trqp enforcement")) {
+      return {
+        name: "Prepare TRQP Evidence",
+        description: "Resolve TRQP endpoint and verify issuer authorization via trust registry admin APIs.",
+      };
+    }
+    return { name: node.name, description: node.description };
+  };
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -267,6 +306,7 @@ export function DetailedReport({
             `The ${testType.toLowerCase()} test is currently in progress.`}
         </p>
       </div>
+
       
       {/* Summary Cards */}
       {conformanceReport && (
@@ -362,12 +402,14 @@ export function DetailedReport({
           <div className="mt-6 border-t pt-4">
             <h6 className="font-medium mb-3">Task Details</h6>
             <div className="space-y-4">
-              {dagData.nodes.map((node, index) => (
+              {dagData.nodes.map((node, index) => {
+                const formattedNode = formatVerifierNode(node);
+                return (
                 <div key={node.id} className="border rounded p-3 bg-gray-50">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
                       {getStatusIcon(node.task.state.status)}
-                      <h6 className="font-medium">{node.name}</h6>
+                      <h6 className="font-medium">{formattedNode.name}</h6>
                     </div>
                     <span className={`text-sm ${getStatusColor(node.task.state.status)}`}>
                       {node.task.state.status}
@@ -375,7 +417,7 @@ export function DetailedReport({
                   </div>
                   
                   <div className="text-sm space-y-1">
-                    <p><strong>Description:</strong> {node.description || 'No description'}</p>
+                    <p><strong>Description:</strong> {formattedNode.description || 'No description'}</p>
                     <p><strong>State:</strong> {node.state}</p>
                     <p><strong>Run State:</strong> {node.task.state.runState}</p>
                     <p><strong>Finished:</strong> {node.finished ? 'Yes' : 'No'}</p>
@@ -414,7 +456,8 @@ export function DetailedReport({
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
             
             {/* Recommendations */}
