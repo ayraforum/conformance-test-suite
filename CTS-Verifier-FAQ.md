@@ -29,7 +29,7 @@ In the ACA-Py verifier path, CTS:
 
 When TRQP enforcement is enabled, CTS runs the flow twice:
 - **Run 1**: Expect `verified` to be true
-- **Run 2**: CTS removes TRQP authorization via the admin API, then expects `verified` to be false
+- **Run 2**: CTS removes TRQP authorization via the admin API, then expects the verifier to reject the proof (problem report / abandoned) and **not** return `verified=true`
 - CTS restores TRQP authorization after run 2
 
 ---
@@ -53,7 +53,8 @@ CTS requires:
 - `verified` is true on run 1
 
 With TRQP enforcement enabled, CTS additionally requires:
-- `verified` is false after TRQP authorization is removed
+- The verifier sends a Present Proof v2 problem report on TRQP failure (mandatory for CTS conformance)
+- `verified` is not true after TRQP authorization is removed (state typically becomes `abandoned`)
 - Authorization restored after run 2
 
 CTS does **not** treat `state=done` as success unless `verified` is true.
@@ -80,6 +81,7 @@ To enable TRQP enforcement you must:
 - Configure TRQP admin access:
   - `TRQP_ADMIN_BASE_URL`
   - Optional: `TRQP_ADMIN_AUTH_HEADER`, `TRQP_ADMIN_AUTH_TOKEN`
+- Reuse the same connection for run 2 (no second OOB invitation)
 
 CTS also requires that the presented credential contains:
 - `credentialSubject.ecosystem_id`

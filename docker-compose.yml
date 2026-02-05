@@ -161,6 +161,8 @@ services:
       ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
       ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
       ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+      ACAPY_VERIFIER_TRQP_ENFORCE: ${ACAPY_VERIFIER_TRQP_ENFORCE:-true}
+      NEXT_PUBLIC_DID_RESOLVER_URL: ${NEXT_PUBLIC_DID_RESOLVER_URL:-https://dev.uniresolver.io/1.0/identifiers}
     command:
       [
         "uvicorn",
@@ -196,6 +198,8 @@ services:
       ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
       ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
       ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+      ACAPY_VERIFIER_TRQP_ENFORCE: ${ACAPY_VERIFIER_TRQP_ENFORCE:-true}
+      NEXT_PUBLIC_DID_RESOLVER_URL: ${NEXT_PUBLIC_DID_RESOLVER_URL:-https://dev.uniresolver.io/1.0/identifiers}
     command:
       [
         "uvicorn",
@@ -231,6 +235,8 @@ services:
       ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
       ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
       ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+      ACAPY_VERIFIER_TRQP_ENFORCE: ${ACAPY_VERIFIER_TRQP_ENFORCE:-true}
+      NEXT_PUBLIC_DID_RESOLVER_URL: ${NEXT_PUBLIC_DID_RESOLVER_URL:-https://dev.uniresolver.io/1.0/identifiers}
     command:
       [
         "uvicorn",

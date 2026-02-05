@@ -414,6 +414,7 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
               proof_exchange_id: proofExchangeId,
               connection_id: connectionId,
               timeout_ms: 120_000,
+              enforce_trqp: Boolean(this.options.checkTrustRegistry),
             }),
           });
           this.presentationRecord = verifyResp?.record || verifyResp;

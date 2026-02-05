@@ -32,7 +32,17 @@ function MessageRenderer({ messages, title = "Step Log" }: { messages: string[];
 }
 
 // Connection Step Component
-function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; taskData?: TaskNode; }) {
+function VerifierConnectionStep({
+  isActive,
+  taskData,
+  verifyTrqp,
+  onVerifyTrqpChange,
+}: {
+  isActive: boolean;
+  taskData?: TaskNode;
+  verifyTrqp: boolean;
+  onVerifyTrqpChange: (value: boolean) => void;
+}) {
   const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
   const { messages } = useSelector((state: RootState) => state.test);
@@ -40,11 +50,6 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
   const [oobUrl, setOobUrl] = useState<string>("");
   const [qrError, setQrError] = useState<string | null>(null);
   const [isDecodingQr, setIsDecodingQr] = useState(false);
-  const defaultTRQP =
-    Boolean(process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT) ||
-    Boolean(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
-  const [verifyTrqp, setVerifyTrqp] = useState(defaultTRQP);
-  
   const stepMessages = messages[0] || [];
 
   const decodeQrFile = useCallback(
@@ -190,7 +195,7 @@ function VerifierConnectionStep({ isActive, taskData }: { isActive: boolean; tas
               id="verifyTrqp"
               type="checkbox"
               checked={verifyTrqp}
-              onChange={(e) => setVerifyTrqp(e.target.checked)}
+              onChange={(e) => onVerifyTrqpChange(e.target.checked)}
               className="h-4 w-4 text-blue-600"
             />
             <label htmlFor="verifyTrqp" className="text-sm text-gray-700">
@@ -350,10 +355,14 @@ function ReportStep({ isActive, onRestart, dagData }: { isActive: boolean; onRes
 
 export function VerifierTest() {
   const dispatch = useDispatch();
-  const { currentStep } = useSelector((state: RootState) => state.test);
+  const { currentStep, isTestRunning } = useSelector((state: RootState) => state.test);
   const { dag } = useSelector((state: RootState) => state.dag);
   const [steps, setSteps] = useState<TestStep[]>([]);
   const [effectiveCurrentStep, setEffectiveCurrentStep] = useState(currentStep);
+  const defaultTRQP =
+    Boolean(process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT) ||
+    Boolean(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
+  const [verifyTrqp, setVerifyTrqp] = useState(defaultTRQP);
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
@@ -397,7 +406,7 @@ export function VerifierTest() {
 
   // Initialize steps
   useEffect(() => {
-    const stepDefinitions = [
+    const baseStepDefinitions = [
       { name: "Accept Invitation", description: "Consume the verifier's DIDComm v2 OOB invitation and connect" },
       { name: "Await Proof Request", description: "Wait for a Presentation Exchange v2 request for the Ayra Business Card" },
       { name: "Send Presentation", description: "Respond with the Ayra Business Card (Ed25519Signature2020) presentation" },
@@ -408,6 +417,21 @@ export function VerifierTest() {
       },
       { name: "Evaluate Results", description: "Evaluate verifier conformance from observable evidence" },
     ];
+    const trqpStepDefinitions = [
+      { name: "Prepare TRQP Enforcement", description: "Resolve TRQP endpoint and verify issuer authorization" },
+      { name: "Accept Invitation (Run 1)", description: "Consume verifier OOB v2 invitation using ACA-Py holder" },
+      { name: "Await Proof Request (Run 1)", description: "Wait for verifier to send PE v2 proof request" },
+      { name: "Send Presentation (Run 1)", description: "Reply with Ayra Business Card presentation" },
+      { name: "Wait for Verification (Run 1)", description: "Wait for verifier decision" },
+      { name: "Disable TRQP Authorization", description: "Remove issuer authorization before run 2" },
+      { name: "Reuse Connection (Run 2)", description: "Re-use the run 1 connection for the second verification pass" },
+      { name: "Await Proof Request (Run 2)", description: "Wait for verifier to send PE v2 proof request on the existing connection" },
+      { name: "Send Presentation (Run 2)", description: "Reply with Ayra Business Card presentation" },
+      { name: "Wait for Verification (Run 2)", description: "Wait for verifier decision after TRQP change" },
+      { name: "Restore TRQP Authorization", description: "Restore trust registry authorization after run 2" },
+      { name: "Evaluate TRQP Enforcement", description: "Validate verifier behavior across TRQP state changes" },
+    ];
+    const stepDefinitions = verifyTrqp ? trqpStepDefinitions : baseStepDefinitions;
 
     const mapStepDefinition = (name: string, description: string) => {
       const lower = name.toLowerCase();
@@ -438,7 +462,10 @@ export function VerifierTest() {
     };
 
     const dagNodes = dag?.nodes || [];
-    const resolvedStepDefinitions = dagNodes.length
+    const dagName = (dag?.metadata?.name || "").toLowerCase();
+    const isVerifierDag = dagName.includes("verifier");
+    const shouldUseDag = isTestRunning && dagNodes.length > 0 && isVerifierDag;
+    const resolvedStepDefinitions = shouldUseDag
       ? dagNodes.map((node) => {
           const rawName = node.task?.metadata?.name || node.name || "Step";
           const rawDescription = node.task?.metadata?.description || node.description || "";
@@ -455,9 +482,55 @@ export function VerifierTest() {
     const computedCurrentStep = forcedStepIndex ?? currentStep;
     setEffectiveCurrentStep(computedCurrentStep);
 
+    const useTrqpLabels =
+      verifyTrqp ||
+      resolvedStepDefinitions.some((step) => {
+        const lower = step.name.toLowerCase();
+        return lower.includes("trqp") || lower.includes("run 2");
+      });
+
+    const buildTrqpLabel = (name: string) => {
+      const runSuffixMatch = name.match(/\(run\s+\d+\)/i);
+      const baseName = name.replace(/\s*\(run\s+\d+\)\s*/i, "").trim();
+      const lowerBase = baseName.toLowerCase();
+      let labelTop: string | undefined;
+
+      if (runSuffixMatch?.[0]?.toLowerCase().includes("run 1")) {
+        labelTop = "Run 1";
+      } else if (runSuffixMatch?.[0]?.toLowerCase().includes("run 2")) {
+        labelTop = "Run 2";
+      } else if (lowerBase.includes("trqp")) {
+        labelTop = "TRQP";
+      }
+
+      let labelBottom = baseName;
+      if (lowerBase.includes("accept invitation")) {
+        labelBottom = "Accept Invitation";
+      } else if (lowerBase.includes("await proof request")) {
+        labelBottom = "Await Request";
+      } else if (lowerBase.includes("send presentation")) {
+        labelBottom = "Send Presentation";
+      } else if (lowerBase.includes("await verifier response")) {
+        labelBottom = "Await Response";
+      } else if (lowerBase.includes("prepare trqp")) {
+        labelBottom = "Prepare";
+      } else if (lowerBase.includes("disable trqp") && lowerBase.includes("authorization")) {
+        labelBottom = "Disable Auth";
+      } else if (lowerBase.includes("restore trqp") && lowerBase.includes("authorization")) {
+        labelBottom = "Restore Auth";
+      } else if (lowerBase.includes("evaluate trqp")) {
+        labelBottom = "Evaluate";
+      } else if (lowerBase.includes("reuse connection")) {
+        labelBottom = "Reuse Connection";
+      }
+
+      return { labelTop, labelBottom };
+    };
+
     const initialSteps: TestStep[] = [];
 
     // Add the connection step (uses OOB URL input)
+    const setupLabel = useTrqpLabels ? buildTrqpLabel("Setup Test") : {};
     initialSteps.push({
       id: 1,
       name: "Setup Test",
@@ -467,10 +540,14 @@ export function VerifierTest() {
         <VerifierConnectionStep
           isActive={computedCurrentStep === 0}
           taskData={dag?.nodes?.[0]}
+          verifyTrqp={verifyTrqp}
+          onVerifyTrqpChange={setVerifyTrqp}
         />
       ),
       isActive: computedCurrentStep === 0,
-      taskData: dag?.nodes?.[0]
+      taskData: dag?.nodes?.[0],
+      labelTop: setupLabel.labelTop,
+      labelBottom: setupLabel.labelBottom
     });
 
     // Add backend pipeline steps derived from the DAG
@@ -481,6 +558,7 @@ export function VerifierTest() {
         computedCurrentStep > stepNum ? "passed" : computedCurrentStep === stepNum ? "running" : "pending";
       const isWaitStep = resolvedStepDefinitions[i].name === "Wait for Verification";
       const status = isWaitStep && node ? getStepStatusFromNode(node) : defaultStatus;
+      const stepLabel = useTrqpLabels ? buildTrqpLabel(resolvedStepDefinitions[i].name) : {};
       initialSteps.push({
         id: stepNum + 1,
         name: resolvedStepDefinitions[i].name,
@@ -496,12 +574,15 @@ export function VerifierTest() {
           />
         ),
         isActive: computedCurrentStep === stepNum,
-        taskData: node
+        taskData: node,
+        labelTop: stepLabel.labelTop,
+        labelBottom: stepLabel.labelBottom
       });
     }
 
     // Add report step (after all 6 backend steps)
     const reportStepIndex = resolvedStepDefinitions.length + 1;
+    const reportLabel = useTrqpLabels ? buildTrqpLabel("Report") : {};
     initialSteps.push({
       id: reportStepIndex + 1,
       name: "Report",
@@ -514,7 +595,9 @@ export function VerifierTest() {
           dagData={dag}
         />
       ),
-      isActive: computedCurrentStep === reportStepIndex
+      isActive: computedCurrentStep === reportStepIndex,
+      labelTop: reportLabel.labelTop,
+      labelBottom: reportLabel.labelBottom
     });
 
     // Update step statuses based on DAG data
@@ -544,7 +627,7 @@ export function VerifierTest() {
     }
 
     setSteps(initialSteps);
-  }, [currentStep, dag, handleRestart]);
+  }, [currentStep, dag, handleRestart, isTestRunning, verifyTrqp]);
 
   return (
     <div>

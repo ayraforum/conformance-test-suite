@@ -92,10 +92,12 @@ When the Verifier UI toggle is enabled, CTS runs the verifier flow twice: once w
 
 Requirements:
 - **ACA-Py holder mode** (`REFERENCE_AGENT=acapy`), because CTS must observe `verified` from ACA-Py records.
-- Two distinct verifier OOB URLs (one for each run).
+- One verifier OOB URL. Run 2 reuses the same connection after CTS removes authorization.
 - TRQP admin API access for toggling authorization state.
+- Verifier must send a Present Proof v2 problem report when TRQP authorization/recognition fails (recommended practice; mandatory for CTS conformance). CTS expects run 2 to abandon or otherwise **not** report `verified=true`.
 
 Relevant `.env` settings:
 - `TRQP_ADMIN_BASE_URL` (example: `https://sandbox-tr.ayra.network/admin`)
 - `TRQP_ADMIN_AUTH_HEADER` (default: `Authorization`)
 - `TRQP_ADMIN_AUTH_TOKEN` (if your admin API requires auth)
+- `ACAPY_VERIFIER_TRQP_ENFORCE` (demo verifier only; when `true`, sends a problem report on TRQP failure)

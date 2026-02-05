@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
+import os
 import signal
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import httpx
 from httpx import HTTPStatusError
@@ -30,6 +32,8 @@ class AcaPyProcessManager:
     self._auto_verified_presentations: set[str] = set()
     # Dedupe webhook events by exchange/state/timestamp to keep handlers idempotent.
     self._proof_event_cache: dict[str, float] = {}
+    # Dedupe problem reports to avoid sending multiple for the same exchange.
+    self._problem_report_cache: dict[str, float] = {}
 
   def _dedupe_proof_event(self, pres_ex_id: str, state: str, updated_at: Optional[str]) -> bool:
     """Return True if this webhook event appears to be a duplicate."""
@@ -44,6 +48,19 @@ class AcaPyProcessManager:
     if len(self._proof_event_cache) > 2000:
       cutoff = now - 900
       self._proof_event_cache = {k: v for k, v in self._proof_event_cache.items() if v >= cutoff}
+    return False
+
+  def _should_skip_problem_report(self, proof_exchange_id: str) -> bool:
+    if not proof_exchange_id:
+      return False
+    now = time.time()
+    last = self._problem_report_cache.get(proof_exchange_id)
+    if last and (now - last) < 300:
+      return True
+    self._problem_report_cache[proof_exchange_id] = now
+    if len(self._problem_report_cache) > 2000:
+      cutoff = now - 900
+      self._problem_report_cache = {k: v for k, v in self._problem_report_cache.items() if v >= cutoff}
     return False
 
   @property
@@ -548,7 +565,12 @@ class AcaPyProcessManager:
         return
       resp.raise_for_status()
 
-  async def verify_proof(self, proof_exchange_id: str, connection_id: Optional[str] = None) -> dict:
+  async def verify_proof(
+    self,
+    proof_exchange_id: str,
+    connection_id: Optional[str] = None,
+    enforce_trqp: Optional[bool] = None,
+  ) -> dict:
     if not self._profile:
       raise RuntimeError("ACA-Py not started")
     record: dict = {}
@@ -564,6 +586,31 @@ class AcaPyProcessManager:
       state or "unknown",
       connection_id,
     )
+    if self._should_enforce_trqp(enforce_trqp) and state == "presentation-received":
+      try:
+        await self._run_trqp_checks(record)
+      except Exception as exc:  # pylint: disable=broad-except
+        LOGGER.warning(
+          "TRQP enforcement failed for proof_exchange_id=%s: %s",
+          proof_exchange_id,
+          exc,
+        )
+        try:
+          await self.send_problem_report(proof_exchange_id, "Verification failed by policy")
+        except Exception as report_exc:  # pylint: disable=broad-except
+          LOGGER.error(
+            "Failed to send problem report (proof_exchange_id=%s): %s",
+            proof_exchange_id,
+            report_exc,
+          )
+          raise
+        # Refresh record after sending problem report (state should move to abandoned).
+        try:
+          record = await self.get_proof(proof_exchange_id, connection_id=connection_id)
+        except Exception:
+          record.setdefault("state", "abandoned")
+          record.setdefault("verified", False)
+        return record
     verified_flag = record.get("verified")
     if verified_flag is not None:
       LOGGER.info(
@@ -607,6 +654,293 @@ class AcaPyProcessManager:
         return result
       except Exception:
         raise
+
+  def _should_enforce_trqp(self, enforce_trqp: Optional[bool]) -> bool:
+    if not self._profile:
+      return False
+    label = (self._profile.label or "").upper()
+    if "VERIFIER" not in label:
+      return False
+    if enforce_trqp is not None:
+      return enforce_trqp
+    return os.getenv("ACAPY_VERIFIER_TRQP_ENFORCE", "false").lower() == "true"
+
+  async def send_problem_report(self, proof_exchange_id: str, description: str) -> None:
+    if not self._profile:
+      raise RuntimeError("ACA-Py not started")
+    if self._should_skip_problem_report(proof_exchange_id):
+      LOGGER.info(
+        "send_problem_report: skip duplicate (proof_exchange_id=%s)",
+        proof_exchange_id,
+      )
+      return
+    payloads = [
+      {"description": description},
+      {"description": {"en": description}},
+    ]
+    try:
+      async with httpx.AsyncClient() as client:
+        last_error: Optional[str] = None
+        for payload in payloads:
+          resp = await client.post(
+            f"{self.admin_url}/present-proof-2.0/records/{proof_exchange_id}/problem-report",
+            json=payload,
+          )
+          if resp.status_code in {200, 201, 202}:
+            LOGGER.info(
+              "send_problem_report: sent problem report (proof_exchange_id=%s, status=%s)",
+              proof_exchange_id,
+              resp.status_code,
+            )
+            return
+          last_error = f"{resp.status_code} {resp.text}"
+          LOGGER.warning(
+            "send_problem_report: failed with payload=%s status=%s",
+            payload,
+            resp.status_code,
+          )
+        raise RuntimeError(f"Problem report failed: {last_error}")
+    except Exception:
+      self._problem_report_cache.pop(proof_exchange_id, None)
+      raise
+
+  async def _run_trqp_checks(self, record: dict) -> None:
+    vc = self._extract_vc(record)
+    if not vc:
+      raise RuntimeError("TRQP check failed: no verifiable credential found in presentation")
+    authorization_payload, recognition_payload, ecosystem_id = self._build_trqp_payloads(vc)
+    trqp_base_url = await self._resolve_trqp_endpoint(ecosystem_id)
+
+    LOGGER.info(
+      "TRQP mapping: entity_id=%s authority_id=%s action=%s resource=%s",
+      authorization_payload.get("entity_id"),
+      authorization_payload.get("authority_id"),
+      authorization_payload.get("action"),
+      authorization_payload.get("resource"),
+    )
+
+    async with httpx.AsyncClient() as client:
+      auth_resp = await client.post(
+        f"{trqp_base_url}/authorization",
+        json=authorization_payload,
+        headers={"Content-Type": "application/json"},
+      )
+      auth_payload = await self._read_json_safe(auth_resp)
+      if auth_resp.status_code >= 300:
+        raise RuntimeError(
+          f"TRQP authorization failed: {auth_resp.status_code} {auth_resp.reason_phrase} {auth_payload['raw']}"
+        )
+      if not self._extract_authorization_result(auth_payload["json"]):
+        raise RuntimeError("TRQP authorization failed: authorized=false")
+
+      rec_resp = await client.post(
+        f"{trqp_base_url}/recognition",
+        json=recognition_payload,
+        headers={"Content-Type": "application/json"},
+      )
+      rec_payload = await self._read_json_safe(rec_resp)
+      if rec_resp.status_code >= 300:
+        raise RuntimeError(
+          f"TRQP recognition failed: {rec_resp.status_code} {rec_resp.reason_phrase} {rec_payload['raw']}"
+        )
+      if not self._extract_recognition_result(rec_payload["json"]):
+        raise RuntimeError("TRQP recognition failed: recognized=false")
+
+  def _build_trqp_payloads(self, vc: dict) -> tuple[dict, dict, str]:
+    issuer_did = self._extract_issuer_did(vc)
+    subject = self._extract_credential_subject(vc)
+    subject_issuer = subject.get("issuer_id") if isinstance(subject, dict) else None
+    if isinstance(subject_issuer, str) and subject_issuer and subject_issuer != issuer_did:
+      raise RuntimeError(
+        f"TRQP mapping failed: credentialSubject.issuer_id ({subject_issuer}) does not match issuer ({issuer_did})"
+      )
+    ecosystem_id = subject.get("ecosystem_id") if isinstance(subject, dict) else None
+    if not isinstance(ecosystem_id, str) or not ecosystem_id:
+      raise RuntimeError("TRQP mapping failed: credentialSubject.ecosystem_id missing")
+    atn_did = subject.get("ayra_trust_network_did") if isinstance(subject, dict) else None
+    if not isinstance(atn_did, str) or not atn_did:
+      raise RuntimeError("TRQP mapping failed: credentialSubject.ayra_trust_network_did missing")
+    card_type = subject.get("ayra_card_type") if isinstance(subject, dict) else None
+    if not isinstance(card_type, str) or not card_type:
+      raise RuntimeError("TRQP mapping failed: credentialSubject.ayra_card_type missing")
+    issuance_time = self._extract_issuance_time(vc)
+
+    authorization_payload = {
+      "entity_id": issuer_did,
+      "authority_id": ecosystem_id,
+      "action": "issue",
+      "resource": f"ayracard:{card_type}",
+    }
+    recognition_payload: dict[str, Any] = {
+      "entity_id": ecosystem_id,
+      "authority_id": atn_did,
+      "action": "member-of",
+      "resource": "ayratrustnetwork",
+    }
+    if issuance_time:
+      recognition_payload["context"] = {"time": issuance_time}
+    return authorization_payload, recognition_payload, ecosystem_id
+
+  def _extract_issuer_did(self, vc: dict) -> str:
+    issuer = vc.get("issuer")
+    if isinstance(issuer, str) and issuer.strip():
+      return issuer
+    if isinstance(issuer, dict) and isinstance(issuer.get("id"), str) and issuer.get("id").strip():
+      return issuer["id"]
+    raise RuntimeError("TRQP mapping failed: issuer DID missing from credential")
+
+  def _extract_credential_subject(self, vc: dict) -> dict:
+    subject = vc.get("credentialSubject")
+    if isinstance(subject, list):
+      if not subject:
+        raise RuntimeError("TRQP mapping failed: credentialSubject array is empty")
+      if isinstance(subject[0], dict):
+        return subject[0]
+      raise RuntimeError("TRQP mapping failed: credentialSubject array invalid")
+    if isinstance(subject, dict):
+      return subject
+    raise RuntimeError("TRQP mapping failed: credentialSubject missing")
+
+  def _extract_issuance_time(self, vc: dict) -> Optional[str]:
+    issuance_date = vc.get("issuanceDate")
+    if isinstance(issuance_date, str) and issuance_date:
+      return issuance_date
+    valid_from = vc.get("validFrom")
+    if isinstance(valid_from, str) and valid_from:
+      return valid_from
+    return None
+
+  async def _resolve_trqp_endpoint(self, ecosystem_did: str) -> str:
+    LOGGER.info("Resolving TRQP endpoint from ecosystem DID: %s", ecosystem_did)
+    ecosystem_doc = await self._resolve_did_document(ecosystem_did)
+    endpoint = self._extract_trqp_service_endpoint(ecosystem_doc)
+    if not endpoint:
+      raise RuntimeError("TRQP endpoint not found in ecosystem DID document")
+    if endpoint.startswith("did:"):
+      LOGGER.info("Resolving TRQP endpoint DID: %s", endpoint)
+      registry_doc = await self._resolve_did_document(endpoint)
+      registry_endpoint = self._extract_trqp_service_endpoint(registry_doc)
+      if not registry_endpoint:
+        raise RuntimeError("TRQP endpoint DID did not expose a TRQP service endpoint")
+      endpoint = registry_endpoint
+    normalized = endpoint.rstrip("/")
+    LOGGER.info("TRQP endpoint resolved: %s", normalized)
+    return normalized
+
+  async def _resolve_did_document(self, did: str) -> dict:
+    resolver_url = os.getenv("NEXT_PUBLIC_DID_RESOLVER_URL") or "https://dev.uniresolver.io/1.0/identifiers"
+    endpoint = f"{resolver_url.rstrip('/')}/{did}"
+    async with httpx.AsyncClient() as client:
+      resp = await client.get(endpoint)
+      if resp.status_code >= 300:
+        raise RuntimeError(
+          f"DID resolution failed ({did}): {resp.status_code} {resp.reason_phrase} {resp.text}"
+        )
+      data = resp.json()
+      if isinstance(data, dict) and "didDocument" in data:
+        return data.get("didDocument") or {}
+      return data
+
+  def _extract_trqp_service_endpoint(self, doc: dict) -> Optional[str]:
+    services = doc.get("service")
+    if not isinstance(services, list):
+      return None
+    for service in services:
+      types = service.get("type")
+      if not isinstance(types, list):
+        types = [types]
+      matches = False
+      for entry in types:
+        normalized = str(entry or "").lower()
+        if normalized in {"trqp", "trustregistryservice"}:
+          matches = True
+          break
+      if not matches:
+        continue
+      endpoint = self._extract_service_endpoint_value(service.get("serviceEndpoint"))
+      if endpoint:
+        return endpoint
+    return None
+
+  def _extract_service_endpoint_value(self, endpoint: Any) -> Optional[str]:
+    if not endpoint:
+      return None
+    if isinstance(endpoint, str):
+      return endpoint
+    if isinstance(endpoint, dict):
+      if isinstance(endpoint.get("uri"), str):
+        return endpoint.get("uri")
+      if isinstance(endpoint.get("url"), str):
+        return endpoint.get("url")
+    return None
+
+  async def _read_json_safe(self, resp: httpx.Response) -> dict:
+    raw = resp.text or ""
+    if not raw:
+      return {"json": None, "raw": ""}
+    try:
+      return {"json": resp.json(), "raw": raw}
+    except Exception:
+      return {"json": None, "raw": raw}
+
+  def _extract_authorization_result(self, payload: Any) -> bool:
+    if isinstance(payload, list):
+      return any(item.get("authorized") is True for item in payload if isinstance(item, dict))
+    if isinstance(payload, dict):
+      return payload.get("authorized") is True
+    return False
+
+  def _extract_recognition_result(self, payload: Any) -> bool:
+    if isinstance(payload, dict):
+      return payload.get("recognized") is True
+    return False
+
+  def _extract_vc(self, record: dict) -> Optional[dict]:
+    def decode_attach(attach: dict) -> Optional[dict]:
+      data = attach.get("data") if isinstance(attach, dict) else None
+      if not isinstance(data, dict):
+        return None
+      if "json" in data and isinstance(data.get("json"), dict):
+        return data.get("json")
+      if "base64" in data and isinstance(data.get("base64"), str):
+        try:
+          decoded = base64.b64decode(data.get("base64")).decode("utf-8")
+          return json.loads(decoded)
+        except Exception:
+          return None
+      return None
+
+    def pick_attaches(obj: Any) -> Optional[list]:
+      if not isinstance(obj, dict):
+        return None
+      for key in ("presentations~attach", "presentations_attach"):
+        if isinstance(obj.get(key), list):
+          return obj.get(key)
+      return None
+
+    candidates = [
+      record,
+      record.get("record") if isinstance(record, dict) else None,
+      record.get("presentation") if isinstance(record, dict) else None,
+      record.get("pres") if isinstance(record, dict) else None,
+    ]
+    for candidate in candidates:
+      attaches = pick_attaches(candidate)
+      if not attaches:
+        continue
+      for attach in attaches:
+        decoded = decode_attach(attach)
+        if not decoded:
+          continue
+        vp = decoded.get("verifiableCredential") and decoded or decoded.get("vp") or decoded.get("presentation") or decoded
+        vc = None
+        if isinstance(vp, dict):
+          vc = vp.get("verifiableCredential") or vp.get("credential") or vp.get("vc") or vp
+        if isinstance(vc, list) and vc:
+          vc = vc[0]
+        if isinstance(vc, dict):
+          return vc
+    return None
 
   async def get_proof(self, proof_exchange_id: str, connection_id: Optional[str] = None) -> dict:
     if not self._profile:

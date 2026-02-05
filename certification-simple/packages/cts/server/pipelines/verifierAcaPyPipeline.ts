@@ -1081,6 +1081,7 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
   private finalState: string | null = null;
   private continueOnFailure: boolean;
   private expectVerified: boolean;
+  private enforceTrqp: boolean;
   private context?: TrqpEnforcementContext;
   private contextKey?: "run1Result" | "run2Result";
 
@@ -1092,6 +1093,7 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
     options?: {
       continueOnFailure?: boolean;
       expectVerified?: boolean;
+      enforceTrqp?: boolean;
       context?: TrqpEnforcementContext;
       contextKey?: "run1Result" | "run2Result";
     }
@@ -1101,6 +1103,7 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
     this.demoVerifierAdapter = demoVerifierAdapter;
     this.continueOnFailure = options?.continueOnFailure ?? false;
     this.expectVerified = options?.expectVerified ?? true;
+    this.enforceTrqp = options?.enforceTrqp ?? false;
     this.context = options?.context;
     this.contextKey = options?.contextKey;
   }
@@ -1312,6 +1315,7 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
               proof_exchange_id: verifierProofExchangeId,
               connection_id: verifierConnectionId,
               timeout_ms: 120_000,
+              enforce_trqp: this.enforceTrqp,
             }),
           })
             .then((resp) => {
@@ -2139,7 +2143,8 @@ export default class VerifierAcaPyPipeline {
         adapter,
         "Wait for Verification",
         "Wait for verifier decision",
-        demoVerifierAdapter
+        demoVerifierAdapter,
+        { enforceTrqp: false }
       );
       const evaluationTask = new VerifierAcaPyEvaluationTask(
         "Evaluate Verifier Test",
@@ -2205,7 +2210,13 @@ export default class VerifierAcaPyPipeline {
       "Wait for Verification (Run 1)",
       "Wait for verifier decision",
       demoVerifierAdapter,
-      { continueOnFailure, expectVerified: true, context: trqpContext, contextKey: "run1Result" }
+      {
+        continueOnFailure,
+        expectVerified: true,
+        enforceTrqp: true,
+        context: trqpContext,
+        contextKey: "run1Result",
+      }
     );
 
     const disableTrqpTask = new DisableTrqpAuthorizationTask(
@@ -2238,7 +2249,13 @@ export default class VerifierAcaPyPipeline {
       "Wait for Verification (Run 2)",
       "Wait for verifier decision after TRQP change",
       demoVerifierAdapter,
-      { continueOnFailure, expectVerified: false, context: trqpContext, contextKey: "run2Result" }
+      {
+        continueOnFailure,
+        expectVerified: false,
+        enforceTrqp: true,
+        context: trqpContext,
+        contextKey: "run2Result",
+      }
     );
 
     const restoreTrqpTask = new RestoreTrqpAuthorizationTask(

@@ -156,6 +156,7 @@ npm run test-all
 - **Holder flow mapping**: Derives TRQP payloads from the presented VC (entity_id=issuer.id, authority_id=credentialSubject.ecosystem_id, action=issue, resource=ayracard:<card_type>; recognition uses entity_id=ecosystem_id, authority_id=ayra_trust_network_did, action=member-of, resource=ayratrustnetwork, context.time=issuance time) and resolves the TRQP endpoint from the ecosystem DID.
 - **Configuration**: Set a resolver (`NEXT_PUBLIC_DID_RESOLVER_URL`) or bypass with a known TRQP endpoint (`NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT`). Dev override via `NEXT_PUBLIC_TRQP_LOCAL_URL`.
 - **Env location**: TRQP env keys live in `packages/cts/.env.local` (also listed in the root `.env.example` and synced from `NEXT_PUBLIC_*` in the root `.env` on dev/build/start).
+- **Verifier policy signal**: When TRQP authorization or recognition fails, the verifier should send a Present Proof v2 problem report. This is recommended practice and is mandatory for CTS conformance runs.
 
 ### **Test Execution Flow**
 
