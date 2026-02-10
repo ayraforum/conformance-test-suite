@@ -41,7 +41,7 @@ The root `.env` is the single source of truth for NGROK domains and agent select
 | `REFERENCE_AGENT_NGROK_DOMAIN` | Public hostname used by the reference agent tunnel. All QR codes for direct wallet interactions point here. |
 | `REFERENCE_ISSUER_OVERRIDE_AGENT` | Optional override for credential issuance (`credo`, `acapy`, or `auto`). Set to `credo` when you want ACA-Py to act as the verifier but you still rely on Credo to issue credentials. |
 | `ISSUER_OVERRIDE_NGROK_DOMAIN` | Required when the override is `credo`, so the Credo issuer has its own inbound NGROK tunnel. |
-| `VERIFIER_TEST_NGROK_DOMAIN` | Domain dedicated to the legacy `test-verifier` container. Does not affect the UI flows. |
+| `VERIFIER_TEST_NGROK_DOMAIN` | Domain dedicated to the standalone `test-verifier` container used by scripted CLI checks. Does not affect the UI flows. |
 | `SERVER_NGROK_DOMAIN` | Optional domain for the Express API callbacks/webhooks. |
 
 If you leave `REFERENCE_AGENT=credo`, you only need one NGROK domain. When you experiment with `REFERENCE_AGENT=acapy` **and** keep the Credo override, you must provide two distinct domains so ngrok does not report `ERR_NGROK_334`.

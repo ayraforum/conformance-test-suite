@@ -143,9 +143,9 @@ Use this quick checklist before running the ACA-Py verifier flow:
 
 ---
 
-## 11. What about the legacy verifier flow?
+## 11. What about the alternate Credo verifier flow?
 
-When CTS is not using the ACA-Py verifier path, it falls back to a legacy verifier flow
+When CTS is not using the ACA-Py verifier path, it falls back to an alternate verifier flow
 that uses a self-issued AnonCreds credential and a proof proposal. This path uses Credo
 agents and is intended for demo and plumbing checks only. CTS does **not** certify AnonCreds.
 
