@@ -56,6 +56,7 @@ With TRQP enforcement enabled, CTS additionally requires:
 - The verifier sends a Present Proof v2 problem report on TRQP failure (mandatory for CTS conformance)
 - `verified` is not true after TRQP authorization is removed (state typically becomes `abandoned`)
 - Authorization restored after run 2
+- CTS evaluates both TRQP authorization and recognition in a run and reports combined failures when both are non-conformant
 
 CTS does **not** treat `state=done` as success unless `verified` is true.
 

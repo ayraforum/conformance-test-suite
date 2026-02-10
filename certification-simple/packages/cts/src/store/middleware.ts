@@ -44,6 +44,17 @@ export const testProgressionMiddleware: Middleware =
         }
       });
 
+      const isFailedNode = (node: DAG["nodes"][number]) => {
+        const status = (node.task.state.status || '').toLowerCase();
+        const runState = (node.task.state.runState || '').toLowerCase();
+        return (
+          status === 'failed' ||
+          status === 'error' ||
+          runState === 'failed' ||
+          runState === 'error'
+        );
+      };
+
       // Determine the new step based on DAG state
       let newStep = currentStep;
 
@@ -67,29 +78,33 @@ export const testProgressionMiddleware: Middleware =
         newStep = reportStepIndex;
         store.dispatch(completeTest());
       } else {
-        // Find the first running node
-        const firstRunningNodeIndex = dag.nodes.findIndex(node => 
-          (node.task.state.runState || '').toLowerCase() === 'running' || 
-          (node.task.state.status || '').toLowerCase() === 'running' ||
-          (node.task.state.status || '').toLowerCase() === 'started'
-        );
-        
-        if (firstRunningNodeIndex !== -1) {
-          newStep = firstRunningNodeIndex + nodeStepOffset;
-          console.log('TestProgressionMiddleware: Found running node at index', firstRunningNodeIndex);
+        const firstFailedNodeIndex = dag.nodes.findIndex(isFailedNode);
+        if (firstFailedNodeIndex !== -1) {
+          newStep = firstFailedNodeIndex + nodeStepOffset;
+          console.log('TestProgressionMiddleware: Found failed node at index', firstFailedNodeIndex);
         } else {
-          // Find the last completed node and move to next step
-          const completedNodeCount = dag.nodes.filter(node => 
-            (node.task.state.status || '').toLowerCase() === 'accepted' || 
-            (node.task.state.status || '').toLowerCase() === 'passed' || 
-            (node.task.state.runState || '').toLowerCase() === 'completed' ||
-            node.finished
-          ).length;
+        // Find the first running node
+          const firstRunningNodeIndex = dag.nodes.findIndex(node => 
+            (node.task.state.runState || '').toLowerCase() === 'running' || 
+            (node.task.state.status || '').toLowerCase() === 'running' ||
+            (node.task.state.status || '').toLowerCase() === 'started'
+          );
           
-          if (completedNodeCount > 0) {
-            // Move to the step after the last completed one, but not beyond report step
-            newStep = Math.min(completedNodeCount + nodeStepOffset, reportStepIndex);
-            console.log('TestProgressionMiddleware: Completed nodes:', completedNodeCount, 'new step:', newStep);
+          if (firstRunningNodeIndex !== -1) {
+            newStep = firstRunningNodeIndex + nodeStepOffset;
+            console.log('TestProgressionMiddleware: Found running node at index', firstRunningNodeIndex);
+          } else {
+            // Find the last completed node and move to next step
+            const completedNodeCount = dag.nodes.filter(node => 
+              (node.task.state.status || '').toLowerCase() === 'accepted' || 
+              (node.task.state.status || '').toLowerCase() === 'passed'
+            ).length;
+            
+            if (completedNodeCount > 0) {
+              // Move to the step after the last completed one, but not beyond report step
+              newStep = Math.min(completedNodeCount + nodeStepOffset, reportStepIndex);
+              console.log('TestProgressionMiddleware: Completed nodes:', completedNodeCount, 'new step:', newStep);
+            }
           }
         }
       }

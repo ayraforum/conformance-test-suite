@@ -50,6 +50,7 @@ function VerifierConnectionStep({
   const [oobUrl, setOobUrl] = useState<string>("");
   const [qrError, setQrError] = useState<string | null>(null);
   const [isDecodingQr, setIsDecodingQr] = useState(false);
+  const [isLoadingInternalInvitation, setIsLoadingInternalInvitation] = useState(false);
   const stepMessages = messages[0] || [];
 
   const decodeQrFile = useCallback(
@@ -157,6 +158,34 @@ function VerifierConnectionStep({
     }
   };
 
+  const useInternalVerifierInvitation = async () => {
+    setQrError(null);
+    setIsLoadingInternalInvitation(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/verifier/internal-invitation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({} as any));
+      if (!response.ok) {
+        const message = data?.error || data?.details || response.statusText;
+        throw new Error(message || "Failed to fetch internal verifier invitation");
+      }
+      const invitationUrl = typeof data?.invitationUrl === "string" ? data.invitationUrl : "";
+      if (!invitationUrl) {
+        throw new Error("No invitation URL returned");
+      }
+      setOobUrl(invitationUrl);
+      dispatch(addMessage({ stepIndex: 0, message: "Loaded OOB URL from internal verifier" }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setQrError(`Internal verifier invitation failed: ${message}`);
+      dispatch(addMessage({ stepIndex: 0, message: `Internal verifier invitation failed: ${message}` }));
+    } finally {
+      setIsLoadingInternalInvitation(false);
+    }
+  };
+
   if (!isActive) return null;
 
   return (
@@ -189,6 +218,23 @@ function VerifierConnectionStep({
               placeholder="Enter the out-of-band URL from your verifier"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={useInternalVerifierInvitation}
+                disabled={isLoadingInternalInvitation}
+                className={`px-3 py-1.5 text-sm rounded-md border ${
+                  isLoadingInternalInvitation
+                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                    : "bg-white text-blue-700 border-blue-200 hover:bg-blue-50"
+                }`}
+              >
+                {isLoadingInternalInvitation ? "Loading..." : "Use Internal Verifier Invitation"}
+              </button>
+              <span className="text-xs text-gray-500">
+                Uses the internal ACA-Py verifier when configured.
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
             <input
@@ -280,7 +326,7 @@ function GenericVerifierStep({
   const isCompleted = statusValue === "accepted" || statusValue === "completed";
   const isFailed = statusValue === "failed" || statusValue === "error" || runStateValue === "failed";
   const isVerifierResponseStep = title.toLowerCase().includes("verifier response") || title.toLowerCase().includes("wait for verification");
-  const showFailure = isVerifierResponseStep && isFailed;
+  const showFailure = isFailed;
   const failureMessage =
     taskData?.task?.state?.errors?.[0] ||
     taskData?.task?.state?.messages?.slice(-1)?.[0] ||
@@ -464,7 +510,7 @@ export function VerifierTest() {
     const dagNodes = dag?.nodes || [];
     const dagName = (dag?.metadata?.name || "").toLowerCase();
     const isVerifierDag = dagName.includes("verifier");
-    const shouldUseDag = isTestRunning && dagNodes.length > 0 && isVerifierDag;
+    const shouldUseDag = isTestRunning && currentStep > 0 && dagNodes.length > 0 && isVerifierDag;
     const resolvedStepDefinitions = shouldUseDag
       ? dagNodes.map((node) => {
           const rawName = node.task?.metadata?.name || node.name || "Step";
@@ -473,12 +519,19 @@ export function VerifierTest() {
         })
       : stepDefinitions;
 
+    const activeDagNodes = shouldUseDag ? dagNodes : [];
+
     const waitStepIndex = resolvedStepDefinitions.findIndex((step) =>
       step.name.toLowerCase().includes("verifier response")
     );
-    const waitStepNode = waitStepIndex >= 0 ? dagNodes[waitStepIndex] : undefined;
+    const waitStepNode = waitStepIndex >= 0 ? activeDagNodes[waitStepIndex] : undefined;
     const waitStepStatus = waitStepNode ? getStepStatusFromNode(waitStepNode) : null;
-    const forcedStepIndex = waitStepStatus === "failed" ? waitStepIndex + 1 : null;
+    const firstFailedNodeIndex = activeDagNodes.findIndex((node) => getStepStatusFromNode(node) === "failed");
+    const forcedStepIndex = firstFailedNodeIndex >= 0
+      ? firstFailedNodeIndex + 1
+      : waitStepStatus === "failed"
+        ? waitStepIndex + 1
+        : null;
     const computedCurrentStep = forcedStepIndex ?? currentStep;
     setEffectiveCurrentStep(computedCurrentStep);
 
@@ -526,11 +579,12 @@ export function VerifierTest() {
 
       return { labelTop, labelBottom };
     };
+    type StepLabel = { labelTop?: string; labelBottom?: string };
 
     const initialSteps: TestStep[] = [];
 
     // Add the connection step (uses OOB URL input)
-    const setupLabel = useTrqpLabels ? buildTrqpLabel("Setup Test") : {};
+    const setupLabel: StepLabel = useTrqpLabels ? buildTrqpLabel("Setup Test") : {};
     initialSteps.push({
       id: 1,
       name: "Setup Test",
@@ -553,12 +607,11 @@ export function VerifierTest() {
     // Add backend pipeline steps derived from the DAG
     for (let i = 0; i < resolvedStepDefinitions.length; i++) {
       const stepNum = i + 1;
-      const node = dagNodes[i];
+      const node = activeDagNodes[i];
       const defaultStatus =
         computedCurrentStep > stepNum ? "passed" : computedCurrentStep === stepNum ? "running" : "pending";
-      const isWaitStep = resolvedStepDefinitions[i].name === "Wait for Verification";
-      const status = isWaitStep && node ? getStepStatusFromNode(node) : defaultStatus;
-      const stepLabel = useTrqpLabels ? buildTrqpLabel(resolvedStepDefinitions[i].name) : {};
+      const status = node ? getStepStatusFromNode(node) : defaultStatus;
+      const stepLabel: StepLabel = useTrqpLabels ? buildTrqpLabel(resolvedStepDefinitions[i].name) : {};
       initialSteps.push({
         id: stepNum + 1,
         name: resolvedStepDefinitions[i].name,
@@ -582,7 +635,7 @@ export function VerifierTest() {
 
     // Add report step (after all 6 backend steps)
     const reportStepIndex = resolvedStepDefinitions.length + 1;
-    const reportLabel = useTrqpLabels ? buildTrqpLabel("Report") : {};
+    const reportLabel: StepLabel = useTrqpLabels ? buildTrqpLabel("Report") : {};
     initialSteps.push({
       id: reportStepIndex + 1,
       name: "Report",
@@ -601,7 +654,7 @@ export function VerifierTest() {
     });
 
     // Update step statuses based on DAG data
-    if (dag?.nodes) {
+    if (shouldUseDag && dag?.nodes) {
       dag.nodes.forEach((node: TaskNode, index: number) => {
         // Offset by 1 because first step is the setup step
         const stepIndex = index + 1;

@@ -153,6 +153,15 @@ function extractAuthorizationResult(payload: any): boolean {
   return false;
 }
 
+function isConsumedInvitationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("previously consumed") ||
+    normalized.includes("pairwise requests must be against explicit invitations")
+  );
+}
+
 async function resolveDidDocument(did: string): Promise<any> {
   const resolverUrl =
     normalizeEnvValue(process.env.NEXT_PUBLIC_DID_RESOLVER_URL) ||
@@ -345,6 +354,11 @@ class ReceiveOobViaAcaPyTask extends BaseRunnableTask {
       }
 
       if (!acceptResponse && lastError) {
+        if (isConsumedInvitationError(lastError)) {
+          throw new Error(
+            `Invitation appears to be already consumed. Use a fresh verifier invitation URL and retry. Original error: ${lastError.message}`
+          );
+        }
         throw lastError;
       }
 
@@ -1498,36 +1512,49 @@ class InputValidationTask extends BaseRunnableTask {
 class ReuseConnectionTask extends BaseRunnableTask {
   private context: TrqpEnforcementContext;
   private result: any = null;
+  private continueOnFailure: boolean;
 
-  constructor(context: TrqpEnforcementContext, name: string, description?: string) {
+  constructor(
+    context: TrqpEnforcementContext,
+    name: string,
+    description?: string,
+    options?: { continueOnFailure?: boolean }
+  ) {
     super(name, description);
     this.context = context;
+    this.continueOnFailure = options?.continueOnFailure ?? false;
   }
 
   async run(): Promise<void> {
     super.run();
-    const connection = this.context.run1Connection;
-    if (!connection?.connectionId) {
-      const error = new Error("Run 1 connection not available for TRQP enforcement");
+    try {
+      const connection = this.context.run1Connection;
+      if (!connection?.connectionId) {
+        throw new Error("Run 1 connection not available for TRQP enforcement");
+      }
+
+      this.result = {
+        connectionId: connection.connectionId,
+        invitation: connection.invitation,
+        ...(this.context.demoVerifierConnectionId
+          ? {
+              demoVerifierConnectionId: this.context.demoVerifierConnectionId,
+              demoVerifier: { connectionId: this.context.demoVerifierConnectionId },
+            }
+          : {}),
+      };
+      this.addMessage(`Reusing connection ${connection.connectionId} for run 2`);
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
       this.addError(error);
       this.setFailed();
       this.setCompleted();
-      throw error;
+      if (!this.continueOnFailure) {
+        throw error;
+      }
     }
-
-    this.result = {
-      connectionId: connection.connectionId,
-      invitation: connection.invitation,
-      ...(this.context.demoVerifierConnectionId
-        ? {
-            demoVerifierConnectionId: this.context.demoVerifierConnectionId,
-            demoVerifier: { connectionId: this.context.demoVerifierConnectionId },
-          }
-        : {}),
-    };
-    this.addMessage(`Reusing connection ${connection.connectionId} for run 2`);
-    this.setAccepted();
-    this.setCompleted();
   }
 
   async results(): Promise<Results> {
@@ -2175,6 +2202,7 @@ export default class VerifierAcaPyPipeline {
 
     const trqpContext: TrqpEnforcementContext = {};
     const continueOnFailure = true;
+    const run1ContinueOnFailure = false;
     const prepareContinueOnFailure = false;
 
     const prepareTrqpTask = new PrepareTrqpEnforcementTask(
@@ -2190,20 +2218,20 @@ export default class VerifierAcaPyPipeline {
       this.oobUrl,
       "Accept Invitation (Run 1)",
       "Consume verifier OOB v2 invitation using ACA-Py holder",
-      { continueOnFailure, context: trqpContext, contextKey: "run1Connection" }
+      { continueOnFailure: run1ContinueOnFailure, context: trqpContext, contextKey: "run1Connection" }
     );
     const awaitRun1Task = new AwaitProofRequestTask(
       adapter,
       "Await Proof Request (Run 1)",
       "Wait for verifier to send PE v2 proof request",
       demoVerifierAdapter,
-      { continueOnFailure, context: trqpContext, contextKey: "run1ProofExchangeId" }
+      { continueOnFailure: run1ContinueOnFailure, context: trqpContext, contextKey: "run1ProofExchangeId" }
     );
     const sendRun1Task = new SendPresentationViaAcaPyTask(
       adapter,
       "Send Presentation (Run 1)",
       "Reply with Ayra Business Card presentation",
-      { continueOnFailure }
+      { continueOnFailure: run1ContinueOnFailure }
     );
     const waitRun1Task = new WaitForVerificationViaAcaPyTask(
       adapter,
@@ -2211,7 +2239,7 @@ export default class VerifierAcaPyPipeline {
       "Wait for verifier decision",
       demoVerifierAdapter,
       {
-        continueOnFailure,
+        continueOnFailure: run1ContinueOnFailure,
         expectVerified: true,
         enforceTrqp: true,
         context: trqpContext,
@@ -2229,7 +2257,8 @@ export default class VerifierAcaPyPipeline {
     const reuseConnectionTask = new ReuseConnectionTask(
       trqpContext,
       "Reuse Connection (Run 2)",
-      "Re-use the run 1 connection for the second verification pass"
+      "Re-use the run 1 connection for the second verification pass",
+      { continueOnFailure }
     );
     const awaitRun2Task = new AwaitProofRequestTask(
       adapter,

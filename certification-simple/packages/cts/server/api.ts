@@ -75,6 +75,57 @@ app.post("/api/run", (req, res) => {
   })();
 });
 
+app.post("/api/verifier/internal-invitation", async (req, res) => {
+  try {
+    await ensureInitialized();
+    await ensureAcaPyVerifierControllerInitialized();
+  } catch (error) {
+    return res.status(500).json({
+      error: "CTS server not initialized",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const referenceAgent = (process.env.REFERENCE_AGENT || "credo")
+    .split("#")[0]
+    .trim()
+    .split(/\s+/)[0]
+    .toLowerCase();
+
+  if (referenceAgent !== "acapy") {
+    return res.status(400).json({
+      error: "Internal verifier invitation requires REFERENCE_AGENT=acapy",
+    });
+  }
+
+  const controller = state.verifierController;
+  if (!controller) {
+    return res.status(400).json({
+      error:
+        "Internal verifier controller unavailable. Ensure ACAPY_VERIFIER_CONTROL_URL is set and the service is running.",
+    });
+  }
+
+  try {
+    // Keep this endpoint side-effect free so it matches manual paste/QR behavior:
+    // create and return an invitation URL only; do not auto-receive or wait for connection.
+    const adapter = controller.getAdapter();
+    const invitation = await adapter.createOutOfBandInvitation();
+    const invitationUrl = adapter.buildInvitationUrl(invitation);
+    if (!invitationUrl) {
+      return res.status(500).json({
+        error: "No invitation URL returned from internal verifier controller",
+      });
+    }
+    return res.json({ invitationUrl });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to create internal verifier invitation",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 app.get("/api/select/pipeline", async (req, res) => {
   try {
     await ensureInitialized();
@@ -211,6 +262,7 @@ app.use('*', (req, res) => {
       'GET /',
       'GET /api/health',
       'POST /api/run',
+      'POST /api/verifier/internal-invitation',
       'GET /api/dag',
       'GET /api/select/pipeline',
       'GET /api/invitation'
@@ -227,6 +279,7 @@ const runServer = () => {
     console.log('  GET /');
     console.log('  GET /api/health');
     console.log('  POST /api/run');
+    console.log('  POST /api/verifier/internal-invitation');
     console.log('  GET /api/dag');
     console.log('  GET /api/select/pipeline');
     console.log('  GET /api/invitation');

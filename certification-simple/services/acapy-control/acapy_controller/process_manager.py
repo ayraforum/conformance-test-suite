@@ -719,32 +719,54 @@ class AcaPyProcessManager:
       authorization_payload.get("resource"),
     )
 
+    failures: list[str] = []
     async with httpx.AsyncClient() as client:
-      auth_resp = await client.post(
-        f"{trqp_base_url}/authorization",
-        json=authorization_payload,
-        headers={"Content-Type": "application/json"},
-      )
-      auth_payload = await self._read_json_safe(auth_resp)
-      if auth_resp.status_code >= 300:
-        raise RuntimeError(
-          f"TRQP authorization failed: {auth_resp.status_code} {auth_resp.reason_phrase} {auth_payload['raw']}"
+      LOGGER.info("TRQP authorization check started")
+      try:
+        auth_resp = await client.post(
+          f"{trqp_base_url}/authorization",
+          json=authorization_payload,
+          headers={"Content-Type": "application/json"},
         )
-      if not self._extract_authorization_result(auth_payload["json"]):
-        raise RuntimeError("TRQP authorization failed: authorized=false")
+        auth_payload = await self._read_json_safe(auth_resp)
+        if auth_resp.status_code >= 300:
+          failures.append(
+            f"TRQP authorization failed: {auth_resp.status_code} {auth_resp.reason_phrase} {auth_payload['raw']}"
+          )
+        elif not self._extract_authorization_result(auth_payload["json"]):
+          failures.append("TRQP authorization failed: authorized=false")
+        else:
+          LOGGER.info("TRQP authorization check passed")
+      except Exception as exc:  # pylint: disable=broad-except
+        message = str(exc)
+        if not message.startswith("TRQP authorization failed:"):
+          message = f"TRQP authorization failed: {message}"
+        failures.append(message)
 
-      rec_resp = await client.post(
-        f"{trqp_base_url}/recognition",
-        json=recognition_payload,
-        headers={"Content-Type": "application/json"},
-      )
-      rec_payload = await self._read_json_safe(rec_resp)
-      if rec_resp.status_code >= 300:
-        raise RuntimeError(
-          f"TRQP recognition failed: {rec_resp.status_code} {rec_resp.reason_phrase} {rec_payload['raw']}"
+      LOGGER.info("TRQP recognition check started")
+      try:
+        rec_resp = await client.post(
+          f"{trqp_base_url}/recognition",
+          json=recognition_payload,
+          headers={"Content-Type": "application/json"},
         )
-      if not self._extract_recognition_result(rec_payload["json"]):
-        raise RuntimeError("TRQP recognition failed: recognized=false")
+        rec_payload = await self._read_json_safe(rec_resp)
+        if rec_resp.status_code >= 300:
+          failures.append(
+            f"TRQP recognition failed: {rec_resp.status_code} {rec_resp.reason_phrase} {rec_payload['raw']}"
+          )
+        elif not self._extract_recognition_result(rec_payload["json"]):
+          failures.append("TRQP recognition failed: recognized=false")
+        else:
+          LOGGER.info("TRQP recognition check passed")
+      except Exception as exc:  # pylint: disable=broad-except
+        message = str(exc)
+        if not message.startswith("TRQP recognition failed:"):
+          message = f"TRQP recognition failed: {message}"
+        failures.append(message)
+
+    if failures:
+      raise RuntimeError(" | ".join(failures))
 
   def _build_trqp_payloads(self, vc: dict) -> tuple[dict, dict, str]:
     issuer_did = self._extract_issuer_did(vc)

@@ -494,41 +494,61 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
       `TRQP mapping: entity_id=${authorizationPayload.entity_id} authority_id=${authorizationPayload.authority_id} action=${authorizationPayload.action} resource=${authorizationPayload.resource}`
     );
 
+    const failures: string[] = [];
+
     this.addMessage("TRQP authorization check started");
-    const authResp = await fetch(`${baseUrl}/authorization`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(authorizationPayload),
-    });
-    const authBody = await this.readJsonSafe(authResp);
-    if (!authResp.ok) {
-      throw new Error(
-        `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
-      );
+    try {
+      const authResp = await fetch(`${baseUrl}/authorization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(authorizationPayload),
+      });
+      const authBody = await this.readJsonSafe(authResp);
+      if (!authResp.ok) {
+        failures.push(
+          `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+        );
+      } else {
+        const authorized = this.extractAuthorizationResult(authBody.json);
+        if (!authorized) {
+          failures.push("TRQP authorization failed: authorized=false");
+        } else {
+          this.addMessage("TRQP authorization check passed");
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(message.startsWith("TRQP authorization failed:") ? message : `TRQP authorization failed: ${message}`);
     }
-    const authorized = this.extractAuthorizationResult(authBody.json);
-    if (!authorized) {
-      throw new Error(`TRQP authorization failed: authorized=false`);
-    }
-    this.addMessage("TRQP authorization check passed");
 
     this.addMessage("TRQP recognition check started");
-    const recResp = await fetch(`${baseUrl}/recognition`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(recognitionPayload),
-    });
-    const recBody = await this.readJsonSafe(recResp);
-    if (!recResp.ok) {
-      throw new Error(
-        `TRQP recognition failed: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
-      );
+    try {
+      const recResp = await fetch(`${baseUrl}/recognition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(recognitionPayload),
+      });
+      const recBody = await this.readJsonSafe(recResp);
+      if (!recResp.ok) {
+        failures.push(
+          `TRQP recognition failed: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
+        );
+      } else {
+        const recognized = this.extractRecognitionResult(recBody.json);
+        if (!recognized) {
+          failures.push("TRQP recognition failed: recognized=false");
+        } else {
+          this.addMessage("TRQP recognition check passed");
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(message.startsWith("TRQP recognition failed:") ? message : `TRQP recognition failed: ${message}`);
     }
-    const recognized = this.extractRecognitionResult(recBody.json);
-    if (!recognized) {
-      throw new Error("TRQP recognition failed: recognized=false");
+
+    if (failures.length > 0) {
+      throw new Error(failures.join(" | "));
     }
-    this.addMessage("TRQP recognition check passed");
   }
 
   private buildTrqpPayloads(vc: any) {

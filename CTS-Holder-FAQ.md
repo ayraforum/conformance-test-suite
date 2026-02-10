@@ -99,6 +99,7 @@ TRQP checks, when enabled, are performed using the credential's issuer DID and c
 
 TRQP checks run only when:
 - The holder flow is started with `verifyTRQP=true` (UI toggle or API param)
+- When enabled, CTS evaluates both authorization and recognition in the same run and reports combined failures when both are non-conformant
 
 **Where the TRQP endpoint comes from depends on the verifier path (PR #19):**
 - **ACA-Py verifier path**: CTS resolves the TRQP endpoint from the credential's `credentialSubject.ecosystem_id` DID document. The DID must publish a TRQP service (`TRQP` or `TrustRegistryService`). If the service endpoint is itself a DID, CTS resolves that DID to find the final TRQP URL. DID resolution uses `NEXT_PUBLIC_DID_RESOLVER_URL` (defaulting to the public uniresolver).
