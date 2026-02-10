@@ -1,6 +1,6 @@
 # Ayra Card Schema Assets
 
-This folder holds the Ayra Card artifacts pulled from `ayracards-concept/technical/schema`.
+This folder holds the Ayra Card artifacts pulled from `ayracardprotocol-concept/technical/schema`.
 
 - `ayra-card-business-card-schema.json`: Current JSON Schema for the Ayra Business Card credential.
 - `payload-schema-unified.json`: Unified payload schema referenced by the credential subject payloads.

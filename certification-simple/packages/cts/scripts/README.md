@@ -43,7 +43,7 @@ Runs both tests in sequence to validate the complete system:
 
 #### `npm run validate:ayra-card-context`
 Validates the Ayra Card JSON Schema, JSON-LD context, and (optionally) a sample credential:
-- Defaults target the files dropped from `ayracards-concept/technical/schema`: `schema/ayra-card-business-card-schema.json` and `schema/example-ayra-card.json`.
+- Defaults target the files dropped from `ayracardprotocol-concept/technical/schema`: `schema/ayra-card-business-card-schema.json` and `schema/example-ayra-card.json`.
 - Provide a JSON-LD context file if you have it (e.g., `schema/AyraBusinessCardV1R0.jsonld` or serve it from `public/contexts/`).
 - Set `--context-url` if you want the sample `@context` array checked (for example `https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld` or your local host path).
 
