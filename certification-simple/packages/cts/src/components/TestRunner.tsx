@@ -11,6 +11,8 @@ export interface TestStep {
   component: React.ReactNode;
   isActive: boolean;
   taskData?: TaskNode;
+  labelTop?: string;
+  labelBottom?: string;
 }
 
 interface TestRunnerProps {
@@ -30,6 +32,33 @@ export function TestRunner({
   onStepChange,
   onRestart
 }: TestRunnerProps) {
+  const hasTopLabels = steps.some((step) => step.labelTop);
+  const phaseSegments = React.useMemo(() => {
+    if (!hasTopLabels) {
+      return [];
+    }
+    const segments: { label: string; count: number }[] = [];
+    steps.forEach((step) => {
+      let phase = step.labelTop;
+      if (!phase) {
+        const lower = step.name.toLowerCase();
+        if (lower.includes("setup")) {
+          phase = "Setup";
+        } else if (lower.includes("report")) {
+          phase = "Report";
+        } else {
+          phase = "Flow";
+        }
+      }
+      const last = segments[segments.length - 1];
+      if (last && last.label === phase) {
+        last.count += 1;
+      } else {
+        segments.push({ label: phase, count: 1 });
+      }
+    });
+    return segments;
+  }, [hasTopLabels, steps]);
   const getStepVisual = (step: TestStep, index: number) => {
     if (step.status === "failed") {
       return { className: "bg-red-500 text-white", label: "✗" };
@@ -40,11 +69,14 @@ export function TestRunner({
     if (step.status === "skipped") {
       return { className: "bg-gray-400 text-white", label: "–" };
     }
+    if (step.status === "waiting") {
+      return { className: "border-2 border-blue-400 text-blue-600 bg-white", label: "…" };
+    }
+    if (step.status === "running") {
+      return { className: "bg-blue-500 text-white", label: "•" };
+    }
     if (index === currentStep) {
       return { className: "bg-blue-500 text-white", label: index + 1 };
-    }
-    if (index < currentStep) {
-      return { className: "bg-green-500 text-white", label: "✓" };
     }
     return { className: "bg-white border-2 border-gray-300 text-gray-500", label: index + 1 };
   };
@@ -56,6 +88,21 @@ export function TestRunner({
       
       {/* Progress indicator */}
       <div className="mb-8">
+        {phaseSegments.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2">
+              {phaseSegments.map((segment, index) => (
+                <div
+                  key={`${segment.label}-${index}`}
+                  className="rounded-full bg-gray-100 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-600 text-center"
+                  style={{ flex: segment.count }}
+                >
+                  {segment.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <div className="h-1 w-full bg-gray-200 rounded"></div>
@@ -75,12 +122,24 @@ export function TestRunner({
           </div>
         </div>
         
-        <div className="mt-4 flex justify-between text-xs text-gray-500">
-          {steps.map((step) => (
-            <div key={step.id} className="w-24 text-center overflow-hidden text-ellipsis whitespace-nowrap">
-              {step.name}
-            </div>
-          ))}
+        <div className={`mt-4 flex justify-between ${hasTopLabels ? "text-gray-600" : "text-gray-500"} text-xs`}>
+          {steps.map((step) => {
+            const labelBottom = step.labelBottom ?? step.name;
+            if (!hasTopLabels) {
+              return (
+                <div key={step.id} className="w-24 text-center overflow-hidden text-ellipsis whitespace-nowrap">
+                  {labelBottom}
+                </div>
+              );
+            }
+            return (
+              <div key={step.id} className="flex-1 min-w-0 px-1 text-center">
+                <div className="text-[11px] leading-tight break-words">
+                  {labelBottom}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
       

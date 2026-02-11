@@ -32,6 +32,36 @@ type PresentationResult = {
   };
 };
 
+type TrqpAuthorizationPayload = {
+  entity_id: string;
+  authority_id: string;
+  action: string;
+  resource: string;
+};
+
+type TrqpEnforcementContext = {
+  issuerDid?: string;
+  ecosystemDid?: string;
+  trustNetworkDid?: string;
+  cardType?: string;
+  authorizationPayload?: TrqpAuthorizationPayload;
+  trqpBaseUrl?: string;
+  adminBaseUrl?: string;
+  adminAuthHeader?: string;
+  adminAuthToken?: string;
+  entityId?: number;
+  authorizationId?: number;
+  initialAuthorizationIds?: number[];
+  authorizedBefore?: boolean;
+  authorizedAfterRemoval?: boolean;
+  run1Connection?: ConnectionResult;
+  demoVerifierConnectionId?: string;
+  run1Result?: { verified: boolean | null; state: string | null; error?: string };
+  run2Result?: { verified: boolean | null; state: string | null; error?: string };
+  run1ProofExchangeId?: string;
+  run2ProofExchangeId?: string;
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const POLL_INTERVAL_MS = 2000;
 const VERIFIED_GRACE_MS = (() => {
@@ -79,17 +109,201 @@ async function fetchJson(url: string, opts: RequestInit): Promise<any> {
   return undefined;
 }
 
+const normalizeEnvValue = (value?: string): string => (value ?? "").split("#")[0].trim();
+
+async function readJsonSafe(resp: Response): Promise<{ json: any; raw: string }> {
+  const raw = await resp.text().catch(() => "");
+  if (!raw) return { json: null, raw: "" };
+  try {
+    return { json: JSON.parse(raw), raw };
+  } catch {
+    return { json: null, raw };
+  }
+}
+
+function summarizeAdminBody(contentType: string, raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (contentType.includes("application/json")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return `body=array(len=${parsed.length})`;
+      }
+      if (parsed && typeof parsed === "object") {
+        const keys = Object.keys(parsed);
+        const preview = keys.slice(0, 5).join(",");
+        return `body=object(keys=${preview || "none"})`;
+      }
+      return `body=${String(parsed).slice(0, 120)}`;
+    } catch {
+      // Fall through to raw summary.
+    }
+  }
+  return `body=${trimmed.slice(0, 120)}`;
+}
+
+function extractAuthorizationResult(payload: any): boolean {
+  if (Array.isArray(payload)) {
+    return payload.some((item) => item?.authorized === true);
+  }
+  if (payload && typeof payload === "object") {
+    return payload.authorized === true;
+  }
+  return false;
+}
+
+function isConsumedInvitationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("previously consumed") ||
+    normalized.includes("pairwise requests must be against explicit invitations")
+  );
+}
+
+async function resolveDidDocument(did: string): Promise<any> {
+  const resolverUrl =
+    normalizeEnvValue(process.env.NEXT_PUBLIC_DID_RESOLVER_URL) ||
+    "https://dev.uniresolver.io/1.0/identifiers";
+  const endpoint = `${resolverUrl.replace(/\/$/, "")}/${did}`;
+  const resp = await fetch(endpoint);
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`DID resolution failed (${did}): ${resp.status} ${resp.statusText} ${text}`);
+  }
+  const data = await resp.json();
+  return data?.didDocument || data;
+}
+
+function extractServiceEndpointValue(endpoint: any): string | null {
+  if (!endpoint) return null;
+  if (typeof endpoint === "string") return endpoint;
+  if (typeof endpoint?.uri === "string") return endpoint.uri;
+  if (typeof endpoint?.url === "string") return endpoint.url;
+  return null;
+}
+
+function extractTrqpServiceEndpoint(doc: any): string | null {
+  const services = doc?.service;
+  if (!Array.isArray(services)) return null;
+  for (const service of services) {
+    const types = Array.isArray(service?.type) ? service.type : [service?.type];
+    const matches = types.some((type: string) => {
+      const normalized = String(type || "").toLowerCase();
+      return normalized === "trqp" || normalized === "trustregistryservice";
+    });
+    if (!matches) continue;
+    const endpoint = extractServiceEndpointValue(service?.serviceEndpoint);
+    if (endpoint) return endpoint;
+  }
+  return null;
+}
+
+async function resolveTrqpEndpoint(ecosystemDid: string): Promise<string> {
+  const ecosystemDoc = await resolveDidDocument(ecosystemDid);
+  let endpoint = extractTrqpServiceEndpoint(ecosystemDoc);
+  if (!endpoint) {
+    throw new Error("TRQP endpoint not found in ecosystem DID document");
+  }
+  if (endpoint.startsWith("did:")) {
+    const registryDoc = await resolveDidDocument(endpoint);
+    const registryEndpoint = extractTrqpServiceEndpoint(registryDoc);
+    if (!registryEndpoint) {
+      throw new Error("TRQP endpoint DID did not expose a TRQP service endpoint");
+    }
+    endpoint = registryEndpoint;
+  }
+  return endpoint.replace(/\/$/, "");
+}
+
+function extractIssuerDid(vc: any): string {
+  const issuer = vc?.issuer;
+  if (typeof issuer === "string" && issuer.trim()) return issuer;
+  if (issuer && typeof issuer.id === "string" && issuer.id.trim()) return issuer.id;
+  throw new Error("TRQP mapping failed: issuer DID missing from credential");
+}
+
+function extractCredentialSubject(vc: any): any {
+  const subject = vc?.credentialSubject;
+  if (Array.isArray(subject)) {
+    if (subject.length === 0) {
+      throw new Error("TRQP mapping failed: credentialSubject array is empty");
+    }
+    return subject[0];
+  }
+  if (!subject) {
+    throw new Error("TRQP mapping failed: credentialSubject missing");
+  }
+  return subject;
+}
+
+function buildTrqpAuthorizationPayload(vc: any): {
+  payload: TrqpAuthorizationPayload;
+  issuerDid: string;
+  ecosystemDid: string;
+  trustNetworkDid: string;
+  cardType: string;
+} {
+  const issuerDid = extractIssuerDid(vc);
+  const subject = extractCredentialSubject(vc);
+  const subjectIssuer = typeof subject?.issuer_id === "string" ? subject.issuer_id : "";
+  if (subjectIssuer && subjectIssuer !== issuerDid) {
+    throw new Error(
+      `TRQP mapping failed: credentialSubject.issuer_id (${subjectIssuer}) does not match issuer (${issuerDid})`
+    );
+  }
+  const ecosystemDid = typeof subject?.ecosystem_id === "string" ? subject.ecosystem_id : "";
+  if (!ecosystemDid) {
+    throw new Error("TRQP mapping failed: credentialSubject.ecosystem_id missing");
+  }
+  const trustNetworkDid =
+    typeof subject?.ayra_trust_network_did === "string" ? subject.ayra_trust_network_did : "";
+  if (!trustNetworkDid) {
+    throw new Error("TRQP mapping failed: credentialSubject.ayra_trust_network_did missing");
+  }
+  const cardType = typeof subject?.ayra_card_type === "string" ? subject.ayra_card_type : "";
+  if (!cardType) {
+    throw new Error("TRQP mapping failed: credentialSubject.ayra_card_type missing");
+  }
+
+  return {
+    payload: {
+      entity_id: issuerDid,
+      authority_id: ecosystemDid,
+      action: "issue",
+      resource: `ayracard:${cardType}`,
+    },
+    issuerDid,
+    ecosystemDid,
+    trustNetworkDid,
+    cardType,
+  };
+}
+
 class ReceiveOobViaAcaPyTask extends BaseRunnableTask {
   private adapter: AcaPyAgentAdapter;
   private oobUrl: string;
   private result: ConnectionResult | null = null;
   private controlUrl: string;
+  private continueOnFailure: boolean;
+  private context?: TrqpEnforcementContext;
+  private contextKey?: "run1Connection";
 
-  constructor(adapter: AcaPyAgentAdapter, oobUrl: string, name: string, description?: string) {
+  constructor(
+    adapter: AcaPyAgentAdapter,
+    oobUrl: string,
+    name: string,
+    description?: string,
+    options?: { continueOnFailure?: boolean; context?: TrqpEnforcementContext; contextKey?: "run1Connection" }
+  ) {
     super(name, description);
     this.adapter = adapter;
     this.oobUrl = oobUrl;
     this.controlUrl = adapter.getControlUrl();
+    this.continueOnFailure = options?.continueOnFailure ?? false;
+    this.context = options?.context;
+    this.contextKey = options?.contextKey;
   }
 
   async prepare(): Promise<void> {
@@ -99,81 +313,89 @@ class ReceiveOobViaAcaPyTask extends BaseRunnableTask {
 
   async run(): Promise<void> {
     super.run();
-    if (!this.oobUrl) {
-      this.addError("No OOB URL provided");
+    try {
+      if (!this.oobUrl) {
+        throw new Error("OOB URL is required");
+      }
+
+      const adminUrl = this.adapter.getAdminUrl();
+      if (!adminUrl) {
+        throw new Error("ACA-Py admin URL missing");
+      }
+
+      const invitation = decodeOobFromUrl(this.oobUrl);
+      this.addMessage("Decoded OOB invitation");
+
+      let acceptResponse: any;
+      const controlReceive = `${this.controlUrl.replace(/\/$/, "")}/connections/receive-invitation`;
+      const adminOutOfBandReceive = `${adminUrl.replace(/\/$/, "")}/out-of-band/receive-invitation`;
+      const adminConnectionsReceive = `${adminUrl.replace(/\/$/, "")}/connections/receive-invitation`;
+      const endpoints = [controlReceive, adminOutOfBandReceive, adminConnectionsReceive];
+
+      let lastError: Error | null = null;
+      for (const endpoint of endpoints) {
+        try {
+          const payload = {
+            invitation,
+            auto_accept: true,
+            // Avoid reusing a previous connection in demo runs; it makes it too easy
+            // to send the proof request on a different (older) connection than the one
+            // CTS is waiting on.
+            use_existing_connection: false,
+          };
+
+          acceptResponse = await fetchJson(endpoint, { method: "POST", body: JSON.stringify(payload) });
+          this.addMessage(`Invitation posted to ${endpoint}`);
+          break;
+        } catch (err: any) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          this.addMessage(`Failed at ${endpoint}, trying fallback...`);
+        }
+      }
+
+      if (!acceptResponse && lastError) {
+        if (isConsumedInvitationError(lastError)) {
+          throw new Error(
+            `Invitation appears to be already consumed. Use a fresh verifier invitation URL and retry. Original error: ${lastError.message}`
+          );
+        }
+        throw lastError;
+      }
+
+      const connectionId =
+        acceptResponse?.connection_id ||
+        acceptResponse?.connectionId ||
+        acceptResponse?.result?.connection_id ||
+        acceptResponse?.result?.connectionId;
+
+      if (!connectionId) {
+        throw new Error("ACA-Py did not return a connection id");
+      }
+
+      this.addMessage(`Connection created: ${connectionId}, waiting for active state...`);
+
+      const record = await this.waitForConnection(adminUrl, connectionId);
+      const state = record?.state || record?.result?.state;
+      this.addMessage(`Connection state reached: ${state || "unknown"}`);
+
+      this.result = {
+        connectionId,
+        invitation,
+      };
+      if (this.context && this.contextKey) {
+        this.context[this.contextKey] = this.result;
+      }
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.addError(error);
       this.setFailed();
       this.setCompleted();
-      throw new Error("OOB URL is required");
-    }
-
-    const adminUrl = this.adapter.getAdminUrl();
-    if (!adminUrl) {
-      throw new Error("ACA-Py admin URL missing");
-    }
-
-    const invitation = decodeOobFromUrl(this.oobUrl);
-    this.addMessage("Decoded OOB invitation");
-
-    let acceptResponse: any;
-    const controlReceive = `${this.controlUrl.replace(/\/$/, "")}/connections/receive-invitation`;
-    const adminOutOfBandReceive = `${adminUrl.replace(/\/$/, "")}/out-of-band/receive-invitation`;
-    const adminConnectionsReceive = `${adminUrl.replace(/\/$/, "")}/connections/receive-invitation`;
-    const endpoints = [controlReceive, adminOutOfBandReceive, adminConnectionsReceive];
-
-    let lastError: Error | null = null;
-    for (const endpoint of endpoints) {
-      try {
-        const payload = {
-          invitation,
-          auto_accept: true,
-          // Avoid reusing a previous connection in demo runs; it makes it too easy
-          // to send the proof request on a different (older) connection than the one
-          // CTS is waiting on.
-          use_existing_connection: false,
-        };
-
-        acceptResponse = await fetchJson(endpoint, { method: "POST", body: JSON.stringify(payload) });
-        this.addMessage(`Invitation posted to ${endpoint}`);
-        break;
-      } catch (err: any) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        this.addMessage(`Failed at ${endpoint}, trying fallback...`);
+      if (!this.continueOnFailure) {
+        throw error;
       }
     }
-
-    if (!acceptResponse && lastError) {
-      this.addError(lastError.message);
-      this.setFailed();
-      this.setCompleted();
-      throw lastError;
-    }
-
-    const connectionId =
-      acceptResponse?.connection_id ||
-      acceptResponse?.connectionId ||
-      acceptResponse?.result?.connection_id ||
-      acceptResponse?.result?.connectionId;
-
-    if (!connectionId) {
-      const error = new Error("ACA-Py did not return a connection id");
-      this.addError(error.message);
-      this.setFailed();
-      this.setCompleted();
-      throw error;
-    }
-
-    this.addMessage(`Connection created: ${connectionId}, waiting for active state...`);
-
-    const record = await this.waitForConnection(adminUrl, connectionId);
-    const state = record?.state || record?.result?.state;
-    this.addMessage(`Connection state reached: ${state || "unknown"}`);
-
-    this.result = {
-      connectionId,
-      invitation,
-    };
-    this.setAccepted();
-    this.setCompleted();
   }
 
   private async waitForConnection(adminUrl: string, connectionId: string) {
@@ -223,16 +445,27 @@ class AwaitProofRequestTask extends BaseRunnableTask {
   private proofResult: ProofRequestResult | null = null;
   private startedAtMs: number | null = null;
   private demoVerifierResult?: { connectionId: string; proofExchangeId?: string };
+  private continueOnFailure: boolean;
+  private context?: TrqpEnforcementContext;
+  private contextKey?: "run1ProofExchangeId" | "run2ProofExchangeId";
 
   constructor(
     adapter: AcaPyAgentAdapter,
     name: string,
     description?: string,
-    demoVerifierAdapter?: AcaPyAgentAdapter
+    demoVerifierAdapter?: AcaPyAgentAdapter,
+    options?: {
+      continueOnFailure?: boolean;
+      context?: TrqpEnforcementContext;
+      contextKey?: "run1ProofExchangeId" | "run2ProofExchangeId";
+    }
   ) {
     super(name, description);
     this.adapter = adapter;
     this.demoVerifierAdapter = demoVerifierAdapter;
+    this.continueOnFailure = options?.continueOnFailure ?? false;
+    this.context = options?.context;
+    this.contextKey = options?.contextKey;
   }
 
   async prepare(): Promise<void> {
@@ -253,45 +486,53 @@ class AwaitProofRequestTask extends BaseRunnableTask {
   async run(input?: any): Promise<void> {
     super.run();
     this.startedAtMs = Date.now();
-    const connectionId = input?.connectionId;
-    if (!connectionId) {
-      const error = new Error("connectionId missing from prior step");
-      this.addError(error.message);
+    try {
+      const connectionId = input?.connectionId;
+      if (!connectionId) {
+        throw new Error("connectionId missing from prior step");
+      }
+
+      const adminUrl = this.adapter.getAdminUrl();
+      if (!adminUrl) {
+        throw new Error("ACA-Py admin URL missing");
+      }
+
+      await this.maybeSendDemoProofRequest(input);
+
+      const record = await this.waitForProofRequest(adminUrl, connectionId);
+      const presentationExchangeId =
+        record?.pres_ex_id || record?.presentation_exchange_id || record?.presentation_exchange_id;
+
+      if (!presentationExchangeId) {
+        throw new Error("Missing presentation exchange id in proof request");
+      }
+
+      const request = record?.by_format?.pres_request?.dif || record?.presentation_request_dict || record;
+      this.addMessage("Proof request received (PE v2 / DIF)");
+
+      this.proofResult = {
+        presentationExchangeId,
+        connectionId,
+        request,
+        demoVerifier: this.demoVerifierResult,
+      };
+      if (this.context && this.contextKey) {
+        this.context[this.contextKey] = presentationExchangeId;
+      }
+      if (this.context && this.demoVerifierResult?.connectionId) {
+        this.context.demoVerifierConnectionId = this.demoVerifierResult.connectionId;
+      }
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.addError(error);
       this.setFailed();
       this.setCompleted();
-      throw error;
+      if (!this.continueOnFailure) {
+        throw error;
+      }
     }
-
-    const adminUrl = this.adapter.getAdminUrl();
-    if (!adminUrl) {
-      throw new Error("ACA-Py admin URL missing");
-    }
-
-    await this.maybeSendDemoProofRequest(input);
-
-    const record = await this.waitForProofRequest(adminUrl, connectionId);
-    const presentationExchangeId =
-      record?.pres_ex_id || record?.presentation_exchange_id || record?.presentation_exchange_id;
-
-    if (!presentationExchangeId) {
-      const error = new Error("Missing presentation exchange id in proof request");
-      this.addError(error.message);
-      this.setFailed();
-      this.setCompleted();
-      throw error;
-    }
-
-    const request = record?.by_format?.pres_request?.dif || record?.presentation_request_dict || record;
-    this.addMessage("Proof request received (PE v2 / DIF)");
-
-    this.proofResult = {
-      presentationExchangeId,
-      connectionId,
-      request,
-      demoVerifier: this.demoVerifierResult,
-    };
-    this.setAccepted();
-    this.setCompleted();
   }
 
   private getRecordTimeMs(record: any): number {
@@ -308,25 +549,32 @@ class AwaitProofRequestTask extends BaseRunnableTask {
 
     const invitation: any = input?.invitation;
     const invitationId = invitation?.["@id"] || invitation?.id;
-    if (!invitationId) {
-      this.addMessage("Demo auto-send enabled but invitation missing @id; skipping auto-send");
-      return;
-    }
+    const fallbackVerifierConnectionId =
+      input?.demoVerifier?.connectionId || input?.demoVerifierConnectionId;
 
     const verifierControl = this.demoVerifierAdapter.getControlUrl().replace(/\/$/, "");
     const verifierAdminUrl = this.demoVerifierAdapter.getAdminUrl()?.replace(/\/$/, "") || null;
-    this.addMessage("Demo auto-send: waiting for verifier connection...");
-    const waited = await fetchJson(`${verifierControl}/connections/wait`, {
-      method: "POST",
-      body: JSON.stringify({ oob_id: invitationId, timeout_ms: 180_000 }),
-    }).catch((e) => {
-      this.addMessage(`Demo auto-send: verifier /connections/wait failed: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
-    });
-    const verifierConnectionId =
-      waited?.connection_id || waited?.record?.connection_id || waited?.record?.connectionId || waited?.connectionId;
+    let verifierConnectionId = fallbackVerifierConnectionId;
+    if (!verifierConnectionId && invitationId) {
+      this.addMessage("Demo auto-send: waiting for verifier connection...");
+      const waited = await fetchJson(`${verifierControl}/connections/wait`, {
+        method: "POST",
+        body: JSON.stringify({ oob_id: invitationId, timeout_ms: 180_000 }),
+      }).catch((e) => {
+        this.addMessage(
+          `Demo auto-send: verifier /connections/wait failed: ${e instanceof Error ? e.message : String(e)}`
+        );
+        return null;
+      });
+      verifierConnectionId =
+        waited?.connection_id || waited?.record?.connection_id || waited?.record?.connectionId || waited?.connectionId;
+    }
     if (!verifierConnectionId) {
-      this.addMessage("Demo auto-send: verifier connection not resolved; skipping proof request send");
+      if (!invitationId) {
+        this.addMessage("Demo auto-send: missing invitation and verifier connection id; skipping auto-send");
+      } else {
+        this.addMessage("Demo auto-send: verifier connection not resolved; skipping proof request send");
+      }
       return;
     }
 
@@ -445,6 +693,14 @@ class AwaitProofRequestTask extends BaseRunnableTask {
     const deadline = Date.now() + 180_000;
     let last: any;
     const baseUrl = adminUrl.replace(/\/$/, "");
+    const startedAtMs = this.startedAtMs ?? Date.now();
+    const minTimestampMs = startedAtMs - 2000;
+    const excludedExchangeId = this.context?.run1ProofExchangeId || null;
+    this.addMessage(
+      `AwaitProofRequest filters: minTimestamp=${new Date(minTimestampMs).toISOString()}, excludedExchangeId=${
+        excludedExchangeId ?? "none"
+      }`
+    );
     const preferredStates = [
       "request-received",
       "presentation-request-received",
@@ -485,10 +741,31 @@ class AwaitProofRequestTask extends BaseRunnableTask {
       const sortedRecords = (records || []).sort(
         (a: any, b: any) => this.getRecordTimeMs(b) - this.getRecordTimeMs(a)
       );
+      if (sortedRecords.length > 0) {
+        const snapshot = sortedRecords.slice(0, 6).map((r: any) => ({
+          pres_ex_id: r?.pres_ex_id || r?.presentation_exchange_id,
+          state: r?.state,
+          updated_at: r?.updated_at,
+          created_at: r?.created_at,
+        }));
+        this.addMessage(`AwaitProofRequest candidates: ${JSON.stringify(snapshot)}`);
+      }
 
       for (const state of preferredStates) {
-        const match = sortedRecords.find((r: any) => r?.state === state && matchesAyraRequest(r));
-        if (match) return match;
+        const match = sortedRecords.find((r: any) => {
+          if (r?.state !== state) return false;
+          if (!matchesAyraRequest(r)) return false;
+          const presExId = r?.pres_ex_id || r?.presentation_exchange_id;
+          if (excludedExchangeId && presExId === excludedExchangeId) return false;
+          const recordTime = this.getRecordTimeMs(r);
+          if (recordTime && recordTime < minTimestampMs) return false;
+          return true;
+        });
+        if (match) {
+          const presExId = match?.pres_ex_id || match?.presentation_exchange_id;
+          this.addMessage(`AwaitProofRequest selected exchange ${presExId} (state=${state})`);
+          return match;
+        }
       }
 
       await sleep(2000);
@@ -508,10 +785,17 @@ class AwaitProofRequestTask extends BaseRunnableTask {
 class SendPresentationViaAcaPyTask extends BaseRunnableTask {
   private adapter: AcaPyAgentAdapter;
   private presentationResult: PresentationResult | null = null;
+  private continueOnFailure: boolean;
 
-  constructor(adapter: AcaPyAgentAdapter, name: string, description?: string) {
+  constructor(
+    adapter: AcaPyAgentAdapter,
+    name: string,
+    description?: string,
+    options?: { continueOnFailure?: boolean }
+  ) {
     super(name, description);
     this.adapter = adapter;
+    this.continueOnFailure = options?.continueOnFailure ?? false;
   }
 
   async prepare(): Promise<void> {
@@ -629,139 +913,156 @@ class SendPresentationViaAcaPyTask extends BaseRunnableTask {
     const connectionId = input?.connectionId;
     const request = input?.request;
     const demoVerifier = input?.demoVerifier;
-    if (!exchangeId || !connectionId) {
-      const error = new Error("presentationExchangeId or connectionId missing");
-      this.addError(error.message);
-      this.setFailed();
-      this.setCompleted();
-      throw error;
-    }
+    try {
+      if (!exchangeId || !connectionId) {
+        throw new Error("presentationExchangeId or connectionId missing");
+      }
 
-    const adminUrl = this.adapter.getAdminUrl();
-    if (!adminUrl) {
-      throw new Error("ACA-Py admin URL missing");
-    }
-    const baseUrl = adminUrl.replace(/\/$/, "");
+      const adminUrl = this.adapter.getAdminUrl();
+      if (!adminUrl) {
+        throw new Error("ACA-Py admin URL missing");
+      }
+      const baseUrl = adminUrl.replace(/\/$/, "");
 
-    const current = await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}`, { method: "GET" }).catch(
-      () => null
-    );
-    const currentState = current?.state || current?.result?.state;
+      const current = await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}`, { method: "GET" }).catch(
+        () => null
+      );
+      const currentState = current?.state || current?.result?.state;
 
-    if (currentState && ["presentation-sent", "done", "abandoned"].includes(currentState)) {
-      this.addMessage(`Presentation already ${currentState}; skipping send`);
+      if (currentState && ["presentation-sent", "done", "abandoned"].includes(currentState)) {
+        this.addMessage(`Presentation already ${currentState}; skipping send`);
+        this.presentationResult = {
+          presentationExchangeId: exchangeId,
+          connectionId,
+          request,
+          state: currentState,
+          demoVerifier,
+        };
+        this.setAccepted();
+        this.setCompleted();
+        return;
+      }
+
+      // ACA-Py requires request-received before we can send a presentation
+      if (currentState && currentState !== "request-received") {
+        this.addMessage(`Presentation exchange state is ${currentState}; waiting for request-received...`);
+        await this.waitForState(baseUrl, exchangeId, ["request-received"]);
+      }
+
+      const logPayload = (label: string, payload: unknown) => {
+        let serialized: string;
+        try {
+          serialized = JSON.stringify(payload);
+        } catch {
+          serialized = String(payload);
+        }
+        const message = `${label}: ${serialized}`;
+        this.addMessage(message);
+        console.info(message);
+      };
+
+      const difCandidates = await this.findDifCredentialsForExchange(baseUrl, exchangeId);
+      logPayload("SendPresentation: dif credentials response", difCandidates);
+      const difRecordIds = this.selectAyraDifRecordIds(difCandidates);
+      logPayload("SendPresentation: dif record_ids", difRecordIds);
+      if (difCandidates.length > 0) {
+        this.addMessage(`Found ${difCandidates.length} present-proof credential candidate(s) for this exchange`);
+      } else {
+        this.addMessage("No present-proof credential candidates returned for this exchange");
+      }
+
+      let recordIds: string[] = difRecordIds;
+      if (recordIds.length === 0) {
+        // Fallback: older ACA-Py versions may not return DIF candidates; try scanning stored W3C credentials directly.
+        const w3cRecords = await this.listW3cCredentialRecords(baseUrl);
+        logPayload("SendPresentation: w3c credentials response", w3cRecords);
+        recordIds = this.selectAyraW3cRecordIds(w3cRecords);
+        logPayload("SendPresentation: w3c record_ids", recordIds);
+        if (recordIds.length > 0) {
+          this.addMessage(`Fallback: found ${recordIds.length} stored W3C credential record(s) for Ayra`);
+        }
+      }
+
+      const walletRecordId = serverState.lastIssuedWalletRecordId;
+      if (walletRecordId) {
+        recordIds = [walletRecordId];
+        this.addMessage(`Using holder wallet record_id (primary): ${walletRecordId}`);
+        console.info(`[SendPresentationViaAcaPyTask] Using holder wallet record_id (primary): ${walletRecordId}`);
+        logPayload("SendPresentation: wallet record_id", walletRecordId);
+      } else if (serverState.lastIssuedCredentialId) {
+        const issuedCredentialId = serverState.lastIssuedCredentialId;
+        recordIds = [issuedCredentialId];
+        this.addMessage(`Using issued credential_id from issuance flow: ${issuedCredentialId}`);
+        console.info(
+          `[SendPresentationViaAcaPyTask] Using issued credential_id from issuance flow: ${issuedCredentialId}`
+        );
+        logPayload("SendPresentation: issued credential_id", issuedCredentialId);
+      }
+
+      if (recordIds.length === 0) {
+        this.addMessage("No matching credential record ids found; sending empty DIF spec (likely empty presentation)");
+      }
+
+      let presentationDid = serverState.holderPresentationDid;
+      if (!presentationDid) {
+        const didResp = await fetchJson(`${baseUrl}/wallet/did/create`, {
+          method: "POST",
+          body: JSON.stringify({ key_type: "ed25519" }),
+        }).catch(() => null);
+        presentationDid = didResp?.did || didResp?.result?.did || didResp?.did_info?.did;
+        if (!presentationDid) {
+          throw new Error("Internal holder did not return a presentation DID");
+        }
+        serverState.holderPresentationDid = presentationDid;
+        this.addMessage(`Using presentation DID: ${presentationDid}`);
+      }
+
+      const sendPayload = recordIds.length
+        ? {
+            auto_remove: false,
+            dif: {
+              issuer_id: presentationDid,
+              record_ids: { "ayra-business-card": recordIds },
+            },
+          }
+        : {
+            auto_remove: false,
+            dif: {
+              issuer_id: presentationDid,
+            },
+          };
+      logPayload("SendPresentation: send-presentation payload", {
+        exchangeId,
+        recordIds,
+        payload: sendPayload,
+      });
+
+      await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}/send-presentation`, {
+        method: "POST",
+        body: JSON.stringify(sendPayload),
+      });
+      this.addMessage("Presentation sent via ACA-Py");
+
+      const record = await this.waitForState(baseUrl, exchangeId, ["presentation-sent", "done"]);
+      const state = record?.state || record?.result?.state;
       this.presentationResult = {
         presentationExchangeId: exchangeId,
         connectionId,
         request,
-        state: currentState,
+        state,
         demoVerifier,
       };
       this.setAccepted();
       this.setCompleted();
-      return;
-    }
-
-    // ACA-Py requires request-received before we can send a presentation
-    if (currentState && currentState !== "request-received") {
-      this.addMessage(`Presentation exchange state is ${currentState}; waiting for request-received...`);
-      await this.waitForState(baseUrl, exchangeId, ["request-received"]);
-    }
-
-    const logPayload = (label: string, payload: unknown) => {
-      let serialized: string;
-      try {
-        serialized = JSON.stringify(payload);
-      } catch {
-        serialized = String(payload);
-      }
-      const message = `${label}: ${serialized}`;
-      this.addMessage(message);
-      console.info(message);
-    };
-
-    const difCandidates = await this.findDifCredentialsForExchange(baseUrl, exchangeId);
-    logPayload("SendPresentation: dif credentials response", difCandidates);
-    const difRecordIds = this.selectAyraDifRecordIds(difCandidates);
-    logPayload("SendPresentation: dif record_ids", difRecordIds);
-    if (difCandidates.length > 0) {
-      this.addMessage(`Found ${difCandidates.length} present-proof credential candidate(s) for this exchange`);
-    } else {
-      this.addMessage("No present-proof credential candidates returned for this exchange");
-    }
-
-    let recordIds: string[] = difRecordIds;
-    if (recordIds.length === 0) {
-      // Fallback: older ACA-Py versions may not return DIF candidates; try scanning stored W3C credentials directly.
-      const w3cRecords = await this.listW3cCredentialRecords(baseUrl);
-      logPayload("SendPresentation: w3c credentials response", w3cRecords);
-      recordIds = this.selectAyraW3cRecordIds(w3cRecords);
-      logPayload("SendPresentation: w3c record_ids", recordIds);
-      if (recordIds.length > 0) {
-        this.addMessage(`Fallback: found ${recordIds.length} stored W3C credential record(s) for Ayra`);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.addError(error);
+      this.setFailed();
+      this.setCompleted();
+      if (!this.continueOnFailure) {
+        throw error;
       }
     }
-
-    const walletRecordId = serverState.lastIssuedWalletRecordId;
-    if (walletRecordId) {
-      recordIds = [walletRecordId];
-      this.addMessage(`Using holder wallet record_id (primary): ${walletRecordId}`);
-      console.info(`[SendPresentationViaAcaPyTask] Using holder wallet record_id (primary): ${walletRecordId}`);
-      logPayload("SendPresentation: wallet record_id", walletRecordId);
-    } else if (serverState.lastIssuedCredentialId) {
-      const issuedCredentialId = serverState.lastIssuedCredentialId;
-      recordIds = [issuedCredentialId];
-      this.addMessage(`Using issued credential_id from issuance flow: ${issuedCredentialId}`);
-      console.info(
-        `[SendPresentationViaAcaPyTask] Using issued credential_id from issuance flow: ${issuedCredentialId}`
-      );
-      logPayload("SendPresentation: issued credential_id", issuedCredentialId);
-    }
-
-    if (recordIds.length > 0) {
-      this.addMessage(`Sending presentation with record_ids (${recordIds.length})`);
-    } else {
-      this.addMessage("No matching credential record ids found; sending empty DIF spec (likely empty presentation)");
-    }
-
-    let presentationDid = serverState.holderPresentationDid;
-    if (!presentationDid) {
-      presentationDid = await this.adapter.createDidKey("ed25519");
-      serverState.holderPresentationDid = presentationDid;
-      this.addMessage(`Using holder presentation DID: ${presentationDid}`);
-      console.info(`[SendPresentationViaAcaPyTask] Using holder presentation DID: ${presentationDid}`);
-    }
-
-    const sendPayload = {
-      // Keep the holder record until the verifier ACKs to avoid double-delete errors.
-      auto_remove: false,
-      dif: recordIds.length > 0
-        ? { issuer_id: presentationDid, record_ids: { "ayra-business-card": recordIds } }
-        : { issuer_id: presentationDid },
-    };
-    logPayload("SendPresentation: send-presentation payload", {
-      exchangeId,
-      recordIds,
-      payload: sendPayload,
-    });
-
-    await fetchJson(`${baseUrl}/present-proof-2.0/records/${exchangeId}/send-presentation`, {
-      method: "POST",
-      body: JSON.stringify(sendPayload),
-    });
-    this.addMessage("Presentation sent via ACA-Py");
-
-    const record = await this.waitForState(baseUrl, exchangeId, ["presentation-sent", "done"]);
-    const state = record?.state || record?.result?.state;
-    this.presentationResult = {
-      presentationExchangeId: exchangeId,
-      connectionId,
-      request,
-      state,
-      demoVerifier,
-    };
-    this.setAccepted();
-    this.setCompleted();
   }
 
   private async waitForState(baseUrl: string, exchangeId: string, targetStates: string[]) {
@@ -792,28 +1093,42 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
   private demoVerifierAdapter?: AcaPyAgentAdapter;
   private verified = false;
   private finalState: string | null = null;
+  private continueOnFailure: boolean;
+  private expectVerified: boolean;
+  private enforceTrqp: boolean;
+  private context?: TrqpEnforcementContext;
+  private contextKey?: "run1Result" | "run2Result";
 
   constructor(
     adapter: AcaPyAgentAdapter,
     name: string,
     description?: string,
-    demoVerifierAdapter?: AcaPyAgentAdapter
+    demoVerifierAdapter?: AcaPyAgentAdapter,
+    options?: {
+      continueOnFailure?: boolean;
+      expectVerified?: boolean;
+      enforceTrqp?: boolean;
+      context?: TrqpEnforcementContext;
+      contextKey?: "run1Result" | "run2Result";
+    }
   ) {
     super(name, description);
     this.adapter = adapter;
     this.demoVerifierAdapter = demoVerifierAdapter;
+    this.continueOnFailure = options?.continueOnFailure ?? false;
+    this.expectVerified = options?.expectVerified ?? true;
+    this.enforceTrqp = options?.enforceTrqp ?? false;
+    this.context = options?.context;
+    this.contextKey = options?.contextKey;
   }
 
   async run(input?: any): Promise<void> {
     super.run();
+    let errorMessage: string | undefined;
     try {
       const exchangeId = input?.presentationExchangeId;
       if (!exchangeId) {
-        const error = new Error("presentationExchangeId missing from presentation step");
-        this.addError(error.message);
-        this.setFailed();
-        this.setCompleted();
-        throw error;
+        throw new Error("presentationExchangeId missing from presentation step");
       }
 
       const adminUrl = this.adapter.getAdminUrl();
@@ -822,29 +1137,46 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
       }
       const baseUrl = adminUrl.replace(/\/$/, "");
 
-      const record = await this.waitForDone(baseUrl, exchangeId, input?.demoVerifier);
+      const record = await this.waitForDone(baseUrl, exchangeId, input?.demoVerifier, this.expectVerified);
       const state = record?.state || record?.result?.state;
       const verifiedRaw = record?.verified ?? record?.result?.verified;
       this.verified = verifiedRaw === true || verifiedRaw === "true";
-      this.finalState = state;
+      this.finalState = state ?? null;
       this.addMessage(`Verification state: ${state}, verified=${this.verified}`);
-      if (!this.verified) {
+
+      if (this.expectVerified && !this.verified) {
         throw new Error("Verifier record did not include verified=true");
+      }
+      if (!this.expectVerified && this.verified) {
+        throw new Error("Verifier returned verified=true when TRQP enforcement expected rejection");
       }
       this.setAccepted();
       this.setCompleted();
     } catch (err) {
-      this.addError(err);
+      const error = err instanceof Error ? err : new Error(String(err));
+      errorMessage = error.message;
+      this.addError(error);
       this.setFailed();
       this.setCompleted();
-      throw err;
+      if (!this.continueOnFailure) {
+        throw error;
+      }
+    } finally {
+      if (this.context && this.contextKey) {
+        this.context[this.contextKey] = {
+          verified: this.verified ?? null,
+          state: this.finalState ?? null,
+          ...(errorMessage ? { error: errorMessage } : {}),
+        };
+      }
     }
   }
 
   private async waitForDone(
     baseUrl: string,
     exchangeId: string,
-    demoVerifier?: { connectionId?: string; proofExchangeId?: string }
+    demoVerifier: { connectionId?: string; proofExchangeId?: string } | undefined,
+    expectVerified: boolean
   ) {
     const verifierControl =
       this.demoVerifierAdapter && demoVerifier?.connectionId
@@ -899,6 +1231,8 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
     let lastVerifierRecord: any | null = null;
     let doneSeenAt: number | null = null;
     let doneSeenSource: "holder" | "verifier" | null = null;
+    let negativeDoneSeenAt: number | null = null;
+    let negativeDoneSource: "holder" | "verifier" | null = null;
     let verifiedSeenAt: number | null = null;
     let missingSeenAt: number | null = null;
     while (Date.now() < deadline) {
@@ -906,6 +1240,9 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
       const holderRecord = last?.result || last;
       const holderState = normalizeState(holderRecord?.state || holderRecord?.result?.state);
       const holderVerified = holderRecord?.verified ?? holderRecord?.result?.verified;
+      if (!expectVerified && isVerified(holderVerified)) {
+        throw new Error("Verifier reported verified=true when TRQP enforcement expected rejection");
+      }
       if (holderRecord) {
         lastHolderRecord = holderRecord;
         lastHolderSeenAt = Date.now();
@@ -926,6 +1263,18 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
           return holderRecord;
         }
         if (holderState === "abandoned") {
+          if (!expectVerified) {
+            if (negativeDoneSeenAt === null) {
+              negativeDoneSeenAt = Date.now();
+              negativeDoneSource = "holder";
+              this.addMessage(
+                `Verifier record reached abandoned (negative check, source=holder, ts=${new Date(
+                  negativeDoneSeenAt
+                ).toISOString()})`
+              );
+            }
+            return holderRecord;
+          }
           const lastSeenAt = lastHolderSeenAt ? new Date(lastHolderSeenAt).toISOString() : "unknown";
           throw new Error(
             `Verifier abandoned proof exchange (lastSeenAt=${lastSeenAt}, lastRecord=${summarizeRecord(
@@ -933,10 +1282,22 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
             )})`
           );
         }
-        if (holderState === "done" && !isVerified(holderVerified) && doneSeenAt === null) {
-          doneSeenAt = Date.now();
-          doneSeenSource = "holder";
-          this.addMessage(`Verifier record reached done (source=holder, ts=${new Date(doneSeenAt).toISOString()})`);
+        if (holderState === "done" && !isVerified(holderVerified)) {
+          if (!expectVerified) {
+            if (negativeDoneSeenAt === null) {
+              negativeDoneSeenAt = Date.now();
+              negativeDoneSource = "holder";
+              this.addMessage(
+                `Verifier record reached done (negative check, source=holder, ts=${new Date(
+                  negativeDoneSeenAt
+                ).toISOString()})`
+              );
+            }
+          } else if (doneSeenAt === null) {
+            doneSeenAt = Date.now();
+            doneSeenSource = "holder";
+            this.addMessage(`Verifier record reached done (source=holder, ts=${new Date(doneSeenAt).toISOString()})`);
+          }
         }
       } else if (lastHolderSeenAt) {
         if (!missingSeenAt) {
@@ -968,6 +1329,7 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
               proof_exchange_id: verifierProofExchangeId,
               connection_id: verifierConnectionId,
               timeout_ms: 120_000,
+              enforce_trqp: this.enforceTrqp,
             }),
           })
             .then((resp) => {
@@ -1034,13 +1396,28 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
             return { state: "done", verified: true, record };
           }
           if (verifierState === "done" && doneSeenAt === null) {
-            doneSeenAt = Date.now();
-            doneSeenSource = "verifier";
-            this.addMessage(
-              `Verifier record reached done (source=verifier, ts=${new Date(doneSeenAt).toISOString()})`
-            );
+            if (!expectVerified) {
+              if (negativeDoneSeenAt === null) {
+                negativeDoneSeenAt = Date.now();
+                negativeDoneSource = "verifier";
+                this.addMessage(
+                  `Verifier record reached done (negative check, source=verifier, ts=${new Date(
+                    negativeDoneSeenAt
+                  ).toISOString()})`
+                );
+              }
+            } else {
+              doneSeenAt = Date.now();
+              doneSeenSource = "verifier";
+              this.addMessage(
+                `Verifier record reached done (source=verifier, ts=${new Date(doneSeenAt).toISOString()})`
+              );
+            }
           }
           if (verifierState === "abandoned") {
+            if (!expectVerified) {
+              return lastVerifierRecord || holderRecord;
+            }
             const holderSummary = summarizeRecord(lastHolderRecord);
             throw new Error(
               `Verifier abandoned proof exchange (verifierState=abandoned, lastHolderRecord=${holderSummary})`
@@ -1055,6 +1432,9 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
       }
       if (missingSeenAt) {
         if (verifiedSeenAt) {
+          if (!expectVerified) {
+            throw new Error("Verifier reported verified=true when TRQP enforcement expected rejection");
+          }
           this.addMessage("Proof exchange record missing after verified=true observed; proceeding.");
           return lastHolderRecord || { state: "done", verified: true };
         }
@@ -1068,7 +1448,18 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
           );
         }
       }
-      if (doneSeenAt !== null && !isVerified(lastHolderVerified)) {
+      if (!expectVerified && negativeDoneSeenAt !== null) {
+        const waitedMs = Date.now() - negativeDoneSeenAt;
+        if (waitedMs >= verifiedGraceMs) {
+          this.addMessage(
+            `Negative verification grace window elapsed (waitedMs=${waitedMs}, graceMs=${verifiedGraceMs}, doneSource=${
+              negativeDoneSource ?? "unknown"
+            })`
+          );
+          return lastVerifierRecord || lastHolderRecord || { state: "done", verified: false };
+        }
+      }
+      if (expectVerified && doneSeenAt !== null && !isVerified(lastHolderVerified)) {
         const waitedMs = Date.now() - doneSeenAt;
         if (waitedMs >= verifiedGraceMs) {
           const doneIso = new Date(doneSeenAt).toISOString();
@@ -1099,6 +1490,554 @@ export class WaitForVerificationViaAcaPyTask extends BaseRunnableTask {
         state: this.finalState,
       },
     };
+  }
+}
+
+class InputValidationTask extends BaseRunnableTask {
+  private errorMessage: string;
+
+  constructor(name: string, description: string, errorMessage: string) {
+    super(name, description);
+    this.errorMessage = errorMessage;
+  }
+
+  async run(): Promise<void> {
+    super.run();
+    this.addError(this.errorMessage);
+    this.setFailed();
+    this.setCompleted();
+  }
+}
+
+class ReuseConnectionTask extends BaseRunnableTask {
+  private context: TrqpEnforcementContext;
+  private result: any = null;
+  private continueOnFailure: boolean;
+
+  constructor(
+    context: TrqpEnforcementContext,
+    name: string,
+    description?: string,
+    options?: { continueOnFailure?: boolean }
+  ) {
+    super(name, description);
+    this.context = context;
+    this.continueOnFailure = options?.continueOnFailure ?? false;
+  }
+
+  async run(): Promise<void> {
+    super.run();
+    try {
+      const connection = this.context.run1Connection;
+      if (!connection?.connectionId) {
+        throw new Error("Run 1 connection not available for TRQP enforcement");
+      }
+
+      this.result = {
+        connectionId: connection.connectionId,
+        invitation: connection.invitation,
+        ...(this.context.demoVerifierConnectionId
+          ? {
+              demoVerifierConnectionId: this.context.demoVerifierConnectionId,
+              demoVerifier: { connectionId: this.context.demoVerifierConnectionId },
+            }
+          : {}),
+      };
+      this.addMessage(`Reusing connection ${connection.connectionId} for run 2`);
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.addError(error);
+      this.setFailed();
+      this.setCompleted();
+      if (!this.continueOnFailure) {
+        throw error;
+      }
+    }
+  }
+
+  async results(): Promise<Results> {
+    return {
+      time: new Date(),
+      author: "ReuseConnectionTask",
+      value: this.result,
+    };
+  }
+}
+
+class PrepareTrqpEnforcementTask extends BaseRunnableTask {
+  private adapter: AcaPyAgentAdapter;
+  private context: TrqpEnforcementContext;
+  private continueOnFailure: boolean;
+
+  constructor(
+    adapter: AcaPyAgentAdapter,
+    context: TrqpEnforcementContext,
+    name: string,
+    description?: string,
+    options?: { continueOnFailure?: boolean }
+  ) {
+    super(name, description);
+    this.adapter = adapter;
+    this.context = context;
+    this.continueOnFailure = options?.continueOnFailure ?? false;
+  }
+
+  async run(): Promise<void> {
+    super.run();
+    try {
+      const adminBaseUrl = normalizeEnvValue(process.env.TRQP_ADMIN_BASE_URL);
+      if (!adminBaseUrl) {
+        throw new Error("TRQP admin base URL missing (TRQP_ADMIN_BASE_URL)");
+      }
+      const adminAuthHeader =
+        normalizeEnvValue(process.env.TRQP_ADMIN_AUTH_HEADER) || "Authorization";
+      const adminAuthToken = normalizeEnvValue(process.env.TRQP_ADMIN_AUTH_TOKEN);
+
+      this.context.adminBaseUrl = adminBaseUrl.replace(/\/$/, "");
+      if (adminAuthToken) {
+        this.context.adminAuthHeader = adminAuthHeader;
+        this.context.adminAuthToken = adminAuthToken;
+      }
+
+      const credential = await this.findAyraCredential();
+      const { payload, issuerDid, ecosystemDid, trustNetworkDid, cardType } =
+        buildTrqpAuthorizationPayload(credential);
+      const trqpBaseUrl = await resolveTrqpEndpoint(ecosystemDid);
+
+      this.context.authorizationPayload = payload;
+      this.context.issuerDid = issuerDid;
+      this.context.ecosystemDid = ecosystemDid;
+      this.context.trustNetworkDid = trustNetworkDid;
+      this.context.cardType = cardType;
+      this.context.trqpBaseUrl = trqpBaseUrl;
+
+      this.addMessage(
+        `TRQP mapping: entity_id=${payload.entity_id} authority_id=${payload.authority_id} action=${payload.action} resource=${payload.resource}`
+      );
+      this.addMessage(`TRQP endpoint resolved: ${trqpBaseUrl}`);
+
+      const entity = await this.findEntityByDid(issuerDid);
+      const authorization = await this.findAuthorization(payload.action, payload.resource);
+      const entityDetails = await this.fetchAdminJson(`/entities/${entity.id}`);
+      const authorizationIds = Array.isArray(entityDetails?.authorizations)
+        ? entityDetails.authorizations.map((auth: any) => auth?.id).filter((id: any) => Number.isFinite(id))
+        : [];
+
+      if (!authorizationIds.includes(authorization.id)) {
+        throw new Error(
+          `Issuer entity ${issuerDid} is not authorized for ${payload.action} ${payload.resource}`
+        );
+      }
+
+      this.context.entityId = entity.id;
+      this.context.authorizationId = authorization.id;
+      this.context.initialAuthorizationIds = authorizationIds;
+
+      const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const authBody = await readJsonSafe(authResp);
+      if (!authResp.ok) {
+        throw new Error(
+          `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+        );
+      }
+      const authorized = extractAuthorizationResult(authBody.json);
+      this.context.authorizedBefore = authorized;
+      if (!authorized) {
+        throw new Error("TRQP authorization returned authorized=false before run 1");
+      }
+      this.addMessage("TRQP authorization verified before run 1");
+
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.addError(error);
+      this.setFailed();
+      this.setCompleted();
+      if (!this.continueOnFailure) {
+        throw error;
+      }
+    }
+  }
+
+  private async listW3cCredentialRecords(baseUrl: string): Promise<any[]> {
+    const list = await fetchJson(`${baseUrl}/credentials/w3c`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }).catch(() => null);
+    return (list?.results || list?.records || []) as any[];
+  }
+
+  private selectAyraW3cCredential(records: any[]): any | null {
+    const ayraSchemaUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
+    const ayraTypeUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld";
+    const ayraTypeFragmentUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.jsonld#AyraBusinessCard";
+    const ayraSchemaIdUri = "https://schema.affinidi.io/AyraBusinessCardV1R0.json";
+    return (
+      records.find((record) => {
+        const expandedTypes = record?.expanded_types;
+        if (
+          Array.isArray(expandedTypes) &&
+          (expandedTypes.includes(ayraTypeUri) || expandedTypes.includes(ayraTypeFragmentUri))
+        )
+          return true;
+        const schemaIds = record?.schema_ids;
+        if (Array.isArray(schemaIds) && (schemaIds.includes(ayraSchemaUri) || schemaIds.includes(ayraSchemaIdUri)))
+          return true;
+        const proofTypes = record?.proof_types;
+        if (Array.isArray(proofTypes) && proofTypes.includes("Ed25519Signature2020")) return true;
+        return false;
+      }) ?? null
+    );
+  }
+
+  private extractCredential(record: any): any | null {
+    return (
+      record?.credential ||
+      record?.cred_value ||
+      record?.cred_info?.credential ||
+      record?.w3c_credential ||
+      record?.record?.credential ||
+      null
+    );
+  }
+
+  private async findAyraCredential(): Promise<any> {
+    const adminUrl = this.adapter.getAdminUrl();
+    if (!adminUrl) {
+      throw new Error("ACA-Py admin URL missing");
+    }
+    const baseUrl = adminUrl.replace(/\/$/, "");
+    const records = await this.listW3cCredentialRecords(baseUrl);
+    const record = this.selectAyraW3cCredential(records);
+    const credential = record ? this.extractCredential(record) : null;
+    if (!credential) {
+      throw new Error("No Ayra W3C credential found in holder wallet");
+    }
+    return credential;
+  }
+
+  private buildAdminHeaders(): Record<string, string> {
+    if (!this.context.adminAuthToken) return {};
+    const header = this.context.adminAuthHeader || "Authorization";
+    return { [header]: this.context.adminAuthToken };
+  }
+
+  private async fetchAdminJson(path: string, init?: RequestInit): Promise<any> {
+    if (!this.context.adminBaseUrl) {
+      throw new Error("TRQP admin base URL missing");
+    }
+    const method = (init?.method || "GET").toUpperCase();
+    const url = `${this.context.adminBaseUrl}${path}`;
+    const bodySize = typeof init?.body === "string" ? init.body.length : 0;
+    this.addMessage(`TRQP admin request: ${method} ${url}${bodySize ? ` body_len=${bodySize}` : ""}`);
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...this.buildAdminHeaders(),
+        ...(init?.headers || {}),
+      },
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const rawBody = await response.text().catch(() => "");
+    const summary = summarizeAdminBody(contentType, rawBody);
+    this.addMessage(
+      `TRQP admin response: ${response.status} ${response.statusText}${summary ? ` ${summary}` : ""}`
+    );
+    if (!response.ok) {
+      throw new Error(`TRQP admin request failed (${response.status} ${response.statusText}): ${rawBody}`);
+    }
+    if (contentType.includes("application/json")) {
+      return rawBody ? JSON.parse(rawBody) : undefined;
+    }
+    return undefined;
+  }
+
+  private async findEntityByDid(did: string): Promise<{ id: number; entity_did: string }> {
+    const entities = await this.fetchAdminJson("/entities");
+    const list = Array.isArray(entities) ? entities : entities?.results || entities?.records || [];
+    const match = list.find((entry: any) => entry?.entity_did === did);
+    if (!match || !Number.isFinite(match.id)) {
+      throw new Error(`Issuer entity not found in TR admin: ${did}`);
+    }
+    return { id: match.id, entity_did: match.entity_did };
+  }
+
+  private async findAuthorization(action: string, resource: string): Promise<{ id: number }> {
+    const auths = await this.fetchAdminJson("/authorizations");
+    const list = Array.isArray(auths) ? auths : auths?.results || auths?.records || [];
+    const match = list.find((entry: any) => entry?.action === action && entry?.resource === resource);
+    if (!match || !Number.isFinite(match.id)) {
+      throw new Error(`Authorization not found in TR admin: ${action} ${resource}`);
+    }
+    return { id: match.id };
+  }
+}
+
+class DisableTrqpAuthorizationTask extends BaseRunnableTask {
+  private context: TrqpEnforcementContext;
+  private continueOnFailure: boolean;
+
+  constructor(context: TrqpEnforcementContext, name: string, description?: string, options?: { continueOnFailure?: boolean }) {
+    super(name, description);
+    this.context = context;
+    this.continueOnFailure = options?.continueOnFailure ?? false;
+  }
+
+  async run(): Promise<void> {
+    super.run();
+    try {
+      const adminBaseUrl = this.context.adminBaseUrl;
+      const entityId = this.context.entityId;
+      const authorizationId = this.context.authorizationId;
+      const payload = this.context.authorizationPayload;
+      const trqpBaseUrl = this.context.trqpBaseUrl;
+      if (!adminBaseUrl || !entityId || !authorizationId || !payload || !trqpBaseUrl) {
+        throw new Error("TRQP enforcement context incomplete; cannot disable authorization");
+      }
+
+      await this.fetchAdminJson(`/entities/${entityId}/authorizations/${authorizationId}`, { method: "DELETE" });
+      this.addMessage(`TRQP admin: removed authorization ${authorizationId} from entity ${entityId}`);
+
+      const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const authBody = await readJsonSafe(authResp);
+      if (!authResp.ok) {
+        throw new Error(
+          `TRQP authorization failed after removal: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+        );
+      }
+      const authorized = extractAuthorizationResult(authBody.json);
+      this.context.authorizedAfterRemoval = authorized;
+      if (authorized) {
+        throw new Error("TRQP authorization still returns authorized=true after removal");
+      }
+      this.addMessage("TRQP authorization now returns authorized=false");
+
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.addError(error);
+      this.setFailed();
+      this.setCompleted();
+      if (!this.continueOnFailure) {
+        throw error;
+      }
+    }
+  }
+
+  private buildAdminHeaders(): Record<string, string> {
+    if (!this.context.adminAuthToken) return {};
+    const header = this.context.adminAuthHeader || "Authorization";
+    return { [header]: this.context.adminAuthToken };
+  }
+
+  private async fetchAdminJson(path: string, init?: RequestInit): Promise<any> {
+    if (!this.context.adminBaseUrl) {
+      throw new Error("TRQP admin base URL missing");
+    }
+    const method = (init?.method || "GET").toUpperCase();
+    const url = `${this.context.adminBaseUrl}${path}`;
+    const bodySize = typeof init?.body === "string" ? init.body.length : 0;
+    this.addMessage(`TRQP admin request: ${method} ${url}${bodySize ? ` body_len=${bodySize}` : ""}`);
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...this.buildAdminHeaders(),
+        ...(init?.headers || {}),
+      },
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const rawBody = await response.text().catch(() => "");
+    const summary = summarizeAdminBody(contentType, rawBody);
+    this.addMessage(
+      `TRQP admin response: ${response.status} ${response.statusText}${summary ? ` ${summary}` : ""}`
+    );
+    if (!response.ok) {
+      throw new Error(`TRQP admin request failed (${response.status} ${response.statusText}): ${rawBody}`);
+    }
+    if (contentType.includes("application/json")) {
+      return rawBody ? JSON.parse(rawBody) : undefined;
+    }
+    return undefined;
+  }
+}
+
+class RestoreTrqpAuthorizationTask extends BaseRunnableTask {
+  private context: TrqpEnforcementContext;
+
+  constructor(context: TrqpEnforcementContext, name: string, description?: string) {
+    super(name, description);
+    this.context = context;
+  }
+
+  async run(): Promise<void> {
+    super.run();
+    try {
+      const adminBaseUrl = this.context.adminBaseUrl;
+      const entityId = this.context.entityId;
+      const authorizationId = this.context.authorizationId;
+      const payload = this.context.authorizationPayload;
+      const trqpBaseUrl = this.context.trqpBaseUrl;
+      if (!adminBaseUrl || !entityId || !authorizationId || !payload || !trqpBaseUrl) {
+        throw new Error("TRQP enforcement context incomplete; cannot restore authorization");
+      }
+
+      const initialIds = this.context.initialAuthorizationIds || [];
+      if (!initialIds.includes(authorizationId)) {
+        this.addMessage("TRQP admin: no authorization restore required (was not present initially)");
+        this.setAccepted();
+        this.setCompleted();
+        return;
+      }
+
+      const entityDetails = await this.fetchAdminJson(`/entities/${entityId}`);
+      const currentIds = Array.isArray(entityDetails?.authorizations)
+        ? entityDetails.authorizations.map((auth: any) => auth?.id).filter((id: any) => Number.isFinite(id))
+        : [];
+      if (currentIds.includes(authorizationId)) {
+        this.addMessage(`TRQP admin: authorization ${authorizationId} already present`);
+        this.setAccepted();
+        this.setCompleted();
+        return;
+      }
+
+      await this.fetchAdminJson(`/entities/${entityId}/authorizations/${authorizationId}`, { method: "POST" });
+      this.addMessage(`TRQP admin: restored authorization ${authorizationId} for entity ${entityId}`);
+
+      const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const authBody = await readJsonSafe(authResp);
+      if (!authResp.ok) {
+        throw new Error(
+          `TRQP authorization failed after restore: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+        );
+      }
+      const authorized = extractAuthorizationResult(authBody.json);
+      this.addMessage(`TRQP authorization restored (authorized=${authorized})`);
+
+      this.setAccepted();
+      this.setCompleted();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.addError(error);
+      this.setFailed();
+      this.setCompleted();
+      throw error;
+    }
+  }
+
+  private buildAdminHeaders(): Record<string, string> {
+    if (!this.context.adminAuthToken) return {};
+    const header = this.context.adminAuthHeader || "Authorization";
+    return { [header]: this.context.adminAuthToken };
+  }
+
+  private async fetchAdminJson(path: string, init?: RequestInit): Promise<any> {
+    if (!this.context.adminBaseUrl) {
+      throw new Error("TRQP admin base URL missing");
+    }
+    const method = (init?.method || "GET").toUpperCase();
+    const url = `${this.context.adminBaseUrl}${path}`;
+    const bodySize = typeof init?.body === "string" ? init.body.length : 0;
+    this.addMessage(`TRQP admin request: ${method} ${url}${bodySize ? ` body_len=${bodySize}` : ""}`);
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...this.buildAdminHeaders(),
+        ...(init?.headers || {}),
+      },
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const rawBody = await response.text().catch(() => "");
+    const summary = summarizeAdminBody(contentType, rawBody);
+    this.addMessage(
+      `TRQP admin response: ${response.status} ${response.statusText}${summary ? ` ${summary}` : ""}`
+    );
+    if (!response.ok) {
+      throw new Error(`TRQP admin request failed (${response.status} ${response.statusText}): ${rawBody}`);
+    }
+    if (contentType.includes("application/json")) {
+      return rawBody ? JSON.parse(rawBody) : undefined;
+    }
+    return undefined;
+  }
+}
+
+class TrqpEnforcementEvaluationTask extends BaseRunnableTask {
+  private context: TrqpEnforcementContext;
+
+  constructor(context: TrqpEnforcementContext, name: string, description?: string) {
+    super(name, description);
+    this.context = context;
+  }
+
+  async run(): Promise<void> {
+    super.run();
+    const errors: string[] = [];
+    const run1 = this.context.run1Result;
+    const run2 = this.context.run2Result;
+
+    this.addMessage(
+      `TRQP enforcement summary: run1 verified=${String(run1?.verified)} state=${run1?.state ?? "unknown"}; ` +
+        `run2 verified=${String(run2?.verified)} state=${run2?.state ?? "unknown"}`
+    );
+    this.addMessage(
+      `TRQP authorization: before=${String(this.context.authorizedBefore)} afterRemoval=${String(
+        this.context.authorizedAfterRemoval
+      )}`
+    );
+
+    if (this.context.authorizedBefore !== true) {
+      errors.push("TRQP authorization was not true before run 1");
+    }
+    if (this.context.authorizedAfterRemoval !== false) {
+      errors.push("TRQP authorization did not flip to false after removal");
+    }
+
+    if (!run1) {
+      errors.push("Run 1 result missing; verifier flow did not complete");
+    } else if (run1.verified !== true) {
+      errors.push(`Run 1 did not verify (verified=${String(run1.verified)}, state=${run1.state ?? "unknown"})`);
+      if (run1.error) {
+        errors.push(`Run 1 error: ${run1.error}`);
+      }
+    }
+
+    if (!run2) {
+      errors.push("Run 2 result missing; verifier flow did not complete after TRQP change");
+    } else if (run2.verified === true) {
+      errors.push("Run 2 still verified=true after TRQP authorization removal");
+    } else if (run2.error) {
+      errors.push(`Run 2 error: ${run2.error}`);
+    }
+
+    if (errors.length > 0) {
+      errors.forEach((msg) => this.addError(msg));
+      this.setFailed();
+      this.setCompleted();
+      return;
+    }
+
+    this.addMessage("TRQP enforcement verified: run outcomes differ as expected");
+    this.setAccepted();
+    this.setCompleted();
   }
 }
 
@@ -1145,17 +2084,32 @@ export default class VerifierAcaPyPipeline {
   private _dag: DAG;
   private controller: AgentController;
   private oobUrl: string | null;
+  private oobUrlSecondary: string | null;
+  private verifyTrqp: boolean;
   private verifierController?: AgentController;
 
-  constructor(controller: AgentController, oobUrl?: string, verifierController?: AgentController) {
+  constructor(
+    controller: AgentController,
+    oobUrl?: string,
+    verifierController?: AgentController,
+    options?: { verifyTrqp?: boolean; oobUrlSecondary?: string | null }
+  ) {
     this.controller = controller;
     this.oobUrl = oobUrl || null;
+    this.oobUrlSecondary = options?.oobUrlSecondary ?? null;
+    this.verifyTrqp = options?.verifyTrqp ?? false;
     this.verifierController = verifierController;
     this._dag = this._make(controller);
   }
 
   setOobUrl(url: string) {
     this.oobUrl = url;
+    this._dag = this._make(this.controller);
+  }
+
+  setOobUrls(primary: string, secondary?: string) {
+    this.oobUrl = primary;
+    this.oobUrlSecondary = secondary ?? null;
     this._dag = this._make(this.controller);
   }
 
@@ -1179,10 +2133,14 @@ export default class VerifierAcaPyPipeline {
   }
 
   private _make(controller: AgentController): DAG {
-    const dag = new DAG("Verifier Conformance Test (ACA-Py Holder)");
+    const dagName = this.verifyTrqp
+      ? "Verifier Conformance Test (ACA-Py Holder + TRQP Enforcement)"
+      : "Verifier Conformance Test (ACA-Py Holder)";
+    const dag = new DAG(dagName);
     if (!this.oobUrl) {
       return dag;
     }
+
     const adapter = this.getAdapter();
     const demoVerifierAdapter = (() => {
       if (!this.verifierController) return undefined;
@@ -1190,53 +2148,205 @@ export default class VerifierAcaPyPipeline {
       return a instanceof AcaPyAgentAdapter ? a : undefined;
     })();
 
-    const receiveTask = new ReceiveOobViaAcaPyTask(
+    if (!this.verifyTrqp) {
+      const receiveTask = new ReceiveOobViaAcaPyTask(
+        adapter,
+        this.oobUrl,
+        "Accept DIDComm v2 Invitation",
+        "Consume verifier OOB v2 invitation using ACA-Py holder"
+      );
+      const awaitProofTask = new AwaitProofRequestTask(
+        adapter,
+        "Await Proof Request",
+        "Wait for verifier to send PE v2 proof request",
+        demoVerifierAdapter
+      );
+      const sendPresentationTask = new SendPresentationViaAcaPyTask(
+        adapter,
+        "Send Presentation",
+        "Reply with Ayra Business Card presentation"
+      );
+      const waitVerificationTask = new WaitForVerificationViaAcaPyTask(
+        adapter,
+        "Wait for Verification",
+        "Wait for verifier decision",
+        demoVerifierAdapter,
+        { enforceTrqp: false }
+      );
+      const evaluationTask = new VerifierAcaPyEvaluationTask(
+        "Evaluate Verifier Test",
+        "Summarize verifier conformance results"
+      );
+
+      const receiveNode = new TaskNode(receiveTask);
+      dag.addNode(receiveNode);
+
+      const requestNode = new TaskNode(awaitProofTask);
+      requestNode.addDependency(receiveNode);
+      dag.addNode(requestNode);
+
+      const presentationNode = new TaskNode(sendPresentationTask);
+      presentationNode.addDependency(requestNode);
+      dag.addNode(presentationNode);
+
+      const verificationNode = new TaskNode(waitVerificationTask);
+      verificationNode.addDependency(presentationNode);
+      dag.addNode(verificationNode);
+
+      const evaluationNode = new TaskNode(evaluationTask);
+      evaluationNode.addDependency(verificationNode);
+      dag.addNode(evaluationNode);
+
+      return dag;
+    }
+
+    const trqpContext: TrqpEnforcementContext = {};
+    const continueOnFailure = true;
+    const run1ContinueOnFailure = false;
+    const prepareContinueOnFailure = false;
+
+    const prepareTrqpTask = new PrepareTrqpEnforcementTask(
+      adapter,
+      trqpContext,
+      "Prepare TRQP Enforcement",
+      "Resolve TRQP endpoint and verify issuer authorization",
+      { continueOnFailure: prepareContinueOnFailure }
+    );
+
+    const receiveRun1Task = new ReceiveOobViaAcaPyTask(
       adapter,
       this.oobUrl,
-      "Accept DIDComm v2 Invitation",
-      "Consume verifier OOB v2 invitation using ACA-Py holder"
+      "Accept Invitation (Run 1)",
+      "Consume verifier OOB v2 invitation using ACA-Py holder",
+      { continueOnFailure: run1ContinueOnFailure, context: trqpContext, contextKey: "run1Connection" }
     );
-    const awaitProofTask = new AwaitProofRequestTask(
+    const awaitRun1Task = new AwaitProofRequestTask(
       adapter,
-      "Await Proof Request",
+      "Await Proof Request (Run 1)",
       "Wait for verifier to send PE v2 proof request",
-      demoVerifierAdapter
+      demoVerifierAdapter,
+      { continueOnFailure: run1ContinueOnFailure, context: trqpContext, contextKey: "run1ProofExchangeId" }
     );
-    const sendPresentationTask = new SendPresentationViaAcaPyTask(
+    const sendRun1Task = new SendPresentationViaAcaPyTask(
       adapter,
-      "Send Presentation",
-      "Reply with Ayra Business Card presentation"
+      "Send Presentation (Run 1)",
+      "Reply with Ayra Business Card presentation",
+      { continueOnFailure: run1ContinueOnFailure }
     );
-    const waitVerificationTask = new WaitForVerificationViaAcaPyTask(
+    const waitRun1Task = new WaitForVerificationViaAcaPyTask(
       adapter,
-      "Wait for Verification",
+      "Wait for Verification (Run 1)",
       "Wait for verifier decision",
-      demoVerifierAdapter
+      demoVerifierAdapter,
+      {
+        continueOnFailure: run1ContinueOnFailure,
+        expectVerified: true,
+        enforceTrqp: true,
+        context: trqpContext,
+        contextKey: "run1Result",
+      }
     );
-    const evaluationTask = new VerifierAcaPyEvaluationTask(
-      "Evaluate Verifier Test",
-      "Summarize verifier conformance results"
+
+    const disableTrqpTask = new DisableTrqpAuthorizationTask(
+      trqpContext,
+      "Disable TRQP Authorization",
+      "Remove issuer authorization before run 2",
+      { continueOnFailure }
     );
 
-    const receiveNode = new TaskNode(receiveTask);
-    dag.addNode(receiveNode);
+    const reuseConnectionTask = new ReuseConnectionTask(
+      trqpContext,
+      "Reuse Connection (Run 2)",
+      "Re-use the run 1 connection for the second verification pass",
+      { continueOnFailure }
+    );
+    const awaitRun2Task = new AwaitProofRequestTask(
+      adapter,
+      "Await Proof Request (Run 2)",
+      "Wait for verifier to send PE v2 proof request on the existing connection",
+      demoVerifierAdapter,
+      { continueOnFailure, context: trqpContext, contextKey: "run2ProofExchangeId" }
+    );
+    const sendRun2Task = new SendPresentationViaAcaPyTask(
+      adapter,
+      "Send Presentation (Run 2)",
+      "Reply with Ayra Business Card presentation",
+      { continueOnFailure }
+    );
+    const waitRun2Task = new WaitForVerificationViaAcaPyTask(
+      adapter,
+      "Wait for Verification (Run 2)",
+      "Wait for verifier decision after TRQP change",
+      demoVerifierAdapter,
+      {
+        continueOnFailure,
+        expectVerified: false,
+        enforceTrqp: true,
+        context: trqpContext,
+        contextKey: "run2Result",
+      }
+    );
 
-    const requestNode = new TaskNode(awaitProofTask);
-    requestNode.addDependency(receiveNode);
-    dag.addNode(requestNode);
+    const restoreTrqpTask = new RestoreTrqpAuthorizationTask(
+      trqpContext,
+      "Restore TRQP Authorization",
+      "Restore trust registry authorization after run 2"
+    );
 
-    const presentationNode = new TaskNode(sendPresentationTask);
-    presentationNode.addDependency(requestNode);
-    dag.addNode(presentationNode);
+    const enforcementEvalTask = new TrqpEnforcementEvaluationTask(
+      trqpContext,
+      "Evaluate TRQP Enforcement",
+      "Validate verifier behavior across TRQP state changes"
+    );
 
-    const verificationNode = new TaskNode(waitVerificationTask);
-    verificationNode.addDependency(presentationNode);
-    dag.addNode(verificationNode);
+    const prepareNode = new TaskNode(prepareTrqpTask);
+    dag.addNode(prepareNode);
 
-    const evaluationNode = new TaskNode(evaluationTask);
-    evaluationNode.addDependency(verificationNode);
-    dag.addNode(evaluationNode);
+    const receiveRun1Node = new TaskNode(receiveRun1Task);
+    receiveRun1Node.addDependency(prepareNode);
+    dag.addNode(receiveRun1Node);
+
+    const awaitRun1Node = new TaskNode(awaitRun1Task);
+    awaitRun1Node.addDependency(receiveRun1Node);
+    dag.addNode(awaitRun1Node);
+
+    const sendRun1Node = new TaskNode(sendRun1Task);
+    sendRun1Node.addDependency(awaitRun1Node);
+    dag.addNode(sendRun1Node);
+
+    const waitRun1Node = new TaskNode(waitRun1Task);
+    waitRun1Node.addDependency(sendRun1Node);
+    dag.addNode(waitRun1Node);
+
+    const disableNode = new TaskNode(disableTrqpTask);
+    disableNode.addDependency(waitRun1Node);
+    dag.addNode(disableNode);
+
+    const reuseRun2Node = new TaskNode(reuseConnectionTask);
+    reuseRun2Node.addDependency(disableNode);
+    dag.addNode(reuseRun2Node);
+
+    const awaitRun2Node = new TaskNode(awaitRun2Task);
+    awaitRun2Node.addDependency(reuseRun2Node);
+    dag.addNode(awaitRun2Node);
+
+    const sendRun2Node = new TaskNode(sendRun2Task);
+    sendRun2Node.addDependency(awaitRun2Node);
+    dag.addNode(sendRun2Node);
+
+    const waitRun2Node = new TaskNode(waitRun2Task);
+    waitRun2Node.addDependency(sendRun2Node);
+    dag.addNode(waitRun2Node);
+
+    const restoreNode = new TaskNode(restoreTrqpTask);
+    restoreNode.addDependency(waitRun2Node);
+    dag.addNode(restoreNode);
+
+    const evalNode = new TaskNode(enforcementEvalTask);
+    evalNode.addDependency(restoreNode);
+    dag.addNode(evalNode);
 
     return dag;
   }
+
 }

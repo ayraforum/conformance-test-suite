@@ -234,12 +234,19 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
         const isAcaPyAdapter =
           !!adapter &&
           (adapter instanceof AcaPyAgentAdapter || adapterType === "AcaPyAgentAdapter");
+        if (_state.verifyTRQP && referenceAgent !== "acapy") {
+          throw new Error(
+            "Verifier TRQP enforcement requires an ACA-Py holder (set REFERENCE_AGENT=acapy)."
+          );
+        }
         if (referenceAgent === "acapy" && isAcaPyAdapter) {
           if (!_state.controller) {
             throw new Error("agent controller not defined");
           }
           // In demo mode we can optionally use an internal ACA-Py verifier controller to auto-send the proof request.
-          pipe = new VerifierAcaPyPipeline(_state.controller, undefined, _state.verifierController);
+          pipe = new VerifierAcaPyPipeline(_state.controller, undefined, _state.verifierController, {
+            verifyTrqp: _state.verifyTRQP ?? false,
+          });
           break;
         }
         if (!_state.agent) {

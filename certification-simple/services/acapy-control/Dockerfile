@@ -28,7 +28,7 @@ WORKDIR /app
 COPY requirements.txt .
 COPY vendor/ /app/vendor/
 RUN pip install --no-cache-dir -r requirements.txt \
-  && pip install --no-cache-dir "acapy-agent[indy,bbs,askar]==1.4.0" \
+  && pip install --no-cache-dir "acapy-agent[indy,askar]==1.4.0" \
   && pip install --no-cache-dir \
      "didcomm-messaging==0.1.1a0" \
      anoncreds \

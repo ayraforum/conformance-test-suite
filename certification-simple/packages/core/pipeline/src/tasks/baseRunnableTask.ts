@@ -90,6 +90,7 @@ export default class BaseRunnableTask implements RunnableTask {
       ...this.state,
       messages: [...this.state.messages, message],
     };
+    console.log(`[TaskMessage] ${this.metadata.name}: ${message}`);
     this.update();
   }
 

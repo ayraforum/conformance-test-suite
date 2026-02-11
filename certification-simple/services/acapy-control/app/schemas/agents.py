@@ -52,6 +52,7 @@ class ProofVerifyRequest(BaseModel):
   proof_exchange_id: str
   timeout_ms: Optional[int] = 120000
   connection_id: Optional[str] = None
+  enforce_trqp: Optional[bool] = None
 
 
 class CredentialOfferRequest(BaseModel):

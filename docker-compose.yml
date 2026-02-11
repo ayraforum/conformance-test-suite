@@ -40,6 +40,9 @@ services:
       TRQP_ACTION: ${TRQP_ACTION:-}
       TRQP_RESOURCE: ${TRQP_RESOURCE:-}
       TRQP_CONTEXT_JSON: ${TRQP_CONTEXT_JSON:-}
+      TRQP_ADMIN_BASE_URL: ${TRQP_ADMIN_BASE_URL:-}
+      TRQP_ADMIN_AUTH_HEADER: ${TRQP_ADMIN_AUTH_HEADER:-}
+      TRQP_ADMIN_AUTH_TOKEN: ${TRQP_ADMIN_AUTH_TOKEN:-}
     ports:
       - "3000:3000" # Frontend
       - "5005:5005" # API
@@ -64,6 +67,21 @@ services:
         pnpm --filter @demo/core run build
         pnpm --filter cts-3 run start:server &
         SERVER_PID=$!
+        if [ "${CTS_ISSUER_DID_METHOD:-}" = "web" ] || [ "${CTS_ISSUER_DID_METHOD:-}" = "webvh" ]; then
+          echo "Generating DID document for ${CTS_ISSUER_DID_METHOD}..."
+          DID_DOC_OK=false
+          for i in $(seq 1 30); do
+            if pnpm --filter cts-3 run generate:did-doc; then
+              DID_DOC_OK=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$$DID_DOC_OK" != "true" ]; then
+            echo "Failed to generate DID document after retries" >&2
+            exit 1
+          fi
+        fi
         pnpm --filter cts-3 dev &
         CLIENT_PID=$!
         trap "kill $SERVER_PID $CLIENT_PID" EXIT
@@ -105,8 +123,13 @@ services:
       TRQP_ACTION: ${TRQP_ACTION:-}
       TRQP_RESOURCE: ${TRQP_RESOURCE:-}
       TRQP_CONTEXT_JSON: ${TRQP_CONTEXT_JSON:-}
+      TRQP_ADMIN_BASE_URL: ${TRQP_ADMIN_BASE_URL:-}
+      TRQP_ADMIN_AUTH_HEADER: ${TRQP_ADMIN_AUTH_HEADER:-}
+      TRQP_ADMIN_AUTH_TOKEN: ${TRQP_ADMIN_AUTH_TOKEN:-}
       AYRA_VC_CONTEXT_VERSION: ${AYRA_VC_CONTEXT_VERSION:-v2}
       NEXT_PUBLIC_AYRA_VC_CONTEXT_VERSION: ${NEXT_PUBLIC_AYRA_VC_CONTEXT_VERSION:-}
+      AYRA_TRUST_NETWORK_DID: ${AYRA_TRUST_NETWORK_DID:-}
+      AYRA_ECOSYSTEM_DID: ${AYRA_ECOSYSTEM_DID:-}
     ports:
       - "3000:3000"
       - "5005:5005"
@@ -138,6 +161,8 @@ services:
       ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
       ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
       ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+      ACAPY_VERIFIER_TRQP_ENFORCE: ${ACAPY_VERIFIER_TRQP_ENFORCE:-true}
+      NEXT_PUBLIC_DID_RESOLVER_URL: ${NEXT_PUBLIC_DID_RESOLVER_URL:-https://dev.uniresolver.io/1.0/identifiers}
     command:
       [
         "uvicorn",
@@ -173,6 +198,8 @@ services:
       ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
       ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
       ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+      ACAPY_VERIFIER_TRQP_ENFORCE: ${ACAPY_VERIFIER_TRQP_ENFORCE:-true}
+      NEXT_PUBLIC_DID_RESOLVER_URL: ${NEXT_PUBLIC_DID_RESOLVER_URL:-https://dev.uniresolver.io/1.0/identifiers}
     command:
       [
         "uvicorn",
@@ -208,6 +235,8 @@ services:
       ACAPY_TRACE_TAG: ${ACAPY_TRACE_TAG:-cts}
       ACAPY_TRACE_LABEL: ${ACAPY_TRACE_LABEL:-cts-acapy}
       ACAPY_WEBHOOK_DUMP_PAYLOADS: ${ACAPY_WEBHOOK_DUMP_PAYLOADS:-false}
+      ACAPY_VERIFIER_TRQP_ENFORCE: ${ACAPY_VERIFIER_TRQP_ENFORCE:-true}
+      NEXT_PUBLIC_DID_RESOLVER_URL: ${NEXT_PUBLIC_DID_RESOLVER_URL:-https://dev.uniresolver.io/1.0/identifiers}
     command:
       [
         "uvicorn",
@@ -252,9 +281,11 @@ services:
     restart: unless-stopped
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTH_TOKEN}
-    command: http --domain=auto 5005
+      DID_WEB_NGROK_DOMAIN: ${DID_WEB_NGROK_DOMAIN:-}
+      SERVER_NGROK_DOMAIN: ${SERVER_NGROK_DOMAIN:-}
+    command: http --domain=${DID_WEB_NGROK_DOMAIN:-${SERVER_NGROK_DOMAIN:-auto}} http://app:5005
     depends_on:
-      - dev
+      - app
     profiles: ["with-ngrok"]
 
 volumes:

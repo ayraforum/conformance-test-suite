@@ -41,6 +41,16 @@ The FastAPI app is the integration point for CTS; the TypeScript controller will
 issue RPCs against these endpoints to drive ACA-Py in the same way it currently
 drives Credo.
 
+### TRQP problem-report enforcement (verifier)
+
+When the managed ACA-Py is running in **verifier** mode, CTS can enforce Trust Registry checks
+before verification. If TRQP authorization or recognition fails, the control service sends a
+**Present Proof v2 problem report** to the holder with a generic message.
+
+Enable this behavior with:
+
+* `ACAPY_VERIFIER_TRQP_ENFORCE=true` (recommended; mandatory for CTS conformance runs)
+
 ### Logging and tracing env vars
 
 The control service passes these environment variables through to the managed ACA-Py process:

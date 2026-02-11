@@ -133,7 +133,7 @@ class RpcRouter:
         body.connection_id,
       )
       try:
-        await self.manager.verify_proof(resolved_id, body.connection_id)
+        await self.manager.verify_proof(resolved_id, body.connection_id, enforce_trqp=body.enforce_trqp)
       except HTTPStatusError as exc:
         LOGGER.error(
           "ACA-Py verify failed (proof_exchange_id=%s, status=%s, body=%s)",

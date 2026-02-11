@@ -455,9 +455,17 @@ export const run = async (params?: any) => {
     console.log("[RUN] Using pipeline:", pipeline.constructor?.name);
 
     // If we have an OOB URL and this is a VerifierTestPipeline, update it
-    if (params?.oobUrl && 'setOobUrl' in pipeline && typeof pipeline.setOobUrl === 'function') {
-      console.log("[RUN] Updating VerifierTestPipeline with OOB URL:", params.oobUrl);
-      (pipeline as any).setOobUrl(params.oobUrl);
+    if (params?.oobUrl) {
+      if ("setOobUrls" in pipeline && typeof (pipeline as any).setOobUrls === "function") {
+        console.log("[RUN] Updating VerifierTestPipeline with OOB URLs:", {
+          primary: params.oobUrl,
+          secondary: params.oobUrlSecondary ?? null,
+        });
+        (pipeline as any).setOobUrls(params.oobUrl, params.oobUrlSecondary);
+      } else if ("setOobUrl" in pipeline && typeof (pipeline as any).setOobUrl === "function") {
+        console.log("[RUN] Updating VerifierTestPipeline with OOB URL:", params.oobUrl);
+        (pipeline as any).setOobUrl(params.oobUrl);
+      }
     }
 
     await pipeline.init();
