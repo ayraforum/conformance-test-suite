@@ -88,13 +88,27 @@ Make sure the ecosystem DID resolves to a DID document that includes a TRQP serv
 
 ## Verifier TRQP Enforcement (Two-Run)
 
-When the Verifier UI toggle is enabled, CTS runs the verifier flow twice: once with the issuer authorized in the trust registry and once after CTS removes that authorization. This proves whether the verifier consulted TRQP by comparing run outcomes.
+When the Verifier UI toggle is enabled, CTS runs the verifier flow twice:
+
+- Run 1 with the selected TRQP policy binding(s) present
+- Run 2 after CTS removes the selected TRQP policy binding(s)
+
+This proves whether the verifier consulted TRQP by comparing run outcomes.
+
+Phase 1 supports explicit TRQP policy modes:
+- `authorization`: mutate/check authorization only
+- `recognition`: mutate/check recognition only
+- `both`: mutate/check both authorization and recognition
 
 Requirements:
 - **ACA-Py holder mode** (`REFERENCE_AGENT=acapy`), because CTS must observe `verified` from ACA-Py records.
-- One verifier OOB URL. Run 2 reuses the same connection after CTS removes authorization.
-- TRQP admin API access for toggling authorization state.
+- One verifier OOB URL. Run 2 reuses the same connection after CTS removes selected policy binding(s).
+- TRQP admin API access for toggling policy binding state.
 - Verifier must send a Present Proof v2 problem report when TRQP authorization/recognition fails (recommended practice; mandatory for CTS conformance). CTS expects run 2 to abandon or otherwise **not** report `verified=true`.
+
+Run/API input requirements:
+- UI: choose mode from the TRQP mode selector when the TRQP toggle is enabled.
+- API: when `verifyTRQP=true`, include `trqpMode=authorization|recognition|both`.
 
 Relevant `.env` settings:
 - `TRQP_ADMIN_BASE_URL` (example: `https://sandbox-tr.ayra.network/admin`)

@@ -4,6 +4,7 @@ Conformance tooling for Ayra Trust Network implementations built on the `certifi
 
 **Current coverage**
 - ✅ TRQP trust registry checks
+- ✅ TRQP policy mode profiles (Phase 1: `authorization | recognition | both`)
 - ✅ Holder conformance flow
 - ✅ Issue flow (utility flow, not scored as a conformance flow)
 - 🚧 Verifier conformance flow (being finished now)
@@ -100,6 +101,17 @@ For NGROK domain planning, tunnel rotation, and the full list of optional variab
 - `REFERENCE_ISSUER_OVERRIDE_AGENT` (default `auto`) lets you force the credential issuer to Credo or ACA-Py independently of the reference agent. When set to `credo`, also provide `ISSUER_OVERRIDE_NGROK_DOMAIN` so the override agent has a unique tunnel; otherwise the UI QR codes collide.
 - `REFERENCE_AGENT_NGROK_DOMAIN` is the hostname wallets use to reach the reference agent. When ACA-Py is the reference agent, the `acapy-ngrok` sidecar automatically advertises this domain.
 - `VERIFIER_TEST_NGROK_DOMAIN` is only used by the standalone `test-verifier` container for scripted CLI checks; it does not affect the UI flows.
+
+### TRQP Policy Mode (Phase 1)
+
+When TRQP checks are enabled, CTS now runs with an explicit policy mode:
+
+- `authorization`: authorization checks only
+- `recognition`: recognition checks only
+- `both`: run both checks
+
+Mode is selected in the Holder and Verifier UIs when TRQP is enabled, and is sent to the server as `trqpMode`.
+For API runs, `verifyTRQP=true` requires `trqpMode=authorization|recognition|both`.
 
 ### DID:web Issuer (optional)
 
