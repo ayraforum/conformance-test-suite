@@ -15,6 +15,8 @@ export type Pipeline = {
   dag(): DAG;
 };
 
+export type TrqpMode = "authorization" | "recognition" | "both";
+
 export type State = {
   dag?: DAG;
   config?: AgentConfiguration;
@@ -32,6 +34,7 @@ export type State = {
   lastIssuedCredentialSource?: string;
   lastIssuedWalletRecordId?: string;
   holderPresentationDid?: string;
+  trqpMode?: TrqpMode;
 };
 
 const _state: State = {};
@@ -104,6 +107,10 @@ export const setVerifyTRQP = (flag?: boolean) => {
   _state.verifyTRQP = flag;
 };
 
+export const setTrqpMode = (mode?: TrqpMode) => {
+  _state.trqpMode = mode;
+};
+
 export { _state as state };
 
 export const selectPipeline = (type: PipelineType): Pipeline => {
@@ -158,7 +165,7 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
         if (!controller) {
           throw new Error("agent controller not defined");
         }
-        pipe = new HolderTestPipeline(controller, _state.verifyTRQP ?? false);
+        pipe = new HolderTestPipeline(controller, _state.verifyTRQP ?? false, _state.trqpMode);
       }
       break;
     case PipelineType.ISSUER_TEST:
@@ -246,6 +253,7 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
           // In demo mode we can optionally use an internal ACA-Py verifier controller to auto-send the proof request.
           pipe = new VerifierAcaPyPipeline(_state.controller, undefined, _state.verifierController, {
             verifyTrqp: _state.verifyTRQP ?? false,
+            trqpMode: _state.trqpMode,
           });
           break;
         }

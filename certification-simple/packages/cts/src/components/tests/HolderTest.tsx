@@ -120,6 +120,13 @@ function TaskDetailsRenderer({
   );
 }
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
+type TrqpMode = "authorization" | "recognition" | "both";
+
+const trqpModeLabel = (mode: TrqpMode): string => {
+  if (mode === "authorization") return "authorization";
+  if (mode === "recognition") return "recognition";
+  return "authorization + recognition";
+};
 
 function ConnectionStep({ 
   context, 
@@ -127,7 +134,9 @@ function ConnectionStep({
   onNext,
   taskData,
   verifyTRQP,
-  onToggleTRQP
+  onToggleTRQP,
+  trqpMode,
+  onTrqpModeChange
 }: { 
   context: any; 
   isActive: boolean; 
@@ -135,6 +144,8 @@ function ConnectionStep({
   taskData?: TaskNode;
   verifyTRQP: boolean;
   onToggleTRQP: (value: boolean) => void;
+  trqpMode: TrqpMode;
+  onTrqpModeChange: (value: TrqpMode) => void;
 }) {
   const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
@@ -180,7 +191,7 @@ function ConnectionStep({
     // This component now just reacts to Redux state changes
   }, []);
 
-  const startConnection = async (verifyTRQP: boolean) => {
+  const startConnection = async (verifyTRQP: boolean, trqpMode: TrqpMode) => {
     if (!socket || !isConnected) {
       console.error('Not connected to server. Please refresh and try again.');
       return;
@@ -208,7 +219,7 @@ function ConnectionStep({
           const response = await fetch(runUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pipelineType: 'HOLDER_TEST', verifyTRQP }),
+            body: JSON.stringify({ pipelineType: 'HOLDER_TEST', verifyTRQP, trqpMode }),
           });
           if (!response.ok) {
             throw new Error(`Failed to start pipeline: ${response.statusText}`);
@@ -264,7 +275,7 @@ function ConnectionStep({
 
       {!hasStarted ? (
         <button
-          onClick={() => startConnection(verifyTRQP)}
+          onClick={() => startConnection(verifyTRQP, trqpMode)}
           disabled={!isConnected}
           className="btn btn-blue"
         >
@@ -316,6 +327,23 @@ function ConnectionStep({
           />
           <span>Verify Trust Registry (TRQP) during presentation</span>
         </label>
+        {verifyTRQP && (
+          <div className="mt-2">
+            <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpMode">
+              TRQP Mode
+            </label>
+            <select
+              id="holderTrqpMode"
+              value={trqpMode}
+              onChange={(e) => onTrqpModeChange(e.target.value as TrqpMode)}
+              className="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1 text-sm"
+            >
+              <option value="authorization">Authorization only</option>
+              <option value="recognition">Recognition only</option>
+              <option value="both">Both authorization and recognition</option>
+            </select>
+          </div>
+        )}
       </div>
 
       <MessageRenderer 
@@ -408,13 +436,15 @@ function ReportStep({
   isActive, 
   onRestart,
   dagData,
-  verifyTRQP = false
+  verifyTRQP = false,
+  trqpMode = "both"
 }: { 
   context: any; 
   isActive: boolean; 
   onRestart: () => void;
   dagData?: DAGData;
   verifyTRQP?: boolean;
+  trqpMode?: TrqpMode;
 }) {
   const [showFullReport, setShowFullReport] = useState(false);
   const [testResults, setTestResults] = useState({
@@ -549,7 +579,7 @@ function ReportStep({
             {trustStatus === "skipped"
               ? "Not requested"
               : trustStatus === "passed"
-              ? "TRQP authorization/recognition verified"
+              ? `TRQP ${trqpModeLabel(trqpMode)} verified`
               : trustStatus === "failed"
               ? "TRQP verification failed"
               : "Awaiting TRQP verification"}
@@ -607,7 +637,7 @@ function ReportStep({
                     : "text-gray-600"
                 }`}>
                   {trustStatus === "passed"
-                    ? "TRQP authorization/recognition verified"
+                    ? `TRQP ${trqpModeLabel(trqpMode)} verified`
                     : trustStatus === "failed"
                     ? "TRQP verification failed"
                     : trustStatus === "skipped"
@@ -769,6 +799,7 @@ export function HolderTest() {
     Boolean(process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT) ||
     Boolean(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
   const [verifyTRQP, setVerifyTRQP] = useState(defaultTRQP);
+  const [trqpMode, setTrqpMode] = useState<TrqpMode>("both");
 
   // On mount, clear stale holder state and reselect the holder pipeline
   useEffect(() => {
@@ -894,7 +925,18 @@ export function HolderTest() {
       name: "Connection",
       description: "Establish a connection with your holder wallet",
       status: taskData[0] ? getStepStatusFromNode(taskData[0]) : "pending",
-      component: <ConnectionStep context={{}} isActive={currentStep === 0} onNext={() => setCurrentStep(1)} taskData={taskData[0]} verifyTRQP={verifyTRQP} onToggleTRQP={setVerifyTRQP} />,
+      component: (
+        <ConnectionStep
+          context={{}}
+          isActive={currentStep === 0}
+          onNext={() => setCurrentStep(1)}
+          taskData={taskData[0]}
+          verifyTRQP={verifyTRQP}
+          onToggleTRQP={setVerifyTRQP}
+          trqpMode={trqpMode}
+          onTrqpModeChange={setTrqpMode}
+        />
+      ),
       isActive: currentStep === 0,
       taskData: taskData[0]
     },
@@ -932,7 +974,8 @@ export function HolderTest() {
           dispatch(resetTest());
         }} 
         dagData={dagData || undefined}
-        verifyTRQP={verifyTRQP} 
+        verifyTRQP={verifyTRQP}
+        trqpMode={trqpMode}
       />,
       isActive: currentStep === 2
     }

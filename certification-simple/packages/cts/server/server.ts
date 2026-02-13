@@ -14,7 +14,7 @@ import type { Config as NgrokConfig } from "@ngrok/ngrok";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from "uuid";
-import { setDAG, setPipeline, setConfig, setAgent, setController, setCredoController, setIssuerController, setVerifierController, setIssuerAgentType, setCredentialFormat, state as serverState } from "./state";
+import { setDAG, setPipeline, setConfig, setAgent, setController, setCredoController, setIssuerController, setVerifierController, setIssuerAgentType, setCredentialFormat, setTrqpMode, state as serverState, type TrqpMode } from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
@@ -30,6 +30,14 @@ const normalizeProfile = (value: string | undefined, fallback: "issuer" | "verif
   const v = normalizeEnvChoice(value, fallback);
   if (v === "issuer" || v === "verifier" || v === "holder") return v;
   return fallback;
+};
+
+const normalizeTrqpMode = (value: unknown): TrqpMode | null => {
+  const normalized = normalizeEnvChoice(typeof value === "string" ? value : undefined, "");
+  if (normalized === "authorization" || normalized === "recognition" || normalized === "both") {
+    return normalized;
+  }
+  return null;
 };
 
 
@@ -409,9 +417,19 @@ export const run = async (params?: any) => {
   await ensureInitialized();
   try {
     console.log("[RUN] Starting pipeline execution with params:", params);
-    if (typeof params?.verifyTRQP !== "undefined") {
-      const { setVerifyTRQP } = await import("./state");
-      setVerifyTRQP(Boolean(params.verifyTRQP));
+    const verifyTrqpRequested = Boolean(params?.verifyTRQP);
+    const { setVerifyTRQP } = await import("./state");
+    setVerifyTRQP(verifyTrqpRequested);
+    if (verifyTrqpRequested) {
+      const mode = normalizeTrqpMode(params?.trqpMode);
+      if (!mode) {
+        throw new Error(
+          "TRQP mode is required when verifyTRQP=true. Provide trqpMode=authorization|recognition|both."
+        );
+      }
+      setTrqpMode(mode);
+    } else {
+      setTrqpMode(undefined);
     }
     if (params?.pipelineType) {
       const pipelineType = params.pipelineType as PipelineType;

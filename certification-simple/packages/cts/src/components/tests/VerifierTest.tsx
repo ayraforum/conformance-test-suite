@@ -11,6 +11,7 @@ import { startTest, resetTest, addMessage } from "@/store/testSlice";
 import jsQR from "jsqr";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
+type TrqpMode = "authorization" | "recognition" | "both";
 
 // Simple Message Renderer Component
 function MessageRenderer({ messages, title = "Step Log" }: { messages: string[]; title?: string; }) {
@@ -37,11 +38,15 @@ function VerifierConnectionStep({
   taskData,
   verifyTrqp,
   onVerifyTrqpChange,
+  trqpMode,
+  onTrqpModeChange,
 }: {
   isActive: boolean;
   taskData?: TaskNode;
   verifyTrqp: boolean;
   onVerifyTrqpChange: (value: boolean) => void;
+  trqpMode: TrqpMode;
+  onTrqpModeChange: (value: TrqpMode) => void;
 }) {
   const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
@@ -121,7 +126,7 @@ function VerifierConnectionStep({
     setHasStarted(true);
     dispatch(addMessage({ stepIndex: 0, message: 'Starting verifier test...' }));
     if (verifyTrqp) {
-      dispatch(addMessage({ stepIndex: 0, message: 'TRQP enforcement enabled: verifier flow will run twice on the same connection' }));
+      dispatch(addMessage({ stepIndex: 0, message: `TRQP enforcement enabled (mode=${trqpMode}): verifier flow will run twice on the same connection` }));
     }
     dispatch(startTest());
     
@@ -143,6 +148,7 @@ function VerifierConnectionStep({
             oobUrl,
             pipelineType: 'VERIFIER_TEST',
             verifyTRQP: verifyTrqp,
+            trqpMode,
           }),
         });
         if (!runResponse.ok) {
@@ -249,10 +255,27 @@ function VerifierConnectionStep({
             </label>
           </div>
           {verifyTrqp && (
-            <p className="text-xs text-gray-500">
-              TRQP enforcement runs the verifier flow twice and reuses the same connection. Send a second proof
-              request on the existing connection after CTS disables authorization.
-            </p>
+            <div className="space-y-2">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1" htmlFor="verifierTrqpMode">
+                  TRQP Mode
+                </label>
+                <select
+                  id="verifierTrqpMode"
+                  value={trqpMode}
+                  onChange={(e) => onTrqpModeChange(e.target.value as TrqpMode)}
+                  className="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1 text-sm"
+                >
+                  <option value="authorization">Authorization only</option>
+                  <option value="recognition">Recognition only</option>
+                  <option value="both">Both authorization and recognition</option>
+                </select>
+              </div>
+              <p className="text-xs text-gray-500">
+                TRQP enforcement runs the verifier flow twice and reuses the same connection. Send a second proof
+                request on the existing connection after CTS disables the selected policy binding(s).
+              </p>
+            </div>
           )}
           <div>
             <label htmlFor="oobQr" className="block text-sm font-medium text-gray-700 mb-2">
@@ -409,6 +432,7 @@ export function VerifierTest() {
     Boolean(process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT) ||
     Boolean(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
   const [verifyTrqp, setVerifyTrqp] = useState(defaultTRQP);
+  const [trqpMode, setTrqpMode] = useState<TrqpMode>("both");
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
@@ -464,17 +488,17 @@ export function VerifierTest() {
       { name: "Evaluate Results", description: "Evaluate verifier conformance from observable evidence" },
     ];
     const trqpStepDefinitions = [
-      { name: "Prepare TRQP Enforcement", description: "Resolve TRQP endpoint and verify issuer authorization" },
+      { name: "Prepare TRQP Enforcement", description: "Resolve TRQP endpoint and verify selected policy binding(s)" },
       { name: "Accept Invitation (Run 1)", description: "Consume verifier OOB v2 invitation using ACA-Py holder" },
       { name: "Await Proof Request (Run 1)", description: "Wait for verifier to send PE v2 proof request" },
       { name: "Send Presentation (Run 1)", description: "Reply with Ayra Business Card presentation" },
       { name: "Wait for Verification (Run 1)", description: "Wait for verifier decision" },
-      { name: "Disable TRQP Authorization", description: "Remove issuer authorization before run 2" },
+      { name: "Disable TRQP Policy Binding", description: "Remove selected TRQP policy binding(s) before run 2" },
       { name: "Reuse Connection (Run 2)", description: "Re-use the run 1 connection for the second verification pass" },
       { name: "Await Proof Request (Run 2)", description: "Wait for verifier to send PE v2 proof request on the existing connection" },
       { name: "Send Presentation (Run 2)", description: "Reply with Ayra Business Card presentation" },
       { name: "Wait for Verification (Run 2)", description: "Wait for verifier decision after TRQP change" },
-      { name: "Restore TRQP Authorization", description: "Restore trust registry authorization after run 2" },
+      { name: "Restore TRQP Policy Binding", description: "Restore selected TRQP policy binding(s) after run 2" },
       { name: "Evaluate TRQP Enforcement", description: "Validate verifier behavior across TRQP state changes" },
     ];
     const stepDefinitions = verifyTrqp ? trqpStepDefinitions : baseStepDefinitions;
@@ -501,7 +525,7 @@ export function VerifierTest() {
       if (lower.includes("prepare trqp enforcement")) {
         return {
           name: "Prepare TRQP Evidence",
-          description: "Resolve TRQP endpoint and verify issuer authorization via trust registry admin APIs.",
+          description: "Resolve TRQP endpoint and verify selected policy binding(s) via trust registry admin APIs.",
         };
       }
       return { name, description };
@@ -567,10 +591,10 @@ export function VerifierTest() {
         labelBottom = "Await Response";
       } else if (lowerBase.includes("prepare trqp")) {
         labelBottom = "Prepare";
-      } else if (lowerBase.includes("disable trqp") && lowerBase.includes("authorization")) {
-        labelBottom = "Disable Auth";
-      } else if (lowerBase.includes("restore trqp") && lowerBase.includes("authorization")) {
-        labelBottom = "Restore Auth";
+      } else if (lowerBase.includes("disable trqp")) {
+        labelBottom = "Disable Policy";
+      } else if (lowerBase.includes("restore trqp")) {
+        labelBottom = "Restore Policy";
       } else if (lowerBase.includes("evaluate trqp")) {
         labelBottom = "Evaluate";
       } else if (lowerBase.includes("reuse connection")) {
@@ -596,6 +620,8 @@ export function VerifierTest() {
           taskData={dag?.nodes?.[0]}
           verifyTrqp={verifyTrqp}
           onVerifyTrqpChange={setVerifyTrqp}
+          trqpMode={trqpMode}
+          onTrqpModeChange={setTrqpMode}
         />
       ),
       isActive: computedCurrentStep === 0,
@@ -680,7 +706,7 @@ export function VerifierTest() {
     }
 
     setSteps(initialSteps);
-  }, [currentStep, dag, handleRestart, isTestRunning, verifyTrqp]);
+  }, [currentStep, dag, handleRestart, isTestRunning, verifyTrqp, trqpMode]);
 
   return (
     <div>

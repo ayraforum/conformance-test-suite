@@ -4,7 +4,7 @@ import { DAG } from "@demo/core/pipeline/src/dag";
 import { Results } from "@demo/core/pipeline/src/types";
 import { AgentController, AcaPyAgentAdapter } from "@demo/core";
 import { randomUUID } from "crypto";
-import { state as serverState } from "../state";
+import { state as serverState, type TrqpMode } from "../state";
 
 type ConnectionResult = {
   connectionId: string;
@@ -39,21 +39,36 @@ type TrqpAuthorizationPayload = {
   resource: string;
 };
 
+type TrqpRecognitionPayload = {
+  entity_id: string;
+  authority_id: string;
+  action: string;
+  resource: string;
+  context?: Record<string, unknown>;
+};
+
 type TrqpEnforcementContext = {
+  trqpMode?: TrqpMode;
   issuerDid?: string;
   ecosystemDid?: string;
   trustNetworkDid?: string;
   cardType?: string;
   authorizationPayload?: TrqpAuthorizationPayload;
+  recognitionPayload?: TrqpRecognitionPayload;
   trqpBaseUrl?: string;
   adminBaseUrl?: string;
   adminAuthHeader?: string;
   adminAuthToken?: string;
-  entityId?: number;
+  authorizationEntityId?: number;
+  recognitionEntityId?: number;
   authorizationId?: number;
+  recognitionId?: number;
   initialAuthorizationIds?: number[];
+  initialRecognitionIds?: number[];
   authorizedBefore?: boolean;
   authorizedAfterRemoval?: boolean;
+  recognizedBefore?: boolean;
+  recognizedAfterRemoval?: boolean;
   run1Connection?: ConnectionResult;
   demoVerifierConnectionId?: string;
   run1Result?: { verified: boolean | null; state: string | null; error?: string };
@@ -153,6 +168,16 @@ function extractAuthorizationResult(payload: any): boolean {
   return false;
 }
 
+function extractRecognitionResult(payload: any): boolean {
+  if (Array.isArray(payload)) {
+    return payload.some((item) => item?.recognized === true);
+  }
+  if (payload && typeof payload === "object") {
+    return payload.recognized === true;
+  }
+  return false;
+}
+
 function isConsumedInvitationError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
@@ -238,8 +263,17 @@ function extractCredentialSubject(vc: any): any {
   return subject;
 }
 
-function buildTrqpAuthorizationPayload(vc: any): {
-  payload: TrqpAuthorizationPayload;
+function extractIssuanceTime(vc: any): string | null {
+  const issuanceDate = typeof vc?.issuanceDate === "string" ? vc.issuanceDate : "";
+  if (issuanceDate) return issuanceDate;
+  const validFrom = typeof vc?.validFrom === "string" ? vc.validFrom : "";
+  if (validFrom) return validFrom;
+  return null;
+}
+
+function buildTrqpPayloads(vc: any): {
+  authorizationPayload: TrqpAuthorizationPayload;
+  recognitionPayload: TrqpRecognitionPayload;
   issuerDid: string;
   ecosystemDid: string;
   trustNetworkDid: string;
@@ -266,14 +300,25 @@ function buildTrqpAuthorizationPayload(vc: any): {
   if (!cardType) {
     throw new Error("TRQP mapping failed: credentialSubject.ayra_card_type missing");
   }
+  const issuanceTime = extractIssuanceTime(vc);
+  const recognitionPayload: TrqpRecognitionPayload = {
+    entity_id: ecosystemDid,
+    authority_id: trustNetworkDid,
+    action: "member-of",
+    resource: "ayratrustnetwork",
+  };
+  if (issuanceTime) {
+    recognitionPayload.context = { time: issuanceTime };
+  }
 
   return {
-    payload: {
+    authorizationPayload: {
       entity_id: issuerDid,
       authority_id: ecosystemDid,
       action: "issue",
       resource: `ayracard:${cardType}`,
     },
+    recognitionPayload,
     issuerDid,
     ecosystemDid,
     trustNetworkDid,
@@ -1602,56 +1647,104 @@ class PrepareTrqpEnforcementTask extends BaseRunnableTask {
       }
 
       const credential = await this.findAyraCredential();
-      const { payload, issuerDid, ecosystemDid, trustNetworkDid, cardType } =
-        buildTrqpAuthorizationPayload(credential);
+      const { authorizationPayload, recognitionPayload, issuerDid, ecosystemDid, trustNetworkDid, cardType } =
+        buildTrqpPayloads(credential);
       const trqpBaseUrl = await resolveTrqpEndpoint(ecosystemDid);
+      const mode: TrqpMode = this.context.trqpMode || "both";
+      const runAuthorization = mode === "authorization" || mode === "both";
+      const runRecognition = mode === "recognition" || mode === "both";
 
-      this.context.authorizationPayload = payload;
+      this.context.authorizationPayload = authorizationPayload;
+      this.context.recognitionPayload = recognitionPayload;
       this.context.issuerDid = issuerDid;
       this.context.ecosystemDid = ecosystemDid;
       this.context.trustNetworkDid = trustNetworkDid;
       this.context.cardType = cardType;
       this.context.trqpBaseUrl = trqpBaseUrl;
+      this.addMessage(`TRQP mode selected: ${mode}`);
 
       this.addMessage(
-        `TRQP mapping: entity_id=${payload.entity_id} authority_id=${payload.authority_id} action=${payload.action} resource=${payload.resource}`
+        `TRQP authorization mapping: entity_id=${authorizationPayload.entity_id} authority_id=${authorizationPayload.authority_id} action=${authorizationPayload.action} resource=${authorizationPayload.resource}`
+      );
+      this.addMessage(
+        `TRQP recognition mapping: entity_id=${recognitionPayload.entity_id} authority_id=${recognitionPayload.authority_id} action=${recognitionPayload.action} resource=${recognitionPayload.resource}`
       );
       this.addMessage(`TRQP endpoint resolved: ${trqpBaseUrl}`);
 
-      const entity = await this.findEntityByDid(issuerDid);
-      const authorization = await this.findAuthorization(payload.action, payload.resource);
-      const entityDetails = await this.fetchAdminJson(`/entities/${entity.id}`);
-      const authorizationIds = Array.isArray(entityDetails?.authorizations)
-        ? entityDetails.authorizations.map((auth: any) => auth?.id).filter((id: any) => Number.isFinite(id))
-        : [];
-
-      if (!authorizationIds.includes(authorization.id)) {
-        throw new Error(
-          `Issuer entity ${issuerDid} is not authorized for ${payload.action} ${payload.resource}`
+      if (runAuthorization) {
+        const authorizationEntity = await this.findEntityByDid(issuerDid);
+        const authorization = await this.findAuthorization(
+          authorizationPayload.action,
+          authorizationPayload.resource
         );
+        const authorizationIds = await this.getEntityAuthorizationIds(authorizationEntity.id);
+        if (!authorizationIds.includes(authorization.id)) {
+          throw new Error(
+            `Issuer entity ${issuerDid} is not authorized for ${authorizationPayload.action} ${authorizationPayload.resource}`
+          );
+        }
+        this.context.authorizationEntityId = authorizationEntity.id;
+        this.context.authorizationId = authorization.id;
+        this.context.initialAuthorizationIds = authorizationIds;
+
+        const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(authorizationPayload),
+        });
+        const authBody = await readJsonSafe(authResp);
+        if (!authResp.ok) {
+          throw new Error(
+            `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+          );
+        }
+        const authorized = extractAuthorizationResult(authBody.json);
+        this.context.authorizedBefore = authorized;
+        if (!authorized) {
+          throw new Error("TRQP authorization returned authorized=false before run 1");
+        }
+        this.addMessage("TRQP authorization verified before run 1");
       }
 
-      this.context.entityId = entity.id;
-      this.context.authorizationId = authorization.id;
-      this.context.initialAuthorizationIds = authorizationIds;
-
-      const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const authBody = await readJsonSafe(authResp);
-      if (!authResp.ok) {
-        throw new Error(
-          `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+      if (runRecognition) {
+        const recognitionEntity = await this.findEntityByDid(recognitionPayload.authority_id);
+        const recognition = await this.findRecognition(
+          recognitionPayload.action,
+          recognitionPayload.resource
         );
+        const recognitionIds = await this.getEntityRecognitionIds(recognitionEntity.id);
+        const hasRecognitionBinding = await this.hasEntityRecognitionBinding(
+          recognitionEntity.id,
+          recognition.id,
+          recognitionPayload.entity_id
+        );
+        if (!recognitionIds.includes(recognition.id) || !hasRecognitionBinding) {
+          throw new Error(
+            `Authority ecosystem ${recognitionPayload.authority_id} does not recognize ${recognitionPayload.entity_id} for ${recognitionPayload.action} ${recognitionPayload.resource}`
+          );
+        }
+        this.context.recognitionEntityId = recognitionEntity.id;
+        this.context.recognitionId = recognition.id;
+        this.context.initialRecognitionIds = recognitionIds;
+
+        const recResp = await fetch(`${trqpBaseUrl}/recognition`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(recognitionPayload),
+        });
+        const recBody = await readJsonSafe(recResp);
+        if (!recResp.ok) {
+          throw new Error(
+            `TRQP recognition failed: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
+          );
+        }
+        const recognized = extractRecognitionResult(recBody.json);
+        this.context.recognizedBefore = recognized;
+        if (!recognized) {
+          throw new Error("TRQP recognition returned recognized=false before run 1");
+        }
+        this.addMessage("TRQP recognition verified before run 1");
       }
-      const authorized = extractAuthorizationResult(authBody.json);
-      this.context.authorizedBefore = authorized;
-      if (!authorized) {
-        throw new Error("TRQP authorization returned authorized=false before run 1");
-      }
-      this.addMessage("TRQP authorization verified before run 1");
 
       this.setAccepted();
       this.setCompleted();
@@ -1779,6 +1872,124 @@ class PrepareTrqpEnforcementTask extends BaseRunnableTask {
     }
     return { id: match.id };
   }
+
+  private async findRecognition(action: string, resource: string): Promise<{ id: number }> {
+    const recognitions = await this.fetchAdminJson("/recognitions");
+    const list = Array.isArray(recognitions)
+      ? recognitions
+      : recognitions?.results || recognitions?.records || [];
+    const match = list.find((entry: any) => entry?.action === action && entry?.resource === resource);
+    if (!match || !Number.isFinite(match.id)) {
+      throw new Error(`Recognition not found in TR admin: ${action} ${resource}`);
+    }
+    return { id: match.id };
+  }
+
+  private collectRelationIds(
+    payload: any,
+    embeddedKey: "authorizations" | "recognitions",
+    linkKey: "authorization_id" | "recognition_id"
+  ): number[] {
+    if (!payload) return [];
+    const toId = (value: any): number | null => {
+      if (Number.isFinite(value)) return value;
+      const nestedId = value?.id;
+      if (Number.isFinite(nestedId)) return nestedId;
+      const linkId = value?.[linkKey];
+      if (Number.isFinite(linkId)) return linkId;
+      return null;
+    };
+
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.[embeddedKey])
+        ? payload[embeddedKey]
+        : Array.isArray(payload?.results)
+          ? payload.results
+          : Array.isArray(payload?.records)
+            ? payload.records
+            : [];
+
+    return list
+      .map((item: any) => toId(item))
+      .filter((id: number | null): id is number => Number.isFinite(id));
+  }
+
+  private async getEntityAuthorizationIds(entityId: number): Promise<number[]> {
+    const entityDetails = await this.fetchAdminJson(`/entities/${entityId}`);
+    const embeddedIds = this.collectRelationIds(entityDetails, "authorizations", "authorization_id");
+    const hasEmbeddedAuthorizations =
+      !!entityDetails &&
+      typeof entityDetails === "object" &&
+      Object.prototype.hasOwnProperty.call(entityDetails, "authorizations");
+    if (hasEmbeddedAuthorizations) {
+      return embeddedIds;
+    }
+    try {
+      const relationRows = await this.fetchAdminJson(`/entities/${entityId}/authorizations`);
+      return this.collectRelationIds(relationRows, "authorizations", "authorization_id");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const routeMissing = message.includes("(404") || message.includes("Not Found");
+      if (routeMissing) {
+        return embeddedIds;
+      }
+      throw err;
+    }
+  }
+
+  private async getEntityRecognitionIds(entityId: number): Promise<number[]> {
+    const entityDetails = await this.fetchAdminJson(`/entities/${entityId}`);
+    const embeddedIds = this.collectRelationIds(entityDetails, "recognitions", "recognition_id");
+    const hasEmbeddedRecognitions =
+      !!entityDetails &&
+      typeof entityDetails === "object" &&
+      Object.prototype.hasOwnProperty.call(entityDetails, "recognitions");
+    if (hasEmbeddedRecognitions) {
+      return embeddedIds;
+    }
+    try {
+      const relationRows = await this.fetchAdminJson(`/entities/${entityId}/recognitions`);
+      return this.collectRelationIds(relationRows, "recognitions", "recognition_id");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const routeMissing = message.includes("(404") || message.includes("Not Found");
+      if (routeMissing) {
+        return embeddedIds;
+      }
+      throw err;
+    }
+  }
+
+  private async hasEntityRecognitionBinding(
+    entityId: number,
+    recognitionId: number,
+    recognizedRegistryDid: string
+  ): Promise<boolean> {
+    try {
+      const relationRows = await this.fetchAdminJson(`/entities/${entityId}/recognitions`);
+      const list = Array.isArray(relationRows)
+        ? relationRows
+        : relationRows?.results || relationRows?.records || [];
+      return list.some((row: any) => {
+        const rowRecognitionId = row?.recognition_id ?? row?.recognition?.id ?? row?.id;
+        return (
+          Number.isFinite(rowRecognitionId) &&
+          Number(rowRecognitionId) === recognitionId &&
+          row?.recognized_registry_did === recognizedRegistryDid &&
+          row?.recognized !== false
+        );
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const routeMissing = message.includes("(404") || message.includes("Not Found");
+      if (routeMissing) {
+        const ids = await this.getEntityRecognitionIds(entityId);
+        return ids.includes(recognitionId);
+      }
+      throw err;
+    }
+  }
 }
 
 class DisableTrqpAuthorizationTask extends BaseRunnableTask {
@@ -1795,34 +2006,85 @@ class DisableTrqpAuthorizationTask extends BaseRunnableTask {
     super.run();
     try {
       const adminBaseUrl = this.context.adminBaseUrl;
-      const entityId = this.context.entityId;
-      const authorizationId = this.context.authorizationId;
-      const payload = this.context.authorizationPayload;
       const trqpBaseUrl = this.context.trqpBaseUrl;
-      if (!adminBaseUrl || !entityId || !authorizationId || !payload || !trqpBaseUrl) {
-        throw new Error("TRQP enforcement context incomplete; cannot disable authorization");
+      const mode: TrqpMode = this.context.trqpMode || "both";
+      const runAuthorization = mode === "authorization" || mode === "both";
+      const runRecognition = mode === "recognition" || mode === "both";
+      if (!adminBaseUrl || !trqpBaseUrl) {
+        throw new Error("TRQP enforcement context incomplete; cannot disable policy bindings");
+      }
+      this.addMessage(`TRQP mode selected: ${mode}`);
+
+      if (runAuthorization) {
+        const entityId = this.context.authorizationEntityId;
+        const authorizationId = this.context.authorizationId;
+        const payload = this.context.authorizationPayload;
+        if (!entityId || !authorizationId || !payload) {
+          throw new Error("TRQP authorization context incomplete; cannot disable authorization");
+        }
+
+        await this.fetchAdminJson(`/entities/${entityId}/authorizations/${authorizationId}`, { method: "DELETE" });
+        this.addMessage(`TRQP admin: removed authorization ${authorizationId} from entity ${entityId}`);
+
+        const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const authBody = await readJsonSafe(authResp);
+        if (!authResp.ok) {
+          throw new Error(
+            `TRQP authorization failed after removal: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+          );
+        }
+        const authorized = extractAuthorizationResult(authBody.json);
+        this.context.authorizedAfterRemoval = authorized;
+        if (authorized) {
+          throw new Error("TRQP authorization still returns authorized=true after removal");
+        }
+        this.addMessage("TRQP authorization now returns authorized=false");
       }
 
-      await this.fetchAdminJson(`/entities/${entityId}/authorizations/${authorizationId}`, { method: "DELETE" });
-      this.addMessage(`TRQP admin: removed authorization ${authorizationId} from entity ${entityId}`);
+      if (runRecognition) {
+        const entityId = this.context.recognitionEntityId;
+        const recognitionId = this.context.recognitionId;
+        const payload = this.context.recognitionPayload;
+        if (!entityId || !recognitionId || !payload) {
+          throw new Error("TRQP recognition context incomplete; cannot disable recognition");
+        }
+        const recognizedRegistryDid = payload.entity_id;
+        if (!recognizedRegistryDid) {
+          throw new Error("TRQP recognition payload missing entity_id; cannot disable recognition");
+        }
 
-      const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const authBody = await readJsonSafe(authResp);
-      if (!authResp.ok) {
-        throw new Error(
-          `TRQP authorization failed after removal: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+        await this.fetchAdminJson(
+          `/entities/${entityId}/recognitions/${recognitionId}?recognized_registry_did=${encodeURIComponent(
+            recognizedRegistryDid
+          )}`,
+          {
+            method: "DELETE",
+          }
         );
+        this.addMessage(`TRQP admin: removed recognition ${recognitionId} from entity ${entityId}`);
+
+        const recResp = await fetch(`${trqpBaseUrl}/recognition`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const recBody = await readJsonSafe(recResp);
+        if (!recResp.ok) {
+          throw new Error(
+            `TRQP recognition failed after removal: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
+          );
+        }
+        const recognized = extractRecognitionResult(recBody.json);
+        this.context.recognizedAfterRemoval = recognized;
+        if (recognized) {
+          throw new Error("TRQP recognition still returns recognized=true after removal");
+        }
+        this.addMessage("TRQP recognition now returns recognized=false");
       }
-      const authorized = extractAuthorizationResult(authBody.json);
-      this.context.authorizedAfterRemoval = authorized;
-      if (authorized) {
-        throw new Error("TRQP authorization still returns authorized=true after removal");
-      }
-      this.addMessage("TRQP authorization now returns authorized=false");
 
       this.setAccepted();
       this.setCompleted();
@@ -1887,49 +2149,92 @@ class RestoreTrqpAuthorizationTask extends BaseRunnableTask {
     super.run();
     try {
       const adminBaseUrl = this.context.adminBaseUrl;
-      const entityId = this.context.entityId;
-      const authorizationId = this.context.authorizationId;
-      const payload = this.context.authorizationPayload;
       const trqpBaseUrl = this.context.trqpBaseUrl;
-      if (!adminBaseUrl || !entityId || !authorizationId || !payload || !trqpBaseUrl) {
-        throw new Error("TRQP enforcement context incomplete; cannot restore authorization");
+      const mode: TrqpMode = this.context.trqpMode || "both";
+      const runAuthorization = mode === "authorization" || mode === "both";
+      const runRecognition = mode === "recognition" || mode === "both";
+      if (!adminBaseUrl || !trqpBaseUrl) {
+        throw new Error("TRQP enforcement context incomplete; cannot restore policy bindings");
+      }
+      this.addMessage(`TRQP mode selected: ${mode}`);
+
+      if (runAuthorization) {
+        const entityId = this.context.authorizationEntityId;
+        const authorizationId = this.context.authorizationId;
+        const payload = this.context.authorizationPayload;
+        if (!entityId || !authorizationId || !payload) {
+          throw new Error("TRQP authorization context incomplete; cannot restore authorization");
+        }
+
+        const initialIds = this.context.initialAuthorizationIds || [];
+        if (!initialIds.includes(authorizationId)) {
+          this.addMessage("TRQP admin: no authorization restore required (was not present initially)");
+        } else {
+          const currentIds = await this.getEntityAuthorizationIds(entityId);
+          if (currentIds.includes(authorizationId)) {
+            this.addMessage(`TRQP admin: authorization ${authorizationId} already present`);
+          } else {
+            await this.fetchAdminJson(`/entities/${entityId}/authorizations/${authorizationId}`, {
+              method: "POST",
+            });
+            this.addMessage(`TRQP admin: restored authorization ${authorizationId} for entity ${entityId}`);
+          }
+        }
+
+        const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const authBody = await readJsonSafe(authResp);
+        if (!authResp.ok) {
+          throw new Error(
+            `TRQP authorization failed after restore: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+          );
+        }
+        const authorized = extractAuthorizationResult(authBody.json);
+        this.addMessage(`TRQP authorization restored (authorized=${authorized})`);
       }
 
-      const initialIds = this.context.initialAuthorizationIds || [];
-      if (!initialIds.includes(authorizationId)) {
-        this.addMessage("TRQP admin: no authorization restore required (was not present initially)");
-        this.setAccepted();
-        this.setCompleted();
-        return;
-      }
+      if (runRecognition) {
+        const entityId = this.context.recognitionEntityId;
+        const recognitionId = this.context.recognitionId;
+        const payload = this.context.recognitionPayload;
+        if (!entityId || !recognitionId || !payload) {
+          throw new Error("TRQP recognition context incomplete; cannot restore recognition");
+        }
+        const recognizedRegistryDid = payload.entity_id;
+        if (!recognizedRegistryDid) {
+          throw new Error("TRQP recognition payload missing entity_id; cannot restore recognition");
+        }
 
-      const entityDetails = await this.fetchAdminJson(`/entities/${entityId}`);
-      const currentIds = Array.isArray(entityDetails?.authorizations)
-        ? entityDetails.authorizations.map((auth: any) => auth?.id).filter((id: any) => Number.isFinite(id))
-        : [];
-      if (currentIds.includes(authorizationId)) {
-        this.addMessage(`TRQP admin: authorization ${authorizationId} already present`);
-        this.setAccepted();
-        this.setCompleted();
-        return;
-      }
+        const initialIds = this.context.initialRecognitionIds || [];
+        if (!initialIds.includes(recognitionId)) {
+          this.addMessage("TRQP admin: no recognition restore required (was not present initially)");
+        } else {
+          const currentIds = await this.getEntityRecognitionIds(entityId);
+          if (currentIds.includes(recognitionId)) {
+            this.addMessage(`TRQP admin: recognition ${recognitionId} already present`);
+          } else {
+            await this.addRecognitionBinding(entityId, recognitionId, recognizedRegistryDid);
+            this.addMessage(`TRQP admin: restored recognition ${recognitionId} for entity ${entityId}`);
+          }
+        }
 
-      await this.fetchAdminJson(`/entities/${entityId}/authorizations/${authorizationId}`, { method: "POST" });
-      this.addMessage(`TRQP admin: restored authorization ${authorizationId} for entity ${entityId}`);
-
-      const authResp = await fetch(`${trqpBaseUrl}/authorization`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const authBody = await readJsonSafe(authResp);
-      if (!authResp.ok) {
-        throw new Error(
-          `TRQP authorization failed after restore: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
-        );
+        const recResp = await fetch(`${trqpBaseUrl}/recognition`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const recBody = await readJsonSafe(recResp);
+        if (!recResp.ok) {
+          throw new Error(
+            `TRQP recognition failed after restore: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
+          );
+        }
+        const recognized = extractRecognitionResult(recBody.json);
+        this.addMessage(`TRQP recognition restored (recognized=${recognized})`);
       }
-      const authorized = extractAuthorizationResult(authBody.json);
-      this.addMessage(`TRQP authorization restored (authorized=${authorized})`);
 
       this.setAccepted();
       this.setCompleted();
@@ -1978,6 +2283,109 @@ class RestoreTrqpAuthorizationTask extends BaseRunnableTask {
     }
     return undefined;
   }
+
+  private async addRecognitionBinding(
+    entityId: number,
+    recognitionId: number,
+    recognizedRegistryDid: string
+  ): Promise<void> {
+    const payload = {
+      recognition_id: recognitionId,
+      recognized_registry_did: recognizedRegistryDid,
+      recognized: true,
+    };
+    try {
+      await this.fetchAdminJson(`/entities/${entityId}/recognitions`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const routeMissing = message.includes("(404") || message.includes("Not Found");
+      if (!routeMissing) {
+        throw err;
+      }
+      await this.fetchAdminJson(`/entities/${entityId}/recognitions/${recognitionId}`, {
+        method: "POST",
+      });
+    }
+  }
+
+  private collectRelationIds(
+    payload: any,
+    embeddedKey: "authorizations" | "recognitions",
+    linkKey: "authorization_id" | "recognition_id"
+  ): number[] {
+    if (!payload) return [];
+    const toId = (value: any): number | null => {
+      if (Number.isFinite(value)) return value;
+      const nestedId = value?.id;
+      if (Number.isFinite(nestedId)) return nestedId;
+      const linkId = value?.[linkKey];
+      if (Number.isFinite(linkId)) return linkId;
+      return null;
+    };
+
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.[embeddedKey])
+        ? payload[embeddedKey]
+        : Array.isArray(payload?.results)
+          ? payload.results
+          : Array.isArray(payload?.records)
+            ? payload.records
+            : [];
+
+    return list
+      .map((item: any) => toId(item))
+      .filter((id: number | null): id is number => Number.isFinite(id));
+  }
+
+  private async getEntityAuthorizationIds(entityId: number): Promise<number[]> {
+    const entityDetails = await this.fetchAdminJson(`/entities/${entityId}`);
+    const embeddedIds = this.collectRelationIds(entityDetails, "authorizations", "authorization_id");
+    const hasEmbeddedAuthorizations =
+      !!entityDetails &&
+      typeof entityDetails === "object" &&
+      Object.prototype.hasOwnProperty.call(entityDetails, "authorizations");
+    if (hasEmbeddedAuthorizations) {
+      return embeddedIds;
+    }
+    try {
+      const relationRows = await this.fetchAdminJson(`/entities/${entityId}/authorizations`);
+      return this.collectRelationIds(relationRows, "authorizations", "authorization_id");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const routeMissing = message.includes("(404") || message.includes("Not Found");
+      if (routeMissing) {
+        return embeddedIds;
+      }
+      throw err;
+    }
+  }
+
+  private async getEntityRecognitionIds(entityId: number): Promise<number[]> {
+    const entityDetails = await this.fetchAdminJson(`/entities/${entityId}`);
+    const embeddedIds = this.collectRelationIds(entityDetails, "recognitions", "recognition_id");
+    const hasEmbeddedRecognitions =
+      !!entityDetails &&
+      typeof entityDetails === "object" &&
+      Object.prototype.hasOwnProperty.call(entityDetails, "recognitions");
+    if (hasEmbeddedRecognitions) {
+      return embeddedIds;
+    }
+    try {
+      const relationRows = await this.fetchAdminJson(`/entities/${entityId}/recognitions`);
+      return this.collectRelationIds(relationRows, "recognitions", "recognition_id");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const routeMissing = message.includes("(404") || message.includes("Not Found");
+      if (routeMissing) {
+        return embeddedIds;
+      }
+      throw err;
+    }
+  }
 }
 
 class TrqpEnforcementEvaluationTask extends BaseRunnableTask {
@@ -1993,22 +2401,40 @@ class TrqpEnforcementEvaluationTask extends BaseRunnableTask {
     const errors: string[] = [];
     const run1 = this.context.run1Result;
     const run2 = this.context.run2Result;
+    const mode: TrqpMode = this.context.trqpMode || "both";
+    const runAuthorization = mode === "authorization" || mode === "both";
+    const runRecognition = mode === "recognition" || mode === "both";
 
     this.addMessage(
       `TRQP enforcement summary: run1 verified=${String(run1?.verified)} state=${run1?.state ?? "unknown"}; ` +
         `run2 verified=${String(run2?.verified)} state=${run2?.state ?? "unknown"}`
     );
-    this.addMessage(
-      `TRQP authorization: before=${String(this.context.authorizedBefore)} afterRemoval=${String(
-        this.context.authorizedAfterRemoval
-      )}`
-    );
-
-    if (this.context.authorizedBefore !== true) {
-      errors.push("TRQP authorization was not true before run 1");
+    this.addMessage(`TRQP mode selected: ${mode}`);
+    if (runAuthorization) {
+      this.addMessage(
+        `TRQP authorization: before=${String(this.context.authorizedBefore)} afterRemoval=${String(
+          this.context.authorizedAfterRemoval
+        )}`
+      );
+      if (this.context.authorizedBefore !== true) {
+        errors.push("TRQP authorization was not true before run 1");
+      }
+      if (this.context.authorizedAfterRemoval !== false) {
+        errors.push("TRQP authorization did not flip to false after removal");
+      }
     }
-    if (this.context.authorizedAfterRemoval !== false) {
-      errors.push("TRQP authorization did not flip to false after removal");
+    if (runRecognition) {
+      this.addMessage(
+        `TRQP recognition: before=${String(this.context.recognizedBefore)} afterRemoval=${String(
+          this.context.recognizedAfterRemoval
+        )}`
+      );
+      if (this.context.recognizedBefore !== true) {
+        errors.push("TRQP recognition was not true before run 1");
+      }
+      if (this.context.recognizedAfterRemoval !== false) {
+        errors.push("TRQP recognition did not flip to false after removal");
+      }
     }
 
     if (!run1) {
@@ -2023,7 +2449,7 @@ class TrqpEnforcementEvaluationTask extends BaseRunnableTask {
     if (!run2) {
       errors.push("Run 2 result missing; verifier flow did not complete after TRQP change");
     } else if (run2.verified === true) {
-      errors.push("Run 2 still verified=true after TRQP authorization removal");
+      errors.push("Run 2 still verified=true after TRQP policy binding removal");
     } else if (run2.error) {
       errors.push(`Run 2 error: ${run2.error}`);
     }
@@ -2086,18 +2512,20 @@ export default class VerifierAcaPyPipeline {
   private oobUrl: string | null;
   private oobUrlSecondary: string | null;
   private verifyTrqp: boolean;
+  private trqpMode: TrqpMode;
   private verifierController?: AgentController;
 
   constructor(
     controller: AgentController,
     oobUrl?: string,
     verifierController?: AgentController,
-    options?: { verifyTrqp?: boolean; oobUrlSecondary?: string | null }
+    options?: { verifyTrqp?: boolean; trqpMode?: TrqpMode; oobUrlSecondary?: string | null }
   ) {
     this.controller = controller;
     this.oobUrl = oobUrl || null;
     this.oobUrlSecondary = options?.oobUrlSecondary ?? null;
     this.verifyTrqp = options?.verifyTrqp ?? false;
+    this.trqpMode = options?.trqpMode ?? "both";
     this.verifierController = verifierController;
     this._dag = this._make(controller);
   }
@@ -2200,7 +2628,9 @@ export default class VerifierAcaPyPipeline {
       return dag;
     }
 
-    const trqpContext: TrqpEnforcementContext = {};
+    const trqpContext: TrqpEnforcementContext = {
+      trqpMode: this.trqpMode,
+    };
     const continueOnFailure = true;
     const run1ContinueOnFailure = false;
     const prepareContinueOnFailure = false;
@@ -2209,7 +2639,7 @@ export default class VerifierAcaPyPipeline {
       adapter,
       trqpContext,
       "Prepare TRQP Enforcement",
-      "Resolve TRQP endpoint and verify issuer authorization",
+      "Resolve TRQP endpoint and verify selected policy binding(s)",
       { continueOnFailure: prepareContinueOnFailure }
     );
 
@@ -2249,8 +2679,8 @@ export default class VerifierAcaPyPipeline {
 
     const disableTrqpTask = new DisableTrqpAuthorizationTask(
       trqpContext,
-      "Disable TRQP Authorization",
-      "Remove issuer authorization before run 2",
+      "Disable TRQP Policy Binding",
+      "Remove selected TRQP policy binding(s) before run 2",
       { continueOnFailure }
     );
 
@@ -2289,8 +2719,8 @@ export default class VerifierAcaPyPipeline {
 
     const restoreTrqpTask = new RestoreTrqpAuthorizationTask(
       trqpContext,
-      "Restore TRQP Authorization",
-      "Restore trust registry authorization after run 2"
+      "Restore TRQP Policy Binding",
+      "Restore selected TRQP policy binding(s) after run 2"
     );
 
     const enforcementEvalTask = new TrqpEnforcementEvaluationTask(
