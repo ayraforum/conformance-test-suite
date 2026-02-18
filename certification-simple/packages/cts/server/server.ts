@@ -14,7 +14,24 @@ import type { Config as NgrokConfig } from "@ngrok/ngrok";
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from "uuid";
-import { setDAG, setPipeline, setConfig, setAgent, setController, setCredoController, setIssuerController, setVerifierController, setIssuerAgentType, setCredentialFormat, setTrqpMode, state as serverState, type TrqpMode } from "./state";
+import {
+  setDAG,
+  setPipeline,
+  setConfig,
+  setAgent,
+  setController,
+  setCredoController,
+  setIssuerController,
+  setVerifierController,
+  setIssuerAgentType,
+  setCredentialFormat,
+  setTrqpMode,
+  setTrqpPolicyProfile,
+  state as serverState,
+  type TrqpMode,
+  type TrqpPolicyBindingProfile,
+  type TrqpPolicyProfile,
+} from "./state";
 import { PipelineType } from "./pipelines";
 import { runServer } from "./api";
 import { emitDAGUpdate } from "./ws";
@@ -38,6 +55,34 @@ const normalizeTrqpMode = (value: unknown): TrqpMode | null => {
     return normalized;
   }
   return null;
+};
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const normalizePolicyBinding = (value: unknown): TrqpPolicyBindingProfile | undefined => {
+  if (!isObject(value)) return undefined;
+  const action = normalizeEnvValue(typeof value.action === "string" ? value.action : "");
+  const resource = normalizeEnvValue(typeof value.resource === "string" ? value.resource : "");
+  const capability = normalizeEnvValue(typeof value.capability === "string" ? value.capability : "");
+  const normalized: TrqpPolicyBindingProfile = {};
+  if (action) normalized.action = action;
+  if (resource) normalized.resource = resource;
+  if (capability) normalized.capability = capability;
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+};
+
+const normalizeTrqpPolicyProfile = (value: unknown): TrqpPolicyProfile | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (!isObject(value)) {
+    throw new Error("trqpPolicyProfile must be an object");
+  }
+  const authorization = normalizePolicyBinding(value.authorization);
+  const recognition = normalizePolicyBinding(value.recognition);
+  const normalized: TrqpPolicyProfile = {};
+  if (authorization) normalized.authorization = authorization;
+  if (recognition) normalized.recognition = recognition;
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 };
 
 
@@ -428,8 +473,11 @@ export const run = async (params?: any) => {
         );
       }
       setTrqpMode(mode);
+      const policyProfile = normalizeTrqpPolicyProfile(params?.trqpPolicyProfile);
+      setTrqpPolicyProfile(policyProfile);
     } else {
       setTrqpMode(undefined);
+      setTrqpPolicyProfile(undefined);
     }
     if (params?.pipelineType) {
       const pipelineType = params.pipelineType as PipelineType;

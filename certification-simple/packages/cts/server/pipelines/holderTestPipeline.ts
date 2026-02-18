@@ -11,7 +11,7 @@ import {
 import { randomUUID } from "crypto";
 
 import { DAG } from "@demo/core/pipeline/src/dag";
-import { state as serverState, type TrqpMode } from "../state";
+import { state as serverState, type TrqpMode, type TrqpPolicyProfile } from "../state";
 
 const normalizeEnvValue = (value?: string): string => (value ?? "").split("#")[0].trim();
 const normalizeEnvBool = (value?: string): boolean =>
@@ -320,12 +320,12 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
 
 class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
   private controller: AgentController;
-  private options: RequestProofOptions & { trqpMode?: TrqpMode };
+  private options: RequestProofOptions & { trqpMode?: TrqpMode; trqpPolicyProfile?: TrqpPolicyProfile };
   private presentationRecord: any;
 
   constructor(
     controller: AgentController,
-    options: RequestProofOptions & { trqpMode?: TrqpMode },
+    options: RequestProofOptions & { trqpMode?: TrqpMode; trqpPolicyProfile?: TrqpPolicyProfile },
     name: string,
     description?: string
   ) {
@@ -498,6 +498,15 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
     this.addMessage(
       `TRQP mapping: entity_id=${authorizationPayload.entity_id} authority_id=${authorizationPayload.authority_id} action=${authorizationPayload.action} resource=${authorizationPayload.resource}`
     );
+    this.addMessage(
+      `TRQP recognition mapping: entity_id=${recognitionPayload.entity_id} authority_id=${recognitionPayload.authority_id} action=${recognitionPayload.action} resource=${recognitionPayload.resource}`
+    );
+    const recognitionContext = (recognitionPayload as any)?.context;
+    const recognitionCapability =
+      typeof recognitionContext?.capability === "string" ? recognitionContext.capability : "";
+    if (recognitionCapability) {
+      this.addMessage(`TRQP recognition capability: ${recognitionCapability}`);
+    }
     const mode: TrqpMode = this.options.trqpMode || serverState.trqpMode || "both";
     const runAuthorization = mode === "authorization" || mode === "both";
     const runRecognition = mode === "recognition" || mode === "both";
@@ -575,6 +584,9 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
   private buildTrqpPayloads(vc: any) {
     const issuerDid = this.extractIssuerDid(vc);
     const subject = this.extractCredentialSubject(vc);
+    const profile = this.options.trqpPolicyProfile || serverState.trqpPolicyProfile;
+    const authorizationProfile = profile?.authorization;
+    const recognitionProfile = profile?.recognition;
     const subjectIssuer = typeof subject?.issuer_id === "string" ? subject.issuer_id : "";
     if (subjectIssuer && subjectIssuer !== issuerDid) {
       throw new Error(
@@ -597,17 +609,24 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
     const authorizationPayload = {
       entity_id: issuerDid,
       authority_id: ecosystemId,
-      action: "issue",
-      resource: `ayracard:${cardType}`,
+      action: authorizationProfile?.action || "issue",
+      resource: authorizationProfile?.resource || `ayracard:${cardType}`,
     };
     const recognitionPayload: Record<string, unknown> = {
       entity_id: ecosystemId,
       authority_id: atnDid,
-      action: "member-of",
-      resource: "ayratrustnetwork",
+      action: recognitionProfile?.action || "member-of",
+      resource: recognitionProfile?.resource || "ayratrustnetwork",
     };
+    const recognitionContext: Record<string, unknown> = {};
     if (issuanceTime) {
-      recognitionPayload.context = { time: issuanceTime };
+      recognitionContext.time = issuanceTime;
+    }
+    if (recognitionProfile?.capability) {
+      recognitionContext.capability = recognitionProfile.capability;
+    }
+    if (Object.keys(recognitionContext).length > 0) {
+      recognitionPayload.context = recognitionContext;
     }
     return { authorizationPayload, recognitionPayload, ecosystemId };
   }
@@ -771,11 +790,18 @@ export default class HolderTestPipeline {
   _controller: AgentController;
   _verifyTRQP: boolean;
   _trqpMode: TrqpMode;
+  _trqpPolicyProfile?: TrqpPolicyProfile;
 
-  constructor(controller: AgentController, verifyTRQP = false, trqpMode: TrqpMode = "both") {
+  constructor(
+    controller: AgentController,
+    verifyTRQP = false,
+    trqpMode: TrqpMode = "both",
+    trqpPolicyProfile?: TrqpPolicyProfile
+  ) {
     this._controller = controller;
     this._verifyTRQP = verifyTRQP;
     this._trqpMode = trqpMode;
+    this._trqpPolicyProfile = trqpPolicyProfile;
     this._dag = this._make(controller);
   }
 
@@ -924,10 +950,14 @@ export default class HolderTestPipeline {
           : credoPresentationExchangeProof
         : anonCredsProof;
 
-    const requestProofOptions: RequestProofOptions & { trqpMode?: TrqpMode } = {
+    const requestProofOptions: RequestProofOptions & {
+      trqpMode?: TrqpMode;
+      trqpPolicyProfile?: TrqpPolicyProfile;
+    } = {
       proof: proof,
       checkTrustRegistry: this._verifyTRQP || serverState.verifyTRQP || false,
       trqpMode: this._trqpMode || serverState.trqpMode || "both",
+      trqpPolicyProfile: this._trqpPolicyProfile || serverState.trqpPolicyProfile,
       trqpURL:
         process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT ||
         process.env.NEXT_PUBLIC_TRQP_LOCAL_URL,

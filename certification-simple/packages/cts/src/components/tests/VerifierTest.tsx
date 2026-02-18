@@ -12,6 +12,42 @@ import jsQR from "jsqr";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
 type TrqpMode = "authorization" | "recognition" | "both";
+type TrqpPolicyProfileInput = {
+  authorization: {
+    action: string;
+    resource: string;
+  };
+  recognition: {
+    action: string;
+    resource: string;
+    capability: string;
+  };
+};
+type TrqpPolicyProfilePatch = {
+  authorization?: Partial<TrqpPolicyProfileInput["authorization"]>;
+  recognition?: Partial<TrqpPolicyProfileInput["recognition"]>;
+};
+
+const buildTrqpPolicyProfile = (input: TrqpPolicyProfileInput) => {
+  const authAction = input.authorization.action.trim();
+  const authResource = input.authorization.resource.trim();
+  const recAction = input.recognition.action.trim();
+  const recResource = input.recognition.resource.trim();
+  const recCapability = input.recognition.capability.trim();
+  const profile: any = {};
+  if (authAction || authResource) {
+    profile.authorization = {};
+    if (authAction) profile.authorization.action = authAction;
+    if (authResource) profile.authorization.resource = authResource;
+  }
+  if (recAction || recResource || recCapability) {
+    profile.recognition = {};
+    if (recAction) profile.recognition.action = recAction;
+    if (recResource) profile.recognition.resource = recResource;
+    if (recCapability) profile.recognition.capability = recCapability;
+  }
+  return Object.keys(profile).length > 0 ? profile : undefined;
+};
 
 // Simple Message Renderer Component
 function MessageRenderer({ messages, title = "Step Log" }: { messages: string[]; title?: string; }) {
@@ -40,6 +76,8 @@ function VerifierConnectionStep({
   onVerifyTrqpChange,
   trqpMode,
   onTrqpModeChange,
+  trqpPolicyProfile,
+  onTrqpPolicyProfileChange,
 }: {
   isActive: boolean;
   taskData?: TaskNode;
@@ -47,6 +85,8 @@ function VerifierConnectionStep({
   onVerifyTrqpChange: (value: boolean) => void;
   trqpMode: TrqpMode;
   onTrqpModeChange: (value: TrqpMode) => void;
+  trqpPolicyProfile: TrqpPolicyProfileInput;
+  onTrqpPolicyProfileChange: (patch: TrqpPolicyProfilePatch) => void;
 }) {
   const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
@@ -149,6 +189,7 @@ function VerifierConnectionStep({
             pipelineType: 'VERIFIER_TEST',
             verifyTRQP: verifyTrqp,
             trqpMode,
+            trqpPolicyProfile: verifyTrqp ? buildTrqpPolicyProfile(trqpPolicyProfile) : undefined,
           }),
         });
         if (!runResponse.ok) {
@@ -275,6 +316,88 @@ function VerifierConnectionStep({
                 TRQP enforcement runs the verifier flow twice and reuses the same connection. Send a second proof
                 request on the existing connection after CTS disables the selected policy binding(s).
               </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Authorization Action (optional)</label>
+                  <input
+                    type="text"
+                    value={trqpPolicyProfile.authorization.action}
+                    onChange={(e) =>
+                      onTrqpPolicyProfileChange({
+                        authorization: {
+                          action: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="issue"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Authorization Resource (optional)</label>
+                  <input
+                    type="text"
+                    value={trqpPolicyProfile.authorization.resource}
+                    onChange={(e) =>
+                      onTrqpPolicyProfileChange({
+                        authorization: {
+                          resource: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="ayracard:businesscard"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Recognition Action (optional)</label>
+                  <input
+                    type="text"
+                    value={trqpPolicyProfile.recognition.action}
+                    onChange={(e) =>
+                      onTrqpPolicyProfileChange({
+                        recognition: {
+                          action: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="member-of"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Recognition Resource (optional)</label>
+                  <input
+                    type="text"
+                    value={trqpPolicyProfile.recognition.resource}
+                    onChange={(e) =>
+                      onTrqpPolicyProfileChange({
+                        recognition: {
+                          resource: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="ayratrustnetwork"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-gray-600 mb-1">Recognition Capability (optional)</label>
+                  <input
+                    type="text"
+                    value={trqpPolicyProfile.recognition.capability}
+                    onChange={(e) =>
+                      onTrqpPolicyProfileChange({
+                        recognition: {
+                          capability: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="manage-issuers:ayracard:businesscard"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
             </div>
           )}
           <div>
@@ -433,6 +556,10 @@ export function VerifierTest() {
     Boolean(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
   const [verifyTrqp, setVerifyTrqp] = useState(defaultTRQP);
   const [trqpMode, setTrqpMode] = useState<TrqpMode>("both");
+  const [trqpPolicyProfile, setTrqpPolicyProfile] = useState<TrqpPolicyProfileInput>({
+    authorization: { action: "", resource: "" },
+    recognition: { action: "", resource: "", capability: "" },
+  });
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
@@ -622,6 +749,19 @@ export function VerifierTest() {
           onVerifyTrqpChange={setVerifyTrqp}
           trqpMode={trqpMode}
           onTrqpModeChange={setTrqpMode}
+          trqpPolicyProfile={trqpPolicyProfile}
+          onTrqpPolicyProfileChange={(patch) =>
+            setTrqpPolicyProfile((prev) => ({
+              authorization: {
+                ...prev.authorization,
+                ...(patch.authorization || {}),
+              },
+              recognition: {
+                ...prev.recognition,
+                ...(patch.recognition || {}),
+              },
+            }))
+          }
         />
       ),
       isActive: computedCurrentStep === 0,
@@ -706,7 +846,7 @@ export function VerifierTest() {
     }
 
     setSteps(initialSteps);
-  }, [currentStep, dag, handleRestart, isTestRunning, verifyTrqp, trqpMode]);
+  }, [currentStep, dag, handleRestart, isTestRunning, verifyTrqp, trqpMode, trqpPolicyProfile]);
 
   return (
     <div>

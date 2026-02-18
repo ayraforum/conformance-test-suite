@@ -95,10 +95,16 @@ When the Verifier UI toggle is enabled, CTS runs the verifier flow twice:
 
 This proves whether the verifier consulted TRQP by comparing run outcomes.
 
-Phase 1 supports explicit TRQP policy modes:
+TRQP policy modes:
 - `authorization`: mutate/check authorization only
 - `recognition`: mutate/check recognition only
 - `both`: mutate/check both authorization and recognition
+
+Optional TR policy fields (UI labels) let you override what CTS checks:
+- Authorization Action / Authorization Resource
+- Recognition Action / Recognition Resource / Recognition Capability
+- `capability` is sent in recognition `context.capability`
+- If omitted, CTS uses defaults (`issue`/`ayracard:businesscard`, `member-of`/`ayratrustnetwork`)
 
 Requirements:
 - **ACA-Py holder mode** (`REFERENCE_AGENT=acapy`), because CTS must observe `verified` from ACA-Py records.
@@ -108,10 +114,41 @@ Requirements:
 
 Run/API input requirements:
 - UI: choose mode from the TRQP mode selector when the TRQP toggle is enabled.
+- UI (optional): provide overrides in the optional TRQP fields:
+  - Authorization Action / Authorization Resource
+  - Recognition Action / Recognition Resource / Recognition Capability
 - API: when `verifyTRQP=true`, include `trqpMode=authorization|recognition|both`.
+- API (optional): include `trqpPolicyProfile` to override the same policy fields shown in the UI.
+
+Example API payload:
+```json
+{
+  "pipelineType": "VERIFIER_TEST",
+  "verifyTRQP": true,
+  "trqpMode": "both",
+  "trqpPolicyProfile": {
+    "authorization": {
+      "action": "issue",
+      "resource": "ayracard:businesscard"
+    },
+    "recognition": {
+      "action": "member-of",
+      "resource": "ayratrustnetwork",
+      "capability": "manage-issuers:ayracard:businesscard"
+    }
+  }
+}
+```
 
 Relevant `.env` settings:
 - `TRQP_ADMIN_BASE_URL` (example: `https://sandbox-tr.ayra.network/admin`)
 - `TRQP_ADMIN_AUTH_HEADER` (default: `Authorization`)
 - `TRQP_ADMIN_AUTH_TOKEN` (if your admin API requires auth)
 - `ACAPY_VERIFIER_TRQP_ENFORCE` (demo verifier only; when `true`, sends a problem report on TRQP failure)
+
+Behavior details:
+- Optional TR policy fields apply in both holder and verifier flows.
+- If only some optional fields are set, CTS merges them with defaults.
+- `trqpMode=authorization` applies only authorization checks/mutations.
+- `trqpMode=recognition` applies only recognition checks/mutations.
+- `trqpMode=both` applies both.

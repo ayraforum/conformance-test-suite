@@ -4,7 +4,7 @@ import { DAG } from "@demo/core/pipeline/src/dag";
 import { Results } from "@demo/core/pipeline/src/types";
 import { AgentController, AcaPyAgentAdapter } from "@demo/core";
 import { randomUUID } from "crypto";
-import { state as serverState, type TrqpMode } from "../state";
+import { state as serverState, type TrqpMode, type TrqpPolicyProfile } from "../state";
 
 type ConnectionResult = {
   connectionId: string;
@@ -49,6 +49,7 @@ type TrqpRecognitionPayload = {
 
 type TrqpEnforcementContext = {
   trqpMode?: TrqpMode;
+  trqpPolicyProfile?: TrqpPolicyProfile;
   issuerDid?: string;
   ecosystemDid?: string;
   trustNetworkDid?: string;
@@ -271,7 +272,7 @@ function extractIssuanceTime(vc: any): string | null {
   return null;
 }
 
-function buildTrqpPayloads(vc: any): {
+function buildTrqpPayloads(vc: any, profile?: TrqpPolicyProfile): {
   authorizationPayload: TrqpAuthorizationPayload;
   recognitionPayload: TrqpRecognitionPayload;
   issuerDid: string;
@@ -281,6 +282,8 @@ function buildTrqpPayloads(vc: any): {
 } {
   const issuerDid = extractIssuerDid(vc);
   const subject = extractCredentialSubject(vc);
+  const authorizationProfile = profile?.authorization;
+  const recognitionProfile = profile?.recognition;
   const subjectIssuer = typeof subject?.issuer_id === "string" ? subject.issuer_id : "";
   if (subjectIssuer && subjectIssuer !== issuerDid) {
     throw new Error(
@@ -304,19 +307,26 @@ function buildTrqpPayloads(vc: any): {
   const recognitionPayload: TrqpRecognitionPayload = {
     entity_id: ecosystemDid,
     authority_id: trustNetworkDid,
-    action: "member-of",
-    resource: "ayratrustnetwork",
+    action: recognitionProfile?.action || "member-of",
+    resource: recognitionProfile?.resource || "ayratrustnetwork",
   };
+  const recognitionContext: Record<string, unknown> = {};
   if (issuanceTime) {
-    recognitionPayload.context = { time: issuanceTime };
+    recognitionContext.time = issuanceTime;
+  }
+  if (recognitionProfile?.capability) {
+    recognitionContext.capability = recognitionProfile.capability;
+  }
+  if (Object.keys(recognitionContext).length > 0) {
+    recognitionPayload.context = recognitionContext;
   }
 
   return {
     authorizationPayload: {
       entity_id: issuerDid,
       authority_id: ecosystemDid,
-      action: "issue",
-      resource: `ayracard:${cardType}`,
+      action: authorizationProfile?.action || "issue",
+      resource: authorizationProfile?.resource || `ayracard:${cardType}`,
     },
     recognitionPayload,
     issuerDid,
@@ -1647,8 +1657,9 @@ class PrepareTrqpEnforcementTask extends BaseRunnableTask {
       }
 
       const credential = await this.findAyraCredential();
+      const policyProfile = this.context.trqpPolicyProfile || serverState.trqpPolicyProfile;
       const { authorizationPayload, recognitionPayload, issuerDid, ecosystemDid, trustNetworkDid, cardType } =
-        buildTrqpPayloads(credential);
+        buildTrqpPayloads(credential, policyProfile);
       const trqpBaseUrl = await resolveTrqpEndpoint(ecosystemDid);
       const mode: TrqpMode = this.context.trqpMode || "both";
       const runAuthorization = mode === "authorization" || mode === "both";
@@ -1669,6 +1680,13 @@ class PrepareTrqpEnforcementTask extends BaseRunnableTask {
       this.addMessage(
         `TRQP recognition mapping: entity_id=${recognitionPayload.entity_id} authority_id=${recognitionPayload.authority_id} action=${recognitionPayload.action} resource=${recognitionPayload.resource}`
       );
+      const recognitionCapability =
+        typeof recognitionPayload.context?.capability === "string"
+          ? recognitionPayload.context.capability
+          : undefined;
+      if (recognitionCapability) {
+        this.addMessage(`TRQP recognition capability: ${recognitionCapability}`);
+      }
       this.addMessage(`TRQP endpoint resolved: ${trqpBaseUrl}`);
 
       if (runAuthorization) {
@@ -1710,7 +1728,8 @@ class PrepareTrqpEnforcementTask extends BaseRunnableTask {
         const recognitionEntity = await this.findEntityByDid(recognitionPayload.authority_id);
         const recognition = await this.findRecognition(
           recognitionPayload.action,
-          recognitionPayload.resource
+          recognitionPayload.resource,
+          recognitionCapability
         );
         const recognitionIds = await this.getEntityRecognitionIds(recognitionEntity.id);
         const hasRecognitionBinding = await this.hasEntityRecognitionBinding(
@@ -1873,13 +1892,39 @@ class PrepareTrqpEnforcementTask extends BaseRunnableTask {
     return { id: match.id };
   }
 
-  private async findRecognition(action: string, resource: string): Promise<{ id: number }> {
+  private capabilityMatches(entry: any, capability?: string): boolean {
+    if (!capability) return true;
+    const candidates = [
+      entry?.capability,
+      entry?.scope,
+      entry?.capability_scope,
+      entry?.context?.capability,
+      entry?.metadata?.capability,
+    ];
+    return candidates.some((candidate) => typeof candidate === "string" && candidate === capability);
+  }
+
+  private async findRecognition(
+    action: string,
+    resource: string,
+    capability?: string
+  ): Promise<{ id: number }> {
     const recognitions = await this.fetchAdminJson("/recognitions");
     const list = Array.isArray(recognitions)
       ? recognitions
       : recognitions?.results || recognitions?.records || [];
-    const match = list.find((entry: any) => entry?.action === action && entry?.resource === resource);
+    const match = list.find(
+      (entry: any) =>
+        entry?.action === action &&
+        entry?.resource === resource &&
+        this.capabilityMatches(entry, capability)
+    );
     if (!match || !Number.isFinite(match.id)) {
+      if (capability) {
+        throw new Error(
+          `Recognition not found in TR admin: ${action} ${resource} (capability=${capability})`
+        );
+      }
       throw new Error(`Recognition not found in TR admin: ${action} ${resource}`);
     }
     return { id: match.id };
@@ -2513,19 +2558,26 @@ export default class VerifierAcaPyPipeline {
   private oobUrlSecondary: string | null;
   private verifyTrqp: boolean;
   private trqpMode: TrqpMode;
+  private trqpPolicyProfile?: TrqpPolicyProfile;
   private verifierController?: AgentController;
 
   constructor(
     controller: AgentController,
     oobUrl?: string,
     verifierController?: AgentController,
-    options?: { verifyTrqp?: boolean; trqpMode?: TrqpMode; oobUrlSecondary?: string | null }
+    options?: {
+      verifyTrqp?: boolean;
+      trqpMode?: TrqpMode;
+      trqpPolicyProfile?: TrqpPolicyProfile;
+      oobUrlSecondary?: string | null;
+    }
   ) {
     this.controller = controller;
     this.oobUrl = oobUrl || null;
     this.oobUrlSecondary = options?.oobUrlSecondary ?? null;
     this.verifyTrqp = options?.verifyTrqp ?? false;
     this.trqpMode = options?.trqpMode ?? "both";
+    this.trqpPolicyProfile = options?.trqpPolicyProfile;
     this.verifierController = verifierController;
     this._dag = this._make(controller);
   }
@@ -2630,6 +2682,7 @@ export default class VerifierAcaPyPipeline {
 
     const trqpContext: TrqpEnforcementContext = {
       trqpMode: this.trqpMode,
+      trqpPolicyProfile: this.trqpPolicyProfile || serverState.trqpPolicyProfile,
     };
     const continueOnFailure = true;
     const run1ContinueOnFailure = false;

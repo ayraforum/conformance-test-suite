@@ -4,7 +4,7 @@ Conformance tooling for Ayra Trust Network implementations built on the `certifi
 
 **Current coverage**
 - ✅ TRQP trust registry checks
-- ✅ TRQP policy mode profiles (Phase 1: `authorization | recognition | both`)
+- ✅ TRQP mode selection + optional policy field overrides in Holder/Verifier flows
 - ✅ Holder conformance flow
 - ✅ Issue flow (utility flow, not scored as a conformance flow)
 - 🚧 Verifier conformance flow (being finished now)
@@ -102,16 +102,52 @@ For NGROK domain planning, tunnel rotation, and the full list of optional variab
 - `REFERENCE_AGENT_NGROK_DOMAIN` is the hostname wallets use to reach the reference agent. When ACA-Py is the reference agent, the `acapy-ngrok` sidecar automatically advertises this domain.
 - `VERIFIER_TEST_NGROK_DOMAIN` is only used by the standalone `test-verifier` container for scripted CLI checks; it does not affect the UI flows.
 
-### TRQP Policy Mode (Phase 1)
+### TRQP Checks and Policy Settings
 
-When TRQP checks are enabled, CTS now runs with an explicit policy mode:
+When TRQP checks are enabled, CTS runs with a selected TR policy mode:
 
 - `authorization`: authorization checks only
 - `recognition`: recognition checks only
 - `both`: run both checks
 
-Mode is selected in the Holder and Verifier UIs when TRQP is enabled, and is sent to the server as `trqpMode`.
-For API runs, `verifyTRQP=true` requires `trqpMode=authorization|recognition|both`.
+In the Holder and Verifier UIs, users can optionally set:
+- Authorization Action
+- Authorization Resource
+- Recognition Action
+- Recognition Resource
+- Recognition Capability (optional)
+
+If these fields are left blank, CTS uses the current defaults for Ayra card checks:
+- Authorization: `issue` on `ayracard:businesscard`
+- Recognition: `member-of` on `ayratrustnetwork`
+
+Usage:
+- UI (Holder + Verifier): enable TRQP, choose `TRQP Mode`, then optionally fill the TR policy fields.
+- API:
+
+```json
+{
+  "pipelineType": "VERIFIER_TEST",
+  "verifyTRQP": true,
+  "trqpMode": "both",
+  "trqpPolicyProfile": {
+    "authorization": {
+      "action": "issue",
+      "resource": "ayracard:businesscard"
+    },
+    "recognition": {
+      "action": "member-of",
+      "resource": "ayratrustnetwork",
+      "capability": "manage-issuers:ayracard:businesscard"
+    }
+  }
+}
+```
+
+Notes:
+- `trqpPolicyProfile` is optional.
+- Fields not supplied in `trqpPolicyProfile` fall back to defaults.
+- Only checks selected by `trqpMode` are enforced.
 
 ### DID:web Issuer (optional)
 

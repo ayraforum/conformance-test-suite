@@ -16,6 +16,15 @@ export type Pipeline = {
 };
 
 export type TrqpMode = "authorization" | "recognition" | "both";
+export type TrqpPolicyBindingProfile = {
+  action?: string;
+  resource?: string;
+  capability?: string;
+};
+export type TrqpPolicyProfile = {
+  authorization?: TrqpPolicyBindingProfile;
+  recognition?: TrqpPolicyBindingProfile;
+};
 
 export type State = {
   dag?: DAG;
@@ -35,6 +44,7 @@ export type State = {
   lastIssuedWalletRecordId?: string;
   holderPresentationDid?: string;
   trqpMode?: TrqpMode;
+  trqpPolicyProfile?: TrqpPolicyProfile;
 };
 
 const _state: State = {};
@@ -111,6 +121,10 @@ export const setTrqpMode = (mode?: TrqpMode) => {
   _state.trqpMode = mode;
 };
 
+export const setTrqpPolicyProfile = (profile?: TrqpPolicyProfile) => {
+  _state.trqpPolicyProfile = profile;
+};
+
 export { _state as state };
 
 export const selectPipeline = (type: PipelineType): Pipeline => {
@@ -165,7 +179,12 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
         if (!controller) {
           throw new Error("agent controller not defined");
         }
-        pipe = new HolderTestPipeline(controller, _state.verifyTRQP ?? false, _state.trqpMode);
+        pipe = new HolderTestPipeline(
+          controller,
+          _state.verifyTRQP ?? false,
+          _state.trqpMode,
+          _state.trqpPolicyProfile
+        );
       }
       break;
     case PipelineType.ISSUER_TEST:
@@ -254,6 +273,7 @@ export const selectPipeline = (type: PipelineType): Pipeline => {
           pipe = new VerifierAcaPyPipeline(_state.controller, undefined, _state.verifierController, {
             verifyTrqp: _state.verifyTRQP ?? false,
             trqpMode: _state.trqpMode,
+            trqpPolicyProfile: _state.trqpPolicyProfile,
           });
           break;
         }

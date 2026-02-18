@@ -153,12 +153,38 @@ npm run test-all
 ### **Trust Registry (TRQP) Conformance**
 
 - **Core checks**: Uses TRQP `POST /authorization` and `POST /recognition` (entity_id, authority_id, action, resource, optional context). Ayra extension API tests (metadata/lookups) run separately.
-- **Policy mode profiles (Phase 1)**: `authorization`, `recognition`, or `both`. Holder and Verifier flows execute only the selected checks when TRQP is enabled.
-- **Holder flow mapping**: Derives TRQP payloads from the presented VC (entity_id=issuer.id, authority_id=credentialSubject.ecosystem_id, action=issue, resource=ayracard:<card_type>; recognition uses entity_id=ecosystem_id, authority_id=ayra_trust_network_did, action=member-of, resource=ayratrustnetwork, context.time=issuance time) and resolves the TRQP endpoint from the ecosystem DID.
+- **Policy modes**: `authorization`, `recognition`, or `both`. Holder and Verifier flows execute only the selected checks when TRQP is enabled.
+- **Optional policy fields (UI labels)**:
+  - Authorization Action / Authorization Resource
+  - Recognition Action / Recognition Resource / Recognition Capability
+- **Holder flow mapping**: Derives TRQP payloads from the presented VC (entity_id=issuer.id, authority_id=credentialSubject.ecosystem_id, action=issue, resource=ayracard:<card_type>; recognition uses entity_id=ecosystem_id, authority_id=ayra_trust_network_did, action=member-of, resource=ayratrustnetwork, context.time=issuance time) and resolves the TRQP endpoint from the ecosystem DID. Optional policy fields override action/resource defaults when supplied.
 - **Configuration**: Set a resolver (`NEXT_PUBLIC_DID_RESOLVER_URL`) or bypass with a known TRQP endpoint (`NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT`). Dev override via `NEXT_PUBLIC_TRQP_LOCAL_URL`.
 - **Env location**: TRQP env keys live in `packages/cts/.env.local` (also listed in the root `.env.example` and synced from `NEXT_PUBLIC_*` in the root `.env` on dev/build/start).
 - **Verifier policy signal**: When TRQP authorization or recognition fails, the verifier should send a Present Proof v2 problem report. This is recommended practice and is mandatory for CTS conformance runs.
-- **Run contract**: For API runs, `verifyTRQP=true` requires `trqpMode=authorization|recognition|both`.
+- **Run contract**:
+  - For API runs, `verifyTRQP=true` requires `trqpMode=authorization|recognition|both`.
+  - Optional `trqpPolicyProfile` can override the same policy fields shown in the UI; omitted fields use defaults.
+- **Usage**:
+  - UI: in Holder or Verifier flow, enable TRQP and optionally fill policy fields.
+  - API: send `trqpPolicyProfile` in `/api/run` when `verifyTRQP=true`.
+  - Partial profile is allowed; unset fields use defaults.
+  - Recognition capability is optional and mapped to `recognition.context.capability`.
+
+Example `/api/run` payload:
+```json
+{
+  "pipelineType": "HOLDER_TEST",
+  "verifyTRQP": true,
+  "trqpMode": "recognition",
+  "trqpPolicyProfile": {
+    "recognition": {
+      "action": "member-of",
+      "resource": "ayratrustnetwork",
+      "capability": "manage-issuers:ayracard:businesscard"
+    }
+  }
+}
+```
 
 ### **Test Execution Flow**
 
