@@ -8,6 +8,7 @@ import { DetailedReport } from "@/components/common/DetailedReport";
 import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
 import { startTest, resetTest, addMessage } from "@/store/testSlice";
+import { clearDAG } from "@/store/dagSlice";
 
 // Types matching your existing backend
 interface DAGData {
@@ -120,6 +121,8 @@ function TaskDetailsRenderer({
   );
 }
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
+const TRQP_SUGGEST_HELPER_ENABLED =
+  (process.env.NEXT_PUBLIC_TRQP_SUGGEST_FROM_TR_ENABLED || "").toLowerCase() === "true";
 type TrqpMode = "authorization" | "recognition" | "both";
 type TrqpPolicyProfileInput = {
   authorization: {
@@ -132,6 +135,15 @@ type TrqpPolicyProfileInput = {
     capability: string;
   };
 };
+type TrqpPolicyProfilePatch = {
+  authorization?: Partial<TrqpPolicyProfileInput["authorization"]>;
+  recognition?: Partial<TrqpPolicyProfileInput["recognition"]>;
+};
+
+const cloneTrqpProfile = (profile: TrqpPolicyProfileInput): TrqpPolicyProfileInput => ({
+  authorization: { ...profile.authorization },
+  recognition: { ...profile.recognition },
+});
 
 const buildTrqpPolicyProfile = (input: TrqpPolicyProfileInput) => {
   const authAction = input.authorization.action.trim();
@@ -181,13 +193,18 @@ function ConnectionStep({
   trqpMode: TrqpMode;
   onTrqpModeChange: (value: TrqpMode) => void;
   trqpPolicyProfile: TrqpPolicyProfileInput;
-  onTrqpPolicyProfileChange: (patch: Partial<TrqpPolicyProfileInput>) => void;
+  onTrqpPolicyProfileChange: (patch: TrqpPolicyProfilePatch) => void;
 }) {
   const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
   const { invitationUrl, messages } = useSelector((state: RootState) => state.test);
   const [hasStarted, setHasStarted] = useState(false);
   const hasInitializedPipelineRef = useRef(false);
+  const [isSuggestingPolicy, setIsSuggestingPolicy] = useState(false);
+  const [suggestionSnapshot, setSuggestionSnapshot] = useState<TrqpPolicyProfileInput | null>(null);
+  const [suggestionInfo, setSuggestionInfo] = useState<string>("");
+  const [suggestionError, setSuggestionError] = useState<string>("");
+  const [showAdvancedOverrides, setShowAdvancedOverrides] = useState(false);
   
   // Get messages for this step (step 0)
   const stepMessages = messages[0] || [];
@@ -206,6 +223,7 @@ function ConnectionStep({
           throw new Error(`Failed to prepare holder pipeline: ${response.statusText}`);
         }
         dispatch(resetTest());
+        dispatch(clearDAG());
         hasInitializedPipelineRef.current = true;
         console.log('Holder pipeline prepared');
       } catch (error) {
@@ -226,6 +244,15 @@ function ConnectionStep({
     // No longer need to handle socket events here since they're handled in SocketProvider
     // This component now just reacts to Redux state changes
   }, []);
+
+  useEffect(() => {
+    if (!verifyTRQP) {
+      setSuggestionSnapshot(null);
+      setSuggestionInfo("");
+      setSuggestionError("");
+      setShowAdvancedOverrides(false);
+    }
+  }, [verifyTRQP]);
 
   const startConnection = async (
     verifyTRQP: boolean,
@@ -289,6 +316,75 @@ function ConnectionStep({
           : 'Failed to start test. Please try again.';
       dispatch(addMessage({ stepIndex: 0, message: `Error: ${message}` }));
       setHasStarted(false);
+    }
+  };
+
+  const suggestPolicyFromTr = async () => {
+    if (suggestionSnapshot) {
+      onTrqpPolicyProfileChange({
+        authorization: { ...suggestionSnapshot.authorization },
+        recognition: { ...suggestionSnapshot.recognition },
+      });
+      setSuggestionSnapshot(null);
+      setSuggestionError("");
+      setSuggestionInfo("Suggestion reverted to previous values.");
+      dispatch(addMessage({ stepIndex: 0, message: "TRQP suggestion reverted" }));
+      return;
+    }
+
+    setIsSuggestingPolicy(true);
+    setSuggestionError("");
+    setSuggestionInfo("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/trqp/suggest-policy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json().catch(() => ({} as any));
+      if (!response.ok) {
+        const message = data?.details || data?.error || response.statusText;
+        throw new Error(message || "Suggestion failed");
+      }
+
+      const suggestion = data?.suggestion || {};
+      const authAction = String(suggestion?.authorization?.action || "").trim();
+      const authResource = String(suggestion?.authorization?.resource || "").trim();
+      const recAction = String(suggestion?.recognition?.action || "").trim();
+      const recResource = String(suggestion?.recognition?.resource || "").trim();
+      const recCapability = String(suggestion?.recognition?.capability || "").trim();
+
+      setSuggestionSnapshot(cloneTrqpProfile(trqpPolicyProfile));
+      onTrqpPolicyProfileChange({
+        authorization: {
+          action: authAction || trqpPolicyProfile.authorization.action,
+          resource: authResource || trqpPolicyProfile.authorization.resource,
+        },
+        recognition: {
+          action: recAction || trqpPolicyProfile.recognition.action,
+          resource: recResource || trqpPolicyProfile.recognition.resource,
+          capability: recCapability || trqpPolicyProfile.recognition.capability,
+        },
+      });
+
+      const sourceEndpoint = String(suggestion?.source?.trqpEndpoint || "").trim();
+      const suggestedMode = String(suggestion?.mode || "").trim();
+      const warnings = Array.isArray(suggestion?.warnings) ? suggestion.warnings.filter(Boolean) : [];
+      const infoParts = [
+        sourceEndpoint ? `Suggested from ${sourceEndpoint}` : "Suggested from trust registry",
+        suggestedMode ? `recommended mode=${suggestedMode}` : "",
+      ].filter(Boolean);
+      setSuggestionInfo(infoParts.join(" | "));
+      if (warnings.length > 0) {
+        setSuggestionError(`Suggestion warnings: ${warnings.join(" | ")}`);
+      }
+      dispatch(addMessage({ stepIndex: 0, message: infoParts.join(" | ") || "TRQP policy suggested from TR" }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSuggestionError(`TRQP suggestion failed: ${message}`);
+      dispatch(addMessage({ stepIndex: 0, message: `TRQP suggestion failed: ${message}` }));
+    } finally {
+      setIsSuggestingPolicy(false);
     }
   };
 
@@ -388,101 +484,139 @@ function ConnectionStep({
               <option value="both">Both authorization and recognition</option>
             </select>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpAuthAction">
-                  Authorization Action (optional)
-                </label>
-                <input
-                  id="holderTrqpAuthAction"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  value={trqpPolicyProfile.authorization.action}
-                  onChange={(e) =>
-                    onTrqpPolicyProfileChange({
-                      authorization: {
-                        ...trqpPolicyProfile.authorization,
-                        action: e.target.value,
-                      },
-                    })
-                  }
-                  placeholder="issue"
-                />
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedOverrides((prev) => !prev)}
+                  className="text-xs font-medium text-blue-700 hover:text-blue-800"
+                >
+                  {showAdvancedOverrides ? "Hide Advanced Overrides" : "Show Advanced Overrides"}
+                </button>
               </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpAuthResource">
-                  Authorization Resource (optional)
-                </label>
-                <input
-                  id="holderTrqpAuthResource"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  value={trqpPolicyProfile.authorization.resource}
-                  onChange={(e) =>
-                    onTrqpPolicyProfileChange({
-                      authorization: {
-                        ...trqpPolicyProfile.authorization,
-                        resource: e.target.value,
-                      },
-                    })
-                  }
-                  placeholder="ayracard:businesscard"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpRecAction">
-                  Recognition Action (optional)
-                </label>
-                <input
-                  id="holderTrqpRecAction"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  value={trqpPolicyProfile.recognition.action}
-                  onChange={(e) =>
-                    onTrqpPolicyProfileChange({
-                      recognition: {
-                        ...trqpPolicyProfile.recognition,
-                        action: e.target.value,
-                      },
-                    })
-                  }
-                  placeholder="member-of"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpRecResource">
-                  Recognition Resource (optional)
-                </label>
-                <input
-                  id="holderTrqpRecResource"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  value={trqpPolicyProfile.recognition.resource}
-                  onChange={(e) =>
-                    onTrqpPolicyProfileChange({
-                      recognition: {
-                        ...trqpPolicyProfile.recognition,
-                        resource: e.target.value,
-                      },
-                    })
-                  }
-                  placeholder="ayratrustnetwork"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpRecCapability">
-                  Recognition Capability (optional)
-                </label>
-                <input
-                  id="holderTrqpRecCapability"
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  value={trqpPolicyProfile.recognition.capability}
-                  onChange={(e) =>
-                    onTrqpPolicyProfileChange({
-                      recognition: {
-                        ...trqpPolicyProfile.recognition,
-                        capability: e.target.value,
-                      },
-                    })
-                  }
-                  placeholder="issue:ayracard:businesscard"
-                />
-              </div>
+              {showAdvancedOverrides && TRQP_SUGGEST_HELPER_ENABLED && (
+                <div className="md:col-span-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={suggestPolicyFromTr}
+                    disabled={isSuggestingPolicy}
+                    className={`px-3 py-1.5 text-sm rounded-md border ${
+                      isSuggestingPolicy
+                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                        : "bg-white text-blue-700 border-blue-200 hover:bg-blue-50"
+                    }`}
+                  >
+                    {isSuggestingPolicy
+                      ? "Loading..."
+                      : suggestionSnapshot
+                        ? "Revert Suggestion"
+                        : "Suggest from TR"}
+                  </button>
+                  {suggestionInfo && <span className="text-xs text-gray-500">{suggestionInfo}</span>}
+                </div>
+              )}
+              {showAdvancedOverrides && TRQP_SUGGEST_HELPER_ENABLED && suggestionError && (
+                <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {suggestionError}
+                </div>
+              )}
+              {showAdvancedOverrides && (trqpMode === "authorization" || trqpMode === "both") && (
+                <>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpAuthAction">
+                      Authorization Action (optional)
+                    </label>
+                    <input
+                      id="holderTrqpAuthAction"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={trqpPolicyProfile.authorization.action}
+                      onChange={(e) =>
+                        onTrqpPolicyProfileChange({
+                          authorization: {
+                            action: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="issue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpAuthResource">
+                      Authorization Resource (optional)
+                    </label>
+                    <input
+                      id="holderTrqpAuthResource"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={trqpPolicyProfile.authorization.resource}
+                      onChange={(e) =>
+                        onTrqpPolicyProfileChange({
+                          authorization: {
+                            resource: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="ayracard:businesscard"
+                    />
+                  </div>
+                </>
+              )}
+              {showAdvancedOverrides && (trqpMode === "recognition" || trqpMode === "both") && (
+                <>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpRecAction">
+                      Recognition Action (optional)
+                    </label>
+                    <input
+                      id="holderTrqpRecAction"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={trqpPolicyProfile.recognition.action}
+                      onChange={(e) =>
+                        onTrqpPolicyProfileChange({
+                          recognition: {
+                            action: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="member-of"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpRecResource">
+                      Recognition Resource (optional)
+                    </label>
+                    <input
+                      id="holderTrqpRecResource"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={trqpPolicyProfile.recognition.resource}
+                      onChange={(e) =>
+                        onTrqpPolicyProfileChange({
+                          recognition: {
+                            resource: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="ayratrustnetwork"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1" htmlFor="holderTrqpRecCapability">
+                      Recognition Capability (optional)
+                    </label>
+                    <input
+                      id="holderTrqpRecCapability"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      value={trqpPolicyProfile.recognition.capability}
+                      onChange={(e) =>
+                        onTrqpPolicyProfileChange({
+                          recognition: {
+                            capability: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="issue:ayracard:businesscard"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -964,6 +1098,7 @@ export function HolderTest() {
         console.warn("Failed to select holder pipeline", e);
       } finally {
         dispatch(resetTest());
+        dispatch(clearDAG());
         setCurrentStep(0);
       }
     };
@@ -1131,6 +1266,7 @@ export function HolderTest() {
         onRestart={() => {
           setCurrentStep(0);
           dispatch(resetTest());
+          dispatch(clearDAG());
         }} 
         dagData={dagData || undefined}
         verifyTRQP={verifyTRQP}
@@ -1150,6 +1286,7 @@ export function HolderTest() {
         onRestart={() => {
           setCurrentStep(0);
           dispatch(resetTest());
+          dispatch(clearDAG());
           fetch(`${API_BASE_URL}/api/select/pipeline?pipeline=HOLDER_TEST`).catch(() => {});
         }}
       />

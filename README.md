@@ -6,10 +6,9 @@ Conformance tooling for Ayra Trust Network implementations built on the `certifi
 - ✅ TRQP trust registry checks
 - ✅ TRQP mode selection + optional policy field overrides in Holder/Verifier flows
 - ✅ Holder conformance flow
+- ✅ Verifier conformance flow
 - ✅ Issue flow (utility flow, not scored as a conformance flow)
-- 🚧 Verifier conformance flow (being finished now)
-- ✅ Credential format: AnonCreds
-- 🚧 Credential format: W3C LDP (in progress)
+- ✅ Credential format: W3C VC (LDP)
 
 ## Overview
 
@@ -27,7 +26,7 @@ conformance-test-suite/
 
 **Architecture**: Monolithic Next.js application with integrated testing and Express API.
 
-**Status**: Production baseline for TRQP, holder, and issue flows; verifier conformance flow is in progress; AnonCreds supported today with W3C LDP underway.
+**Status**: Production baseline for TRQP, holder, verifier, and issue flows with W3C VC (LDP) credentials.
 
 #### Purpose
 - Rapid iteration on conformance testing concepts
@@ -123,6 +122,7 @@ If these fields are left blank, CTS uses the current defaults for Ayra card chec
 
 Usage:
 - UI (Holder + Verifier): enable TRQP, choose `TRQP Mode`, then optionally fill the TR policy fields.
+- Optional helper: set `NEXT_PUBLIC_TRQP_SUGGEST_FROM_TR_ENABLED=true` to show a `Suggest from TR` button next to the TRQP fields. Clicking it prefills values from trust-registry lookups; clicking `Revert Suggestion` restores your previous values.
 - API:
 
 ```json
@@ -163,10 +163,6 @@ The DID document is served by the CTS API (default `https://<domain>/issuer/did.
 - Frontend: http://localhost:3000
 - API Server: http://localhost:5005
 - Test Interfaces: http://localhost:3000/holder, /verifier, /issuer, /registry
-
-**Compatible Wallets Tested:**
-- ✅ **BC Government Wallet** - Successfully tested with holder conformance flows (Anoncreds only)
-- 📱 Mobile wallets supporting DIDComm v2 protocols
 
 ## Contributing
 

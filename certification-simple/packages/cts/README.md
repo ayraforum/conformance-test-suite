@@ -166,6 +166,7 @@ npm run test-all
   - Optional `trqpPolicyProfile` can override the same policy fields shown in the UI; omitted fields use defaults.
 - **Usage**:
   - UI: in Holder or Verifier flow, enable TRQP and optionally fill policy fields.
+  - UI helper (optional): set `NEXT_PUBLIC_TRQP_SUGGEST_FROM_TR_ENABLED=true` to enable `Suggest from TR` and `Revert Suggestion`.
   - API: send `trqpPolicyProfile` in `/api/run` when `verifyTRQP=true`.
   - Partial profile is allowed; unset fields use defaults.
   - Recognition capability is optional and mapped to `recognition.context.capability`.
@@ -207,6 +208,7 @@ graph TD
 | `/api/dag` | GET | Current DAG state |
 | `/api/select/pipeline` | GET | Select test pipeline |
 | `/api/run` | POST | Execute selected pipeline |
+| `/api/trqp/suggest-policy` | POST | Suggest TRQP policy fields from trust-registry lookups (when enabled) |
 | `/api/invitation` | GET | Get current invitation URL |
 
 ## 📱 Web Interface

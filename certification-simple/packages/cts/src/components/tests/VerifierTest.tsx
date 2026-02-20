@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { TestRunner, TestStep, TestStepStatus } from "@/components/TestRunner";
 import { TaskNode } from "@/types/DAGNode";
@@ -8,9 +8,12 @@ import { DetailedReport } from "@/components/common/DetailedReport";
 import { useSocket } from "@/providers/SocketProvider";
 import { RootState } from "@/store";
 import { startTest, resetTest, addMessage } from "@/store/testSlice";
+import { clearDAG } from "@/store/dagSlice";
 import jsQR from "jsqr";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
+const TRQP_SUGGEST_HELPER_ENABLED =
+  (process.env.NEXT_PUBLIC_TRQP_SUGGEST_FROM_TR_ENABLED || "").toLowerCase() === "true";
 type TrqpMode = "authorization" | "recognition" | "both";
 type TrqpPolicyProfileInput = {
   authorization: {
@@ -27,6 +30,11 @@ type TrqpPolicyProfilePatch = {
   authorization?: Partial<TrqpPolicyProfileInput["authorization"]>;
   recognition?: Partial<TrqpPolicyProfileInput["recognition"]>;
 };
+
+const cloneTrqpProfile = (profile: TrqpPolicyProfileInput): TrqpPolicyProfileInput => ({
+  authorization: { ...profile.authorization },
+  recognition: { ...profile.recognition },
+});
 
 const buildTrqpPolicyProfile = (input: TrqpPolicyProfileInput) => {
   const authAction = input.authorization.action.trim();
@@ -92,11 +100,41 @@ function VerifierConnectionStep({
   const { socket, isConnected } = useSocket();
   const { messages } = useSelector((state: RootState) => state.test);
   const [hasStarted, setHasStarted] = useState(false);
+  const hasInitializedPipelineRef = useRef(false);
   const [oobUrl, setOobUrl] = useState<string>("");
   const [qrError, setQrError] = useState<string | null>(null);
   const [isDecodingQr, setIsDecodingQr] = useState(false);
   const [isLoadingInternalInvitation, setIsLoadingInternalInvitation] = useState(false);
+  const [isSuggestingPolicy, setIsSuggestingPolicy] = useState(false);
+  const [suggestionSnapshot, setSuggestionSnapshot] = useState<TrqpPolicyProfileInput | null>(null);
+  const [suggestionInfo, setSuggestionInfo] = useState<string>("");
+  const [suggestionError, setSuggestionError] = useState<string>("");
+  const [showAdvancedOverrides, setShowAdvancedOverrides] = useState(false);
   const stepMessages = messages[0] || [];
+
+  useEffect(() => {
+    if (!socket || !isConnected || hasInitializedPipelineRef.current) {
+      return;
+    }
+
+    const prepareVerifierPipeline = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/select/pipeline?pipeline=VERIFIER_TEST`);
+        if (!response.ok) {
+          throw new Error(`Failed to prepare verifier pipeline: ${response.statusText}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        dispatch(addMessage({ stepIndex: 0, message: `Error: ${message}` }));
+      } finally {
+        dispatch(resetTest());
+        dispatch(clearDAG());
+        hasInitializedPipelineRef.current = true;
+      }
+    };
+
+    prepareVerifierPipeline();
+  }, [socket, isConnected, dispatch]);
 
   const decodeQrFile = useCallback(
     (file: File) => {
@@ -233,6 +271,84 @@ function VerifierConnectionStep({
     }
   };
 
+  useEffect(() => {
+    if (!verifyTrqp) {
+      setSuggestionSnapshot(null);
+      setSuggestionInfo("");
+      setSuggestionError("");
+      setShowAdvancedOverrides(false);
+    }
+  }, [verifyTrqp]);
+
+  const suggestPolicyFromTr = async () => {
+    if (suggestionSnapshot) {
+      onTrqpPolicyProfileChange({
+        authorization: { ...suggestionSnapshot.authorization },
+        recognition: { ...suggestionSnapshot.recognition },
+      });
+      setSuggestionSnapshot(null);
+      setSuggestionError("");
+      setSuggestionInfo("Suggestion reverted to previous values.");
+      dispatch(addMessage({ stepIndex: 0, message: "TRQP suggestion reverted" }));
+      return;
+    }
+
+    setIsSuggestingPolicy(true);
+    setSuggestionError("");
+    setSuggestionInfo("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/trqp/suggest-policy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json().catch(() => ({} as any));
+      if (!response.ok) {
+        const message = data?.details || data?.error || response.statusText;
+        throw new Error(message || "Suggestion failed");
+      }
+
+      const suggestion = data?.suggestion || {};
+      const authAction = String(suggestion?.authorization?.action || "").trim();
+      const authResource = String(suggestion?.authorization?.resource || "").trim();
+      const recAction = String(suggestion?.recognition?.action || "").trim();
+      const recResource = String(suggestion?.recognition?.resource || "").trim();
+      const recCapability = String(suggestion?.recognition?.capability || "").trim();
+
+      setSuggestionSnapshot(cloneTrqpProfile(trqpPolicyProfile));
+      onTrqpPolicyProfileChange({
+        authorization: {
+          action: authAction || trqpPolicyProfile.authorization.action,
+          resource: authResource || trqpPolicyProfile.authorization.resource,
+        },
+        recognition: {
+          action: recAction || trqpPolicyProfile.recognition.action,
+          resource: recResource || trqpPolicyProfile.recognition.resource,
+          capability: recCapability || trqpPolicyProfile.recognition.capability,
+        },
+      });
+
+      const sourceEndpoint = String(suggestion?.source?.trqpEndpoint || "").trim();
+      const suggestedMode = String(suggestion?.mode || "").trim();
+      const warnings = Array.isArray(suggestion?.warnings) ? suggestion.warnings.filter(Boolean) : [];
+      const infoParts = [
+        sourceEndpoint ? `Suggested from ${sourceEndpoint}` : "Suggested from trust registry",
+        suggestedMode ? `recommended mode=${suggestedMode}` : "",
+      ].filter(Boolean);
+      setSuggestionInfo(infoParts.join(" | "));
+      if (warnings.length > 0) {
+        setSuggestionError(`Suggestion warnings: ${warnings.join(" | ")}`);
+      }
+      dispatch(addMessage({ stepIndex: 0, message: infoParts.join(" | ") || "TRQP policy suggested from TR" }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSuggestionError(`TRQP suggestion failed: ${message}`);
+      dispatch(addMessage({ stepIndex: 0, message: `TRQP suggestion failed: ${message}` }));
+    } finally {
+      setIsSuggestingPolicy(false);
+    }
+  };
+
   if (!isActive) return null;
 
   return (
@@ -282,6 +398,27 @@ function VerifierConnectionStep({
                 Uses the internal ACA-Py verifier when configured.
               </span>
             </div>
+            <div className="mt-3">
+              <label htmlFor="oobQr" className="block text-sm font-medium text-gray-700 mb-2">
+                Or upload a QR code image
+              </label>
+              <input
+                id="oobQr"
+                type="file"
+                accept="image/*"
+                onChange={onQrFileSelected}
+                className="block w-full text-sm text-gray-700"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                We will decode the QR and populate the invitation URL automatically.
+              </p>
+              {isDecodingQr && (
+                <p className="text-sm text-blue-600 mt-1">Decoding QR image…</p>
+              )}
+              {qrError && (
+                <p className="text-sm text-red-600 mt-1">{qrError}</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
             <input
@@ -317,111 +454,132 @@ function VerifierConnectionStep({
                 request on the existing connection after CTS disables the selected policy binding(s).
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Authorization Action (optional)</label>
-                  <input
-                    type="text"
-                    value={trqpPolicyProfile.authorization.action}
-                    onChange={(e) =>
-                      onTrqpPolicyProfileChange({
-                        authorization: {
-                          action: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="issue"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Authorization Resource (optional)</label>
-                  <input
-                    type="text"
-                    value={trqpPolicyProfile.authorization.resource}
-                    onChange={(e) =>
-                      onTrqpPolicyProfileChange({
-                        authorization: {
-                          resource: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="ayracard:businesscard"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Recognition Action (optional)</label>
-                  <input
-                    type="text"
-                    value={trqpPolicyProfile.recognition.action}
-                    onChange={(e) =>
-                      onTrqpPolicyProfileChange({
-                        recognition: {
-                          action: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="member-of"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Recognition Resource (optional)</label>
-                  <input
-                    type="text"
-                    value={trqpPolicyProfile.recognition.resource}
-                    onChange={(e) =>
-                      onTrqpPolicyProfileChange({
-                        recognition: {
-                          resource: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="ayratrustnetwork"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  />
-                </div>
                 <div className="md:col-span-2">
-                  <label className="block text-xs text-gray-600 mb-1">Recognition Capability (optional)</label>
-                  <input
-                    type="text"
-                    value={trqpPolicyProfile.recognition.capability}
-                    onChange={(e) =>
-                      onTrqpPolicyProfileChange({
-                        recognition: {
-                          capability: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="manage-issuers:ayracard:businesscard"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedOverrides((prev) => !prev)}
+                    className="text-xs font-medium text-blue-700 hover:text-blue-800"
+                  >
+                    {showAdvancedOverrides ? "Hide Advanced Overrides" : "Show Advanced Overrides"}
+                  </button>
                 </div>
+                {showAdvancedOverrides && TRQP_SUGGEST_HELPER_ENABLED && (
+                  <div className="md:col-span-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={suggestPolicyFromTr}
+                      disabled={isSuggestingPolicy}
+                      className={`px-3 py-1.5 text-sm rounded-md border ${
+                        isSuggestingPolicy
+                          ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                          : "bg-white text-blue-700 border-blue-200 hover:bg-blue-50"
+                      }`}
+                    >
+                      {isSuggestingPolicy
+                        ? "Loading..."
+                        : suggestionSnapshot
+                          ? "Revert Suggestion"
+                          : "Suggest from TR"}
+                    </button>
+                    {suggestionInfo && <span className="text-xs text-gray-500">{suggestionInfo}</span>}
+                  </div>
+                )}
+                {showAdvancedOverrides && TRQP_SUGGEST_HELPER_ENABLED && suggestionError && (
+                  <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {suggestionError}
+                  </div>
+                )}
+                {showAdvancedOverrides && (trqpMode === "authorization" || trqpMode === "both") && (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Authorization Action (optional)</label>
+                      <input
+                        type="text"
+                        value={trqpPolicyProfile.authorization.action}
+                        onChange={(e) =>
+                          onTrqpPolicyProfileChange({
+                            authorization: {
+                              action: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="issue"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Authorization Resource (optional)</label>
+                      <input
+                        type="text"
+                        value={trqpPolicyProfile.authorization.resource}
+                        onChange={(e) =>
+                          onTrqpPolicyProfileChange({
+                            authorization: {
+                              resource: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="ayracard:businesscard"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      />
+                    </div>
+                  </>
+                )}
+                {showAdvancedOverrides && (trqpMode === "recognition" || trqpMode === "both") && (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Recognition Action (optional)</label>
+                      <input
+                        type="text"
+                        value={trqpPolicyProfile.recognition.action}
+                        onChange={(e) =>
+                          onTrqpPolicyProfileChange({
+                            recognition: {
+                              action: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="member-of"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Recognition Resource (optional)</label>
+                      <input
+                        type="text"
+                        value={trqpPolicyProfile.recognition.resource}
+                        onChange={(e) =>
+                          onTrqpPolicyProfileChange({
+                            recognition: {
+                              resource: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="ayratrustnetwork"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1">Recognition Capability (optional)</label>
+                      <input
+                        type="text"
+                        value={trqpPolicyProfile.recognition.capability}
+                        onChange={(e) =>
+                          onTrqpPolicyProfileChange({
+                            recognition: {
+                              capability: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="manage-issuers:ayracard:businesscard"
+                        className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
-          <div>
-            <label htmlFor="oobQr" className="block text-sm font-medium text-gray-700 mb-2">
-              Or upload a QR code image
-            </label>
-            <input
-              id="oobQr"
-              type="file"
-              accept="image/*"
-              onChange={onQrFileSelected}
-              className="block w-full text-sm text-gray-700"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              We will decode the QR and populate the invitation URL automatically.
-            </p>
-            {isDecodingQr && (
-              <p className="text-sm text-blue-600 mt-1">Decoding QR image…</p>
-            )}
-            {qrError && (
-              <p className="text-sm text-red-600 mt-1">{qrError}</p>
-            )}
-          </div>
-          
           <button
             onClick={startVerifierTest}
             disabled={!isConnected || !oobUrl.trim()}
@@ -560,6 +718,32 @@ export function VerifierTest() {
     authorization: { action: "", resource: "" },
     recognition: { action: "", resource: "", capability: "" },
   });
+  const didInitialResetRef = useRef(false);
+
+  useEffect(() => {
+    if (didInitialResetRef.current) return;
+    didInitialResetRef.current = true;
+
+    const dagName = (dag?.metadata?.name || "").toLowerCase();
+    const hasActiveVerifierRun =
+      isTestRunning &&
+      Boolean(dag?.nodes?.length) &&
+      dagName.includes("verifier");
+
+    const prep = async () => {
+      try {
+        await fetch(`${API_BASE_URL}/api/select/pipeline?pipeline=VERIFIER_TEST`);
+      } catch (e) {
+        console.warn("Failed to select verifier pipeline", e);
+      } finally {
+        if (!hasActiveVerifierRun) {
+          dispatch(resetTest());
+          dispatch(clearDAG());
+        }
+      }
+    };
+    prep();
+  }, [dispatch, dag, isTestRunning]);
 
   // Convert DAG node status to test step status
   const getStepStatusFromNode = (node: TaskNode): TestStepStatus => {
@@ -599,6 +783,7 @@ export function VerifierTest() {
 
   const handleRestart = useCallback(() => {
     dispatch(resetTest());
+    dispatch(clearDAG());
   }, [dispatch]);
 
   // Initialize steps
@@ -709,23 +894,23 @@ export function VerifierTest() {
 
       let labelBottom = baseName;
       if (lowerBase.includes("accept invitation")) {
-        labelBottom = "Accept Invitation";
+        labelBottom = "Accept";
       } else if (lowerBase.includes("await proof request")) {
-        labelBottom = "Await Request";
+        labelBottom = "Await Req";
       } else if (lowerBase.includes("send presentation")) {
-        labelBottom = "Send Presentation";
+        labelBottom = "Present";
       } else if (lowerBase.includes("await verifier response")) {
-        labelBottom = "Await Response";
+        labelBottom = "Await Resp";
       } else if (lowerBase.includes("prepare trqp")) {
         labelBottom = "Prepare";
       } else if (lowerBase.includes("disable trqp")) {
-        labelBottom = "Disable Policy";
+        labelBottom = "Disable";
       } else if (lowerBase.includes("restore trqp")) {
-        labelBottom = "Restore Policy";
+        labelBottom = "Restore";
       } else if (lowerBase.includes("evaluate trqp")) {
         labelBottom = "Evaluate";
       } else if (lowerBase.includes("reuse connection")) {
-        labelBottom = "Reuse Connection";
+        labelBottom = "Reuse";
       }
 
       return { labelTop, labelBottom };

@@ -33,6 +33,7 @@ export function TestRunner({
   onRestart
 }: TestRunnerProps) {
   const hasTopLabels = steps.some((step) => step.labelTop);
+  const compactStepper = hasTopLabels && steps.length >= 10;
   const phaseSegments = React.useMemo(() => {
     if (!hasTopLabels) {
       return [];
@@ -87,59 +88,61 @@ export function TestRunner({
       <p className="text-gray-700 mb-6">{description}</p>
       
       {/* Progress indicator */}
-      <div className="mb-8">
-        {phaseSegments.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2">
-              {phaseSegments.map((segment, index) => (
-                <div
-                  key={`${segment.label}-${index}`}
-                  className="rounded-full bg-gray-100 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-600 text-center"
-                  style={{ flex: segment.count }}
-                >
-                  {segment.label}
-                </div>
-              ))}
+      <div className="mb-8 overflow-x-auto">
+        <div className={compactStepper ? "min-w-[1024px]" : ""}>
+          {phaseSegments.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2">
+                {phaseSegments.map((segment, index) => (
+                  <div
+                    key={`${segment.label}-${index}`}
+                    className="rounded-full bg-gray-100 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-600 text-center"
+                    style={{ flex: segment.count }}
+                  >
+                    {segment.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="h-1 w-full bg-gray-200 rounded"></div>
+            </div>
+            <div className="relative flex justify-between">
+              {steps.map((step, index) => {
+                const visual = getStepVisual(step, index);
+                return (
+                  <div
+                    key={step.id}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${visual.className}`}
+                  >
+                    {visual.label}
+                  </div>
+                );
+              })}
             </div>
           </div>
-        )}
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="h-1 w-full bg-gray-200 rounded"></div>
-          </div>
-          <div className="relative flex justify-between">
-            {steps.map((step, index) => {
-              const visual = getStepVisual(step, index);
+          
+          <div className={`mt-4 flex justify-between ${hasTopLabels ? "text-gray-600" : "text-gray-500"} text-xs`}>
+            {steps.map((step) => {
+              const labelBottom = step.labelBottom ?? step.name;
+              if (!hasTopLabels) {
+                return (
+                  <div key={step.id} className="w-24 text-center overflow-hidden text-ellipsis whitespace-nowrap">
+                    {labelBottom}
+                  </div>
+                );
+              }
               return (
-                <div
-                  key={step.id}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center z-10 ${visual.className}`}
-                >
-                  {visual.label}
+                <div key={step.id} className="flex-1 min-w-0 px-1 text-center">
+                  <div className="text-[11px] leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                    {labelBottom}
+                  </div>
                 </div>
               );
             })}
           </div>
-        </div>
-        
-        <div className={`mt-4 flex justify-between ${hasTopLabels ? "text-gray-600" : "text-gray-500"} text-xs`}>
-          {steps.map((step) => {
-            const labelBottom = step.labelBottom ?? step.name;
-            if (!hasTopLabels) {
-              return (
-                <div key={step.id} className="w-24 text-center overflow-hidden text-ellipsis whitespace-nowrap">
-                  {labelBottom}
-                </div>
-              );
-            }
-            return (
-              <div key={step.id} className="flex-1 min-w-0 px-1 text-center">
-                <div className="text-[11px] leading-tight break-words">
-                  {labelBottom}
-                </div>
-              </div>
-            );
-          })}
         </div>
       </div>
       
