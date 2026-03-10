@@ -4,11 +4,11 @@ Conformance tooling for Ayra Trust Network implementations built on the `certifi
 
 **Current coverage**
 - ✅ TRQP trust registry checks
+- ✅ TRQP mode selection + optional policy field overrides in Holder/Verifier flows
 - ✅ Holder conformance flow
+- ✅ Verifier conformance flow
 - ✅ Issue flow (utility flow, not scored as a conformance flow)
-- 🚧 Verifier conformance flow (being finished now)
-- ✅ Credential format: AnonCreds
-- 🚧 Credential format: W3C LDP (in progress)
+- ✅ Credential format: W3C VC (LDP)
 
 ## Overview
 
@@ -26,7 +26,7 @@ conformance-test-suite/
 
 **Architecture**: Monolithic Next.js application with integrated testing and Express API.
 
-**Status**: Production baseline for TRQP, holder, and issue flows; verifier conformance flow is in progress; AnonCreds supported today with W3C LDP underway.
+**Status**: Production baseline for TRQP, holder, verifier, and issue flows with W3C VC (LDP) credentials.
 
 #### Purpose
 - Rapid iteration on conformance testing concepts
@@ -101,6 +101,54 @@ For NGROK domain planning, tunnel rotation, and the full list of optional variab
 - `REFERENCE_AGENT_NGROK_DOMAIN` is the hostname wallets use to reach the reference agent. When ACA-Py is the reference agent, the `acapy-ngrok` sidecar automatically advertises this domain.
 - `VERIFIER_TEST_NGROK_DOMAIN` is only used by the standalone `test-verifier` container for scripted CLI checks; it does not affect the UI flows.
 
+### TRQP Checks and Policy Settings
+
+When TRQP checks are enabled, CTS runs with a selected TR policy mode:
+
+- `authorization`: authorization checks only
+- `recognition`: recognition checks only
+- `both`: run both checks
+
+In the Holder and Verifier UIs, users can optionally set:
+- Authorization Action
+- Authorization Resource
+- Recognition Action
+- Recognition Resource
+- Recognition Capability (optional)
+
+If these fields are left blank, CTS uses the current defaults for Ayra card checks:
+- Authorization: `issue` on `ayracard:businesscard`
+- Recognition: `member-of` on `ayratrustnetwork`
+
+Usage:
+- UI (Holder + Verifier): enable TRQP, choose `TRQP Mode`, then optionally fill the TR policy fields.
+- Optional helper: set `NEXT_PUBLIC_TRQP_SUGGEST_FROM_TR_ENABLED=true` to show a `Suggest from TR` button next to the TRQP fields. Clicking it prefills values from trust-registry lookups; clicking `Revert Suggestion` restores your previous values.
+- API:
+
+```json
+{
+  "pipelineType": "VERIFIER_TEST",
+  "verifyTRQP": true,
+  "trqpMode": "both",
+  "trqpPolicyProfile": {
+    "authorization": {
+      "action": "issue",
+      "resource": "ayracard:businesscard"
+    },
+    "recognition": {
+      "action": "member-of",
+      "resource": "ayratrustnetwork",
+      "capability": "manage-issuers:ayracard:businesscard"
+    }
+  }
+}
+```
+
+Notes:
+- `trqpPolicyProfile` is optional.
+- Fields not supplied in `trqpPolicyProfile` fall back to defaults.
+- Only checks selected by `trqpMode` are enforced.
+
 ### DID:web Issuer (optional)
 
 When issuing W3C LDP credentials with a `did:web` issuer, the DID document must be hosted over HTTPS.
@@ -115,10 +163,6 @@ The DID document is served by the CTS API (default `https://<domain>/issuer/did.
 - Frontend: http://localhost:3000
 - API Server: http://localhost:5005
 - Test Interfaces: http://localhost:3000/holder, /verifier, /issuer, /registry
-
-**Compatible Wallets Tested:**
-- ✅ **BC Government Wallet** - Successfully tested with holder conformance flows (Anoncreds only)
-- 📱 Mobile wallets supporting DIDComm v2 protocols
 
 ## Contributing
 

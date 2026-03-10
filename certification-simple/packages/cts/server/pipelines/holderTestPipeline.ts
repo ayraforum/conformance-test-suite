@@ -11,7 +11,7 @@ import {
 import { randomUUID } from "crypto";
 
 import { DAG } from "@demo/core/pipeline/src/dag";
-import { state as serverState } from "../state";
+import { state as serverState, type TrqpMode, type TrqpPolicyProfile } from "../state";
 
 const normalizeEnvValue = (value?: string): string => (value ?? "").split("#")[0].trim();
 const normalizeEnvBool = (value?: string): boolean =>
@@ -320,10 +320,15 @@ async function autoPresentWithInternalAcaPyHolder(opts: {
 
 class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
   private controller: AgentController;
-  private options: RequestProofOptions;
+  private options: RequestProofOptions & { trqpMode?: TrqpMode; trqpPolicyProfile?: TrqpPolicyProfile };
   private presentationRecord: any;
 
-  constructor(controller: AgentController, options: RequestProofOptions, name: string, description?: string) {
+  constructor(
+    controller: AgentController,
+    options: RequestProofOptions & { trqpMode?: TrqpMode; trqpPolicyProfile?: TrqpPolicyProfile },
+    name: string,
+    description?: string
+  ) {
     super(name, description);
     this.controller = controller;
     this.options = options;
@@ -493,57 +498,82 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
     this.addMessage(
       `TRQP mapping: entity_id=${authorizationPayload.entity_id} authority_id=${authorizationPayload.authority_id} action=${authorizationPayload.action} resource=${authorizationPayload.resource}`
     );
+    this.addMessage(
+      `TRQP recognition mapping: entity_id=${recognitionPayload.entity_id} authority_id=${recognitionPayload.authority_id} action=${recognitionPayload.action} resource=${recognitionPayload.resource}`
+    );
+    const recognitionContext = (recognitionPayload as any)?.context;
+    const recognitionCapability =
+      typeof recognitionContext?.capability === "string" ? recognitionContext.capability : "";
+    if (recognitionCapability) {
+      this.addMessage(`TRQP recognition capability: ${recognitionCapability}`);
+    }
+    const mode: TrqpMode = this.options.trqpMode || serverState.trqpMode || "both";
+    const runAuthorization = mode === "authorization" || mode === "both";
+    const runRecognition = mode === "recognition" || mode === "both";
+    this.addMessage(`TRQP mode selected: ${mode}`);
 
     const failures: string[] = [];
 
-    this.addMessage("TRQP authorization check started");
-    try {
-      const authResp = await fetch(`${baseUrl}/authorization`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(authorizationPayload),
-      });
-      const authBody = await this.readJsonSafe(authResp);
-      if (!authResp.ok) {
-        failures.push(
-          `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
-        );
-      } else {
-        const authorized = this.extractAuthorizationResult(authBody.json);
-        if (!authorized) {
-          failures.push("TRQP authorization failed: authorized=false");
+    if (runAuthorization) {
+      this.addMessage("TRQP authorization check started");
+      try {
+        const authResp = await fetch(`${baseUrl}/authorization`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(authorizationPayload),
+        });
+        const authBody = await this.readJsonSafe(authResp);
+        if (!authResp.ok) {
+          failures.push(
+            `TRQP authorization failed: ${authResp.status} ${authResp.statusText} ${authBody.raw}`
+          );
         } else {
-          this.addMessage("TRQP authorization check passed");
+          const authorized = this.extractAuthorizationResult(authBody.json);
+          if (!authorized) {
+            failures.push("TRQP authorization failed: authorized=false");
+          } else {
+            this.addMessage("TRQP authorization check passed");
+          }
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failures.push(
+          message.startsWith("TRQP authorization failed:")
+            ? message
+            : `TRQP authorization failed: ${message}`
+        );
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push(message.startsWith("TRQP authorization failed:") ? message : `TRQP authorization failed: ${message}`);
     }
 
-    this.addMessage("TRQP recognition check started");
-    try {
-      const recResp = await fetch(`${baseUrl}/recognition`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(recognitionPayload),
-      });
-      const recBody = await this.readJsonSafe(recResp);
-      if (!recResp.ok) {
-        failures.push(
-          `TRQP recognition failed: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
-        );
-      } else {
-        const recognized = this.extractRecognitionResult(recBody.json);
-        if (!recognized) {
-          failures.push("TRQP recognition failed: recognized=false");
+    if (runRecognition) {
+      this.addMessage("TRQP recognition check started");
+      try {
+        const recResp = await fetch(`${baseUrl}/recognition`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(recognitionPayload),
+        });
+        const recBody = await this.readJsonSafe(recResp);
+        if (!recResp.ok) {
+          failures.push(
+            `TRQP recognition failed: ${recResp.status} ${recResp.statusText} ${recBody.raw}`
+          );
         } else {
-          this.addMessage("TRQP recognition check passed");
+          const recognized = this.extractRecognitionResult(recBody.json);
+          if (!recognized) {
+            failures.push("TRQP recognition failed: recognized=false");
+          } else {
+            this.addMessage("TRQP recognition check passed");
+          }
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failures.push(
+          message.startsWith("TRQP recognition failed:")
+            ? message
+            : `TRQP recognition failed: ${message}`
+        );
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push(message.startsWith("TRQP recognition failed:") ? message : `TRQP recognition failed: ${message}`);
     }
 
     if (failures.length > 0) {
@@ -554,6 +584,9 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
   private buildTrqpPayloads(vc: any) {
     const issuerDid = this.extractIssuerDid(vc);
     const subject = this.extractCredentialSubject(vc);
+    const profile = this.options.trqpPolicyProfile || serverState.trqpPolicyProfile;
+    const authorizationProfile = profile?.authorization;
+    const recognitionProfile = profile?.recognition;
     const subjectIssuer = typeof subject?.issuer_id === "string" ? subject.issuer_id : "";
     if (subjectIssuer && subjectIssuer !== issuerDid) {
       throw new Error(
@@ -576,17 +609,24 @@ class RequestProofAcaPyWithOptionalInternalHolderTask extends BaseRunnableTask {
     const authorizationPayload = {
       entity_id: issuerDid,
       authority_id: ecosystemId,
-      action: "issue",
-      resource: `ayracard:${cardType}`,
+      action: authorizationProfile?.action || "issue",
+      resource: authorizationProfile?.resource || `ayracard:${cardType}`,
     };
     const recognitionPayload: Record<string, unknown> = {
       entity_id: ecosystemId,
       authority_id: atnDid,
-      action: "member-of",
-      resource: "ayratrustnetwork",
+      action: recognitionProfile?.action || "member-of",
+      resource: recognitionProfile?.resource || "ayratrustnetwork",
     };
+    const recognitionContext: Record<string, unknown> = {};
     if (issuanceTime) {
-      recognitionPayload.context = { time: issuanceTime };
+      recognitionContext.time = issuanceTime;
+    }
+    if (recognitionProfile?.capability) {
+      recognitionContext.capability = recognitionProfile.capability;
+    }
+    if (Object.keys(recognitionContext).length > 0) {
+      recognitionPayload.context = recognitionContext;
     }
     return { authorizationPayload, recognitionPayload, ecosystemId };
   }
@@ -749,10 +789,19 @@ export default class HolderTestPipeline {
   _dag: DAG;
   _controller: AgentController;
   _verifyTRQP: boolean;
+  _trqpMode: TrqpMode;
+  _trqpPolicyProfile?: TrqpPolicyProfile;
 
-  constructor(controller: AgentController, verifyTRQP = false) {
+  constructor(
+    controller: AgentController,
+    verifyTRQP = false,
+    trqpMode: TrqpMode = "both",
+    trqpPolicyProfile?: TrqpPolicyProfile
+  ) {
     this._controller = controller;
     this._verifyTRQP = verifyTRQP;
+    this._trqpMode = trqpMode;
+    this._trqpPolicyProfile = trqpPolicyProfile;
     this._dag = this._make(controller);
   }
 
@@ -901,9 +950,14 @@ export default class HolderTestPipeline {
           : credoPresentationExchangeProof
         : anonCredsProof;
 
-    const requestProofOptions: RequestProofOptions = {
+    const requestProofOptions: RequestProofOptions & {
+      trqpMode?: TrqpMode;
+      trqpPolicyProfile?: TrqpPolicyProfile;
+    } = {
       proof: proof,
       checkTrustRegistry: this._verifyTRQP || serverState.verifyTRQP || false,
+      trqpMode: this._trqpMode || serverState.trqpMode || "both",
+      trqpPolicyProfile: this._trqpPolicyProfile || serverState.trqpPolicyProfile,
       trqpURL:
         process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT ||
         process.env.NEXT_PUBLIC_TRQP_LOCAL_URL,

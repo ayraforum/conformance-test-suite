@@ -135,13 +135,26 @@ class RpcRouter:
       try:
         await self.manager.verify_proof(resolved_id, body.connection_id, enforce_trqp=body.enforce_trqp)
       except HTTPStatusError as exc:
-        LOGGER.error(
-          "ACA-Py verify failed (proof_exchange_id=%s, status=%s, body=%s)",
-          resolved_id,
-          exc.response.status_code,
-          exc.response.text,
+        error_text = (exc.response.text or "").lower()
+        is_verify_race = exc.response.status_code == 400 and (
+          "in done state" in error_text or "must be presentation-received" in error_text
         )
-        raise
+        if is_verify_race:
+          LOGGER.warning(
+            "ACA-Py verify race detected; record already transitioned before verify call "
+            "(proof_exchange_id=%s, status=%s, body=%s). Treating as no-op.",
+            resolved_id,
+            exc.response.status_code,
+            exc.response.text,
+          )
+        else:
+          LOGGER.error(
+            "ACA-Py verify failed (proof_exchange_id=%s, status=%s, body=%s)",
+            resolved_id,
+            exc.response.status_code,
+            exc.response.text,
+          )
+          raise
       except Exception as exc:
         LOGGER.error(
           "ACA-Py verify failed (proof_exchange_id=%s, error=%s)",

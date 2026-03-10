@@ -23,6 +23,10 @@ const dagSlice = createSlice({
         dag: action.payload,
       };
     },
+    clearDAG: (state) => {
+      state.dag = null;
+      state.error = null;
+    },
     setConnectionStatus: (state, action: PayloadAction<string>) => {
       state.connectionStatus = action.payload;
     },
@@ -32,5 +36,5 @@ const dagSlice = createSlice({
   },
 });
 
-export const { setDAG, setConnectionStatus, setError } = dagSlice.actions;
+export const { setDAG, clearDAG, setConnectionStatus, setError } = dagSlice.actions;
 export default dagSlice.reducer;

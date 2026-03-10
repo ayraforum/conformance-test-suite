@@ -7,6 +7,7 @@ const serverPort: number = Number(process.env.SERVER_PORT) || 5005;
 import { run, ensureInitialized, ensureAcaPyVerifierControllerInitialized } from "./server";
 import { selectPipeline } from "./state";
 import { PipelineType } from "./pipelines";
+import { buildTrqpPolicySuggestion, isTrqpSuggestHelperEnabled } from "./trqpSuggestion";
 
 import { Express } from "express";
 const app: Express = express();
@@ -121,6 +122,29 @@ app.post("/api/verifier/internal-invitation", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       error: "Failed to create internal verifier invitation",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+app.post("/api/trqp/suggest-policy", async (req, res) => {
+  if (!isTrqpSuggestHelperEnabled()) {
+    return res.status(403).json({
+      error: "TRQP suggestion helper is disabled",
+      hint: "Set NEXT_PUBLIC_TRQP_SUGGEST_FROM_TR_ENABLED=true to enable this endpoint",
+    });
+  }
+
+  try {
+    const suggestion = await buildTrqpPolicySuggestion({
+      ecosystemDid: req.body?.ecosystemDid,
+      trustNetworkDid: req.body?.trustNetworkDid,
+      cardType: req.body?.cardType,
+    });
+    return res.json({ suggestion });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Failed to build TRQP suggestion",
       details: error instanceof Error ? error.message : String(error),
     });
   }
@@ -263,6 +287,7 @@ app.use('*', (req, res) => {
       'GET /api/health',
       'POST /api/run',
       'POST /api/verifier/internal-invitation',
+      'POST /api/trqp/suggest-policy',
       'GET /api/dag',
       'GET /api/select/pipeline',
       'GET /api/invitation'
@@ -280,6 +305,7 @@ const runServer = () => {
     console.log('  GET /api/health');
     console.log('  POST /api/run');
     console.log('  POST /api/verifier/internal-invitation');
+    console.log('  POST /api/trqp/suggest-policy');
     console.log('  GET /api/dag');
     console.log('  GET /api/select/pipeline');
     console.log('  GET /api/invitation');

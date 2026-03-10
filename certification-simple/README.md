@@ -1,103 +1,44 @@
-# Ayra Conformance Test Suite - Certification Simple
+# Ayra Conformance Test Suite - `certification-simple`
 
-Certification Simple is the production codebase for the Ayra CTS, used for quick local runs and deployments. It currently supports TRQP trust registry checks, the holder conformance flow, and the issue flow (utility). The verifier conformance flow is being finished.
+`certification-simple` is the primary CTS runtime stack (Next.js UI + Express API + test pipelines).
 
-**Current coverage**
-- ✅ TRQP trust registry checks
-- ✅ Holder conformance flow
-- ✅ Issue flow (utility flow)
-- ✅ Credential format: AnonCreds
-- 🚧 Verifier conformance flow (in progress)
-- 🚧 Credential format: W3C LDP (in progress)
+Coverage and capability status are maintained in the root README: `../README.md`.
 
-For the complete documentation, see the main repository README at `../README.md`.
+## Use This With
+- Root docs for full setup and env guidance: `../README.md`
+- NGROK guidance: `./NGROK_SETUP.md`
+- Package-level implementation docs: `./packages/cts/README.md`
 
-## Quick Summary
-
-This certification-simple approach is:
-- Great for research, learning, and local experimentation
-- Handy for quick demos and validating wallet/verifier flows without extra services
-- Best when you want fast iteration over conformance ideas with minimal setup
-- The maintained baseline for production deployments
-
-See the main repository README for detailed comparisons and full documentation.
-
-## Running Locally (Docker Compose)
+## Quick Start
+From the repo root:
 
 ```bash
-cd /path/to/conformance-test-suite
-cp .env.example .env   # edit with your NGROK + reference agent settings
-# Default Credo setup
+cp .env.example .env
 docker compose up --build app
-# ... run flows at http://localhost:3000 ...
+```
+
+Then open:
+- `http://localhost:3000/holder`
+- `http://localhost:3000/verifier`
+- `http://localhost:3000/issuer`
+
+Stop:
+
+```bash
 docker compose down
 ```
 
-The root `.env` is the single source of truth for NGROK domains and agent selection. The most important keys are:
+## Notes
+- Configure all runtime values in the **root** `.env` file.
+- TRQP checks in Holder/Verifier are controlled from the UI:
+  - Enable TRQP
+  - Select mode: `authorization`, `recognition`, or `both`
+  - Optional policy overrides are under **Advanced Overrides**
+- `Suggest from TR` is available when `NEXT_PUBLIC_TRQP_SUGGEST_FROM_TR_ENABLED=true`.
 
-| Variable | Description |
-| --- | --- |
-| `REFERENCE_AGENT` | `credo` (default) or `acapy`. Controls the agent used for holder and verifier flows in the UI. |
-| `REFERENCE_AGENT_NGROK_DOMAIN` | Public hostname used by the reference agent tunnel. All QR codes for direct wallet interactions point here. |
-| `REFERENCE_ISSUER_OVERRIDE_AGENT` | Optional override for credential issuance (`credo`, `acapy`, or `auto`). Set to `credo` when you want ACA-Py to act as the verifier but you still rely on Credo to issue credentials. |
-| `ISSUER_OVERRIDE_NGROK_DOMAIN` | Required when the override is `credo`, so the Credo issuer has its own inbound NGROK tunnel. |
-| `VERIFIER_TEST_NGROK_DOMAIN` | Domain dedicated to the standalone `test-verifier` container used by scripted CLI checks. Does not affect the UI flows. |
-| `SERVER_NGROK_DOMAIN` | Optional domain for the Express API callbacks/webhooks. |
+## DID:web Issuer
+When using DID:web issuance, start with NGROK profile and ensure DID env values are set in root `.env`:
 
-If you leave `REFERENCE_AGENT=credo`, you only need one NGROK domain. When you experiment with `REFERENCE_AGENT=acapy` **and** keep the Credo override, you must provide two distinct domains so ngrok does not report `ERR_NGROK_334`.
-
-## NGROK Setup Overview
-
-- Use the root `.env` to configure tunnels. (The legacy `certification-simple/.env` is still read by some scripts but the compose services honor the root file.)
-- Free-plan users must alternate issuer and verifier tunnels; follow the docker compose steps in [`NGROK_SETUP.md`](./NGROK_SETUP.md) to start and stop the services on the host.
-- Paid-plan users can reserve domains and run both tunnels in parallel; instructions and example `.env` values are also in [`NGROK_SETUP.md`](./NGROK_SETUP.md).
-
-## DID:web Issuer (W3C LDP)
-
-When you want ACA-Py to issue W3C LDP credentials with a `did:web` issuer, you must host a DID document over HTTPS. The `app` container can generate and serve the DID document, and the optional `ngrok` sidecar can expose it.
-
-**Required .env values**
-- `CTS_ISSUER_DID_METHOD=web`
-- `CTS_ISSUER_DID_OPTIONS={"did":"did:web:ayra-cts-issuer.ngrok.app:issuer"}`
-- `DID_WEB_NGROK_DOMAIN=ayra-cts-issuer.ngrok.app`
-
-**Run with the ngrok sidecar**
 ```bash
-COMPOSE_PROFILES=with-ngrok docker compose up --build app ngrok acapy-control acapy-holder-control
+COMPOSE_PROFILES=with-ngrok docker compose up --build app ngrok acapy-control acapy-holder-control acapy-verifier-control
 ```
-
-The DID document is served by the CTS API at:
-- `https://ayra-cts-issuer.ngrok.app/issuer/did.json` (derived from the DID path)
-
-The DID document generator runs on startup when `CTS_ISSUER_DID_METHOD` is `web` (or `webvh`). You can re-run it manually:
-```bash
-docker compose exec app pnpm --filter cts-3 run generate:did-doc
-```
-
-## Ayra VC TRQP Inputs
-
-When issuing Ayra credentials for TRQP checks, CTS embeds two DIDs into the VC. Set them in the root `.env`:
-- `AYRA_TRUST_NETWORK_DID`: stored as `credentialSubject.ayra_trust_network_did`; used as the recognition authority DID.
-- `AYRA_ECOSYSTEM_DID`: stored as `credentialSubject.ecosystem_id`; used to resolve the TRQP endpoint from its DID document.
-
-Make sure the ecosystem DID resolves to a DID document that includes a TRQP service endpoint.
-
-**CTS issuer vs external issuer**
-- **CTS issues the credential:** Set `AYRA_TRUST_NETWORK_DID` and `AYRA_ECOSYSTEM_DID` so the VC contains the correct DIDs for TRQP lookups.
-- **External issuer / existing Ayra card:** These env vars are not used by the holder flow. CTS reads `credentialSubject.ayra_trust_network_did` and `credentialSubject.ecosystem_id` from the presented VC. Ensure the external VC includes those fields and that the ecosystem DID resolves to a TRQP endpoint.
-
-## Verifier TRQP Enforcement (Two-Run)
-
-When the Verifier UI toggle is enabled, CTS runs the verifier flow twice: once with the issuer authorized in the trust registry and once after CTS removes that authorization. This proves whether the verifier consulted TRQP by comparing run outcomes.
-
-Requirements:
-- **ACA-Py holder mode** (`REFERENCE_AGENT=acapy`), because CTS must observe `verified` from ACA-Py records.
-- One verifier OOB URL. Run 2 reuses the same connection after CTS removes authorization.
-- TRQP admin API access for toggling authorization state.
-- Verifier must send a Present Proof v2 problem report when TRQP authorization/recognition fails (recommended practice; mandatory for CTS conformance). CTS expects run 2 to abandon or otherwise **not** report `verified=true`.
-
-Relevant `.env` settings:
-- `TRQP_ADMIN_BASE_URL` (example: `https://sandbox-tr.ayra.network/admin`)
-- `TRQP_ADMIN_AUTH_HEADER` (default: `Authorization`)
-- `TRQP_ADMIN_AUTH_TOKEN` (if your admin API requires auth)
-- `ACAPY_VERIFIER_TRQP_ENFORCE` (demo verifier only; when `true`, sends a problem report on TRQP failure)
