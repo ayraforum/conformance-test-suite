@@ -235,8 +235,8 @@ Pull request and CI evidence from 2026-05-09:
 
     PR: https://github.com/ayraforum/conformance-test-suite/pull/30
     Branch: ayr-4-cts-extension-slice
-    Latest commit: 5e65ef6
-    GitHub Actions latest PR run: CTS manifest validation passed in 48s; live Jest matrix skipped on pull_request and remains manual via workflow_dispatch.
+    Code commit verified: 4c5cf89
+    GitHub Actions latest PR run: CTS manifest validation passed in 51s; live Jest matrix skipped on pull_request and remains manual via workflow_dispatch.
 
 ## Interfaces and Dependencies
 
