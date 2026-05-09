@@ -8,6 +8,7 @@ import { run, ensureInitialized, ensureAcaPyVerifierControllerInitialized } from
 import { selectPipeline } from "./state";
 import { PipelineType } from "./pipelines";
 import { buildTrqpPolicySuggestion, isTrqpSuggestHelperEnabled } from "./trqpSuggestion";
+import { registerCtsManifestRoutes } from "./manifest/routes";
 
 import { Express } from "express";
 const app: Express = express();
@@ -275,6 +276,8 @@ app.get("/api/card-format", (req, res) => {
   res.json({ format: state?.credentialFormat ?? null });
 });
 
+registerCtsManifestRoutes(app);
+
 // Catch-all route for debugging
 app.use('*', (req, res) => {
   console.log(`Unhandled route: ${req.method} ${req.originalUrl}`);
@@ -290,7 +293,9 @@ app.use('*', (req, res) => {
       'POST /api/trqp/suggest-policy',
       'GET /api/dag',
       'GET /api/select/pipeline',
-      'GET /api/invitation'
+      'GET /api/invitation',
+      'GET /api/conformance/manifest',
+      'GET /api/conformance/criteria'
     ]
   });
 });
@@ -309,6 +314,8 @@ const runServer = () => {
     console.log('  GET /api/dag');
     console.log('  GET /api/select/pipeline');
     console.log('  GET /api/invitation');
+    console.log('  GET /api/conformance/manifest');
+    console.log('  GET /api/conformance/criteria');
   });
 };
 

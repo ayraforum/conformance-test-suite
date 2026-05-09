@@ -1,9 +1,38 @@
 name: Agent Matrix Tests
 
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
+  manifest-validation:
+    name: CTS manifest validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: conformance-stack
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Enable pnpm 9.1.0
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.1.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate CTS manifest
+        run: pnpm run validate:cts-manifest
+
   tests:
     name: Jest (${{ matrix.reference_agent }})
     runs-on: ubuntu-latest
@@ -14,6 +43,9 @@ jobs:
     env:
       REFERENCE_AGENT: ${{ matrix.reference_agent }}
       ACAPY_CONTROL_URL: http://127.0.0.1:9001
+    defaults:
+      run:
+        working-directory: conformance-stack
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,14 +54,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "pnpm"
-          cache-dependency-path: certification-simple/pnpm-lock.yaml
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Enable pnpm 9.1.0
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.1.0 --activate
 
       - name: Install dependencies
-        working-directory: certification-simple
         run: pnpm install --frozen-lockfile
 
       - name: Start ACA-Py control service
@@ -45,9 +76,8 @@ jobs:
           done
 
       - name: Run unit tests
-        working-directory: certification-simple
         run: pnpm test:unit
 
       - name: Stop ACA-Py control service
-        if: matrix.reference_agent == 'acapy'
+        if: always() && matrix.reference_agent == 'acapy'
         run: docker compose down
