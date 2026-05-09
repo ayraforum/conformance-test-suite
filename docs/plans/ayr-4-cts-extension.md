@@ -42,7 +42,7 @@ Excluded until AYR-3 is completed:
 - [x] (2026-05-09 18:09Z) Corrected GitHub Actions CI so it runs from `conformance-stack` and added a separate deterministic manifest-validation job.
 - [x] (2026-05-09 18:09Z) Added `CONTRIBUTING-CTS.md` with required criterion, oracle, evidence, runner, and validation guidance.
 - [x] (2026-05-09 18:09Z) Re-ran focused validation commands and recorded outputs here.
-- [ ] Open a pull request or leave a reviewable branch, then update AYR-4 with the evidence.
+- [x] (2026-05-09 18:09Z) Opened pull request https://github.com/ayraforum/conformance-test-suite/pull/30 and verified the deterministic CTS manifest validation check passed.
 
 ## Surprises & Discoveries
 
@@ -206,6 +206,13 @@ Final focused validation transcript from 2026-05-09:
 
     git diff --check
     # no output; exit status 0
+
+Pull request and CI evidence from 2026-05-09:
+
+    PR: https://github.com/ayraforum/conformance-test-suite/pull/30
+    Branch: ayr-4-cts-extension-slice
+    Latest commit: 5e65ef6
+    GitHub Actions latest PR run: CTS manifest validation passed in 48s; live Jest matrix skipped on pull_request and remains manual via workflow_dispatch.
 
 ## Interfaces and Dependencies
 
