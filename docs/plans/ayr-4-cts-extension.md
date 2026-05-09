@@ -43,6 +43,7 @@ Excluded until AYR-3 is completed:
 - [x] (2026-05-09 18:09Z) Added `CONTRIBUTING-CTS.md` with required criterion, oracle, evidence, runner, and validation guidance.
 - [x] (2026-05-09 18:09Z) Re-ran focused validation commands and recorded outputs here.
 - [x] (2026-05-09 18:09Z) Opened pull request https://github.com/ayraforum/conformance-test-suite/pull/30 and verified the deterministic CTS manifest validation check passed.
+- [x] (2026-05-09 23:35Z) Hardened the manifest validator so the contributor-guide-required identity fields and enum values are enforced before future CTS cases enter CI.
 
 ## Surprises & Discoveries
 
@@ -51,6 +52,9 @@ Excluded until AYR-3 is completed:
 
 - Observation: The baseline Jest suite is not currently clean on this machine after dependency install.
   Evidence: `npx pnpm@9.1.0 test -- --runInBand` failed with 12 failed suites and 9 passed suites. Representative failures include `tests/verifierAcaPyPipeline.test.ts` module mapping for `@demo/core/pipeline/src/nodes`, Credo agent tests with `EADDRINUSE :::3020`, DAG retry expectation failures, and open handles that kept Jest alive until the 600 second tool timeout.
+
+- Observation: The root `check-types:tests` script currently references `tsconfig.test.json`, but that file is absent from `conformance-stack`.
+  Evidence: `npx pnpm@9.1.0 run check-types:tests` failed with `error TS5058: The specified path does not exist: 'tsconfig.test.json'.`
 
 ## Decision Log
 
@@ -206,6 +210,26 @@ Final focused validation transcript from 2026-05-09:
 
     git diff --check
     # no output; exit status 0
+
+Manifest hardening validation transcript from 2026-05-09:
+
+    cd conformance-stack
+    npx pnpm@9.1.0 exec jest tests/ctsManifest.test.ts --runInBand --config tests/jest.config.ts
+    PASS @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Test Suites: 1 passed, 1 total
+    Tests: 8 passed, 8 total
+
+    npx pnpm@9.1.0 run validate:cts-manifest
+    PASS @credo-ts/e2e-test tests/ctsManifestRoutes.test.ts
+    PASS @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Test Suites: 2 passed, 2 total
+    Tests: 9 passed, 9 total
+
+    git diff --check
+    # no output; exit status 0
+
+    npx pnpm@9.1.0 run check-types:tests
+    error TS5058: The specified path does not exist: 'tsconfig.test.json'.
 
 Pull request and CI evidence from 2026-05-09:
 

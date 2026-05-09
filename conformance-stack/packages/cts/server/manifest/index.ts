@@ -49,6 +49,13 @@ const hasText = (value: unknown): value is string =>
 const hasTextArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.length > 0 && value.every(hasText);
 
+const validRoles: CtsRole[] = ["holder", "issuer", "verifier", "trust-registry"];
+const validLevels: NormativeLevel[] = ["MUST", "SHOULD", "MAY"];
+const validPolarities: TestPolarity[] = ["positive", "negative"];
+
+const isOneOf = <T extends string>(value: unknown, allowed: T[]): value is T =>
+  typeof value === "string" && allowed.includes(value as T);
+
 export const validateCtsManifest = (manifest: CtsManifest): string[] => {
   const errors: string[] = [];
 
@@ -78,6 +85,9 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
     }
     criterionIds.add(criterion.id);
 
+    if (!hasText(criterion.title)) {
+      errors.push(`criteria[${index}].title is required`);
+    }
     if (!hasText(criterion.standard)) {
       errors.push(`criteria[${index}].standard is required`);
     }
@@ -86,6 +96,16 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
     }
     if (!hasText(criterion.profile)) {
       errors.push(`criteria[${index}].profile is required`);
+    }
+    if (!isOneOf(criterion.role, validRoles)) {
+      errors.push(
+        `criteria[${index}].role must be one of ${validRoles.join(", ")}`,
+      );
+    }
+    if (!isOneOf(criterion.level, validLevels)) {
+      errors.push(
+        `criteria[${index}].level must be one of ${validLevels.join(", ")}`,
+      );
     }
     if (!hasText(criterion.statement)) {
       errors.push(`criteria[${index}].statement is required`);
@@ -96,9 +116,21 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
     errors.push("testCases must list at least one test case");
   }
 
+  const testCaseIds = new Set<string>();
   manifest.testCases?.forEach((testCase, index) => {
     if (!hasText(testCase.id)) {
       errors.push(`testCases[${index}].id is required`);
+    } else {
+      if (testCaseIds.has(testCase.id)) {
+        errors.push(`testCases[${index}].id duplicates ${testCase.id}`);
+      }
+      testCaseIds.add(testCase.id);
+    }
+
+    if (!isOneOf(testCase.polarity, validPolarities)) {
+      errors.push(
+        `testCases[${index}].polarity must be one of ${validPolarities.join(", ")}`,
+      );
     }
 
     const refs = testCase.criterionRefs;

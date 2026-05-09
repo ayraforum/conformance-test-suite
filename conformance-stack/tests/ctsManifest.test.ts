@@ -20,6 +20,43 @@ describe("CTS manifest validation", () => {
     );
   });
 
+  test("rejects duplicate criterion and test case identifiers", () => {
+    const manifest = cloneManifest();
+    manifest.criteria[1].id = manifest.criteria[0].id;
+    manifest.testCases[1].id = manifest.testCases[0].id;
+
+    expect(validateCtsManifest(manifest)).toEqual(
+      expect.arrayContaining([
+        "criteria[1].id duplicates AYRA-PP20-VERIFY-TRUE",
+        "testCases[1].id duplicates CTS-VERIFIER-ACAPY-VERIFIED-TRUE",
+      ]),
+    );
+  });
+
+  test("requires every criterion to include required descriptive fields", () => {
+    const manifest = cloneManifest();
+    manifest.criteria[0].title = "";
+    manifest.criteria[0].role = "" as any;
+    manifest.criteria[0].level = "" as any;
+
+    expect(validateCtsManifest(manifest)).toEqual(
+      expect.arrayContaining([
+        "criteria[0].title is required",
+        "criteria[0].role must be one of holder, issuer, verifier, trust-registry",
+        "criteria[0].level must be one of MUST, SHOULD, MAY",
+      ]),
+    );
+  });
+
+  test("requires every test case to use a valid polarity", () => {
+    const manifest = cloneManifest();
+    manifest.testCases[0].polarity = "maybe" as any;
+
+    expect(validateCtsManifest(manifest)).toContain(
+      "testCases[0].polarity must be one of positive, negative",
+    );
+  });
+
   test("requires an oracle expectation for every test case", () => {
     const manifest = cloneManifest();
     manifest.testCases[0].oracle = undefined as any;
