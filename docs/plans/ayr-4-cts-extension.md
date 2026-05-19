@@ -45,6 +45,7 @@ Excluded until AYR-3 is completed:
 - [x] (2026-05-09 18:09Z) Opened pull request https://github.com/ayraforum/conformance-test-suite/pull/30 and verified the deterministic CTS manifest validation check passed.
 - [x] (2026-05-09 23:35Z) Hardened the manifest validator so the contributor-guide-required identity fields and enum values are enforced before future CTS cases enter CI.
 - [x] (2026-05-19 16:10Z) Restored the deterministic `check-types:tests` script by adding a scoped test TypeScript config for the CTS manifest tests without changing protocol semantics.
+- [x] (2026-05-19) Hardened manifest traceability so future criteria cannot be added without at least one mapped test case and future test cases cannot omit a human-readable title.
 
 ## Surprises & Discoveries
 
@@ -140,6 +141,8 @@ Initial validator tests:
 - Negative: a test case with no oracle fails with a message containing `oracle`.
 - Negative: a test case with no evidence artifacts fails with a message containing `evidence`.
 - Negative: a test case with neither runner commands nor a pending runner reason fails with a message containing `runner`.
+- Negative: a criterion that is not referenced by any test case fails with a message containing `must be referenced by at least one test case`.
+- Negative: a test case without a human-readable title fails with a message containing `title`.
 
 Future protocol tests will map to AYR-3 criteria once AYR-3 is done.
 
@@ -247,6 +250,34 @@ Focused TypeScript and manifest validation transcript from 2026-05-19:
     PASS @credo-ts/e2e-test tests/ctsManifestRoutes.test.ts
     Test Suites: 2 passed, 2 total
     Tests: 9 passed, 9 total
+
+    git diff --check
+    # no output; exit status 0
+
+Traceability hardening transcript from 2026-05-19:
+
+    cd conformance-stack
+    npx pnpm@9.1.0 exec jest tests/ctsManifest.test.ts --runInBand --config tests/jest.config.ts
+    FAIL @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Failing tests: requires every criterion to be referenced by at least one test case; requires every test case to include a human-readable title
+
+    npx pnpm@9.1.0 exec jest tests/ctsManifest.test.ts --runInBand --config tests/jest.config.ts
+    PASS @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Test Suites: 1 passed, 1 total
+    Tests: 10 passed, 10 total
+
+    npx pnpm@9.1.0 run validate:cts-manifest
+    PASS @credo-ts/e2e-test tests/ctsManifestRoutes.test.ts
+    PASS @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Test Suites: 2 passed, 2 total
+    Tests: 11 passed, 11 total
+
+    npx pnpm@9.1.0 run check-types:tests
+    # tsc -p tsconfig.test.json --noEmit
+    # exit status 0
+
+    npx pnpm@9.1.0 exec prettier --check tests/ctsManifest.test.ts packages/cts/server/manifest/index.ts ../docs/plans/ayr-4-cts-extension.md
+    All matched files use Prettier code style!
 
     git diff --check
     # no output; exit status 0

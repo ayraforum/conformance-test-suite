@@ -49,7 +49,12 @@ const hasText = (value: unknown): value is string =>
 const hasTextArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.length > 0 && value.every(hasText);
 
-const validRoles: CtsRole[] = ["holder", "issuer", "verifier", "trust-registry"];
+const validRoles: CtsRole[] = [
+  "holder",
+  "issuer",
+  "verifier",
+  "trust-registry",
+];
 const validLevels: NormativeLevel[] = ["MUST", "SHOULD", "MAY"];
 const validPolarities: TestPolarity[] = ["positive", "negative"];
 
@@ -74,6 +79,7 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
   }
 
   const criterionIds = new Set<string>();
+  const referencedCriterionIds = new Set<string>();
   manifest.criteria?.forEach((criterion, index) => {
     if (!hasText(criterion.id)) {
       errors.push(`criteria[${index}].id is required`);
@@ -99,12 +105,12 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
     }
     if (!isOneOf(criterion.role, validRoles)) {
       errors.push(
-        `criteria[${index}].role must be one of ${validRoles.join(", ")}`,
+        `criteria[${index}].role must be one of ${validRoles.join(", ")}`
       );
     }
     if (!isOneOf(criterion.level, validLevels)) {
       errors.push(
-        `criteria[${index}].level must be one of ${validLevels.join(", ")}`,
+        `criteria[${index}].level must be one of ${validLevels.join(", ")}`
       );
     }
     if (!hasText(criterion.statement)) {
@@ -127,17 +133,25 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
       testCaseIds.add(testCase.id);
     }
 
+    if (!hasText(testCase.title)) {
+      errors.push(`testCases[${index}].title is required`);
+    }
+
     if (!isOneOf(testCase.polarity, validPolarities)) {
       errors.push(
-        `testCases[${index}].polarity must be one of ${validPolarities.join(", ")}`,
+        `testCases[${index}].polarity must be one of ${validPolarities.join(
+          ", "
+        )}`
       );
     }
 
     const refs = testCase.criterionRefs;
     if (!hasTextArray(refs) || refs.some((ref) => !criterionIds.has(ref))) {
       errors.push(
-        `testCases[${index}].criterionRefs must reference at least one known criterion`,
+        `testCases[${index}].criterionRefs must reference at least one known criterion`
       );
+    } else {
+      refs.forEach((ref) => referencedCriterionIds.add(ref));
     }
 
     if (!testCase.oracle) {
@@ -148,7 +162,7 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
       }
       if (!hasTextArray(testCase.oracle.expectedEvidence)) {
         errors.push(
-          `testCases[${index}].oracle.expectedEvidence must list at least one artifact`,
+          `testCases[${index}].oracle.expectedEvidence must list at least one artifact`
         );
       }
       if (
@@ -156,7 +170,7 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
         !hasText(testCase.oracle.successCondition)
       ) {
         errors.push(
-          `testCases[${index}].oracle.successCondition is required for positive tests`,
+          `testCases[${index}].oracle.successCondition is required for positive tests`
         );
       }
       if (
@@ -164,19 +178,31 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
         !hasText(testCase.oracle.failureReason)
       ) {
         errors.push(
-          `testCases[${index}].oracle.failureReason is required for negative tests`,
+          `testCases[${index}].oracle.failureReason is required for negative tests`
         );
       }
     }
 
     if (!hasTextArray(testCase.evidence)) {
-      errors.push(`testCases[${index}].evidence must list at least one artifact`);
+      errors.push(
+        `testCases[${index}].evidence must list at least one artifact`
+      );
     }
 
     const commands = testCase.runner?.commands;
     const pendingReason = testCase.runner?.pendingReason;
     if (!hasTextArray(commands) && !hasText(pendingReason)) {
-      errors.push(`testCases[${index}].runner must include commands or pendingReason`);
+      errors.push(
+        `testCases[${index}].runner must include commands or pendingReason`
+      );
+    }
+  });
+
+  manifest.criteria?.forEach((criterion, index) => {
+    if (hasText(criterion.id) && !referencedCriterionIds.has(criterion.id)) {
+      errors.push(
+        `criteria[${index}].id ${criterion.id} must be referenced by at least one test case`
+      );
     }
   });
 
@@ -234,7 +260,10 @@ export const ctsManifest: CtsManifest = {
         successCondition: "proof_record.verified === true",
         expectedEvidence: ["presentationExchangeId", "final verified value"],
       },
-      evidence: ["Jest assertion on task.state.status", "presentation exchange ID"],
+      evidence: [
+        "Jest assertion on task.state.status",
+        "presentation exchange ID",
+      ],
       runner: {
         commands: [
           "npx pnpm@9.1.0 exec jest tests/verifierAcaPyPipeline.test.ts --runInBand --config tests/jest.config.ts",
@@ -250,7 +279,11 @@ export const ctsManifest: CtsManifest = {
         summary:
           "A proof record that reaches done but remains verified=false fails with a stable reason rather than being treated as success.",
         failureReason: "VERIFICATION_NOT_TRUE",
-        expectedEvidence: ["presentationExchangeId", "final verified value", "failure reason"],
+        expectedEvidence: [
+          "presentationExchangeId",
+          "final verified value",
+          "failure reason",
+        ],
       },
       evidence: ["Jest rejection message", "presentation exchange ID"],
       runner: {
@@ -269,7 +302,11 @@ export const ctsManifest: CtsManifest = {
           "When TRQP mode is both, the verifier run captures both authorization and recognition checks in the report evidence.",
         successCondition:
           "trqp.authorization.checked === true && trqp.recognition.checked === true",
-        expectedEvidence: ["TRQP mode", "authorization result", "recognition result"],
+        expectedEvidence: [
+          "TRQP mode",
+          "authorization result",
+          "recognition result",
+        ],
       },
       evidence: ["verifier report summary", "TRQP check trace"],
       runner: {
@@ -286,11 +323,16 @@ export const ctsManifest: CtsManifest = {
         summary:
           "The repository's Ayra Business Card JSON-LD context and example payload pass the local schema/context validation script.",
         successCondition: "validate-ayra-card-context exits with status 0",
-        expectedEvidence: ["schema validator output", "context URL or file path"],
+        expectedEvidence: [
+          "schema validator output",
+          "context URL or file path",
+        ],
       },
       evidence: ["validator stdout", "schema file path"],
       runner: {
-        commands: ["npx pnpm@9.1.0 --filter cts-3 run validate:ayra-card-context"],
+        commands: [
+          "npx pnpm@9.1.0 --filter cts-3 run validate:ayra-card-context",
+        ],
       },
     },
   ],
