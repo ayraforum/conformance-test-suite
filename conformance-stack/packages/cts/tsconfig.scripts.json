@@ -7,9 +7,7 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "paths": {
       "@demo/core": ["../core/build/agent"],
       "@demo/core/*": ["../core/build/agent/*"],
@@ -19,12 +17,6 @@
       "@demo/core/pipeline/src/tasks/*": ["../core/build/pipeline/src/tasks/*"]
     }
   },
-  "include": [
-    "scripts/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "src/**/*",
-    "server/**/*"
-  ]
+  "include": ["scripts/**/*.ts", "server/manifest/**/*.ts"],
+  "exclude": ["node_modules", "src/**/*"]
 }

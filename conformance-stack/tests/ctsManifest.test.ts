@@ -1,5 +1,7 @@
 import {
+  buildCtsRunnerPlan,
   ctsManifest,
+  listCtsStandards,
   validateCtsManifest,
   type CtsManifest,
 } from "../packages/cts/server/manifest";
@@ -111,5 +113,64 @@ describe("CTS manifest validation", () => {
     expect(validateCtsManifest(manifest)).toContain(
       "testCases[0].runner must include commands or pendingReason"
     );
+  });
+});
+
+describe("CTS manifest runner planning", () => {
+  test("lists standards from the criteria catalog in stable order", () => {
+    expect(listCtsStandards(ctsManifest)).toEqual([
+      "Aries RFC 0454 Present Proof v2",
+      "Trust Registry Query Protocol",
+      "W3C Verifiable Credentials Data Model",
+    ]);
+  });
+
+  test("builds a runnable plan for one standard without pending cases", () => {
+    const plan = buildCtsRunnerPlan(ctsManifest, {
+      standard: "W3C Verifiable Credentials Data Model",
+    });
+
+    expect(plan.runnable).toEqual([
+      {
+        testCaseId: "CTS-AYRA-CARD-CONTEXT-VALID",
+        title: "Ayra card JSON-LD context validates before issuance",
+        polarity: "positive",
+        criteria: [
+          {
+            id: "AYRA-VCDM-LDP-CONTEXT",
+            standard: "W3C Verifiable Credentials Data Model",
+            role: "issuer",
+          },
+        ],
+        commands: [
+          "npx pnpm@9.1.0 --filter cts-3 run validate:ayra-card-context",
+        ],
+      },
+    ]);
+    expect(plan.pending).toEqual([]);
+  });
+
+  test("keeps AYR-3-dependent standards pending instead of inventing runner behavior", () => {
+    const plan = buildCtsRunnerPlan(ctsManifest, {
+      standard: "Trust Registry Query Protocol",
+    });
+
+    expect(plan.runnable).toEqual([]);
+    expect(plan.pending).toEqual([
+      {
+        testCaseId: "CTS-TRQP-VERIFY-BOTH-MODE",
+        title: "Verifier records TRQP authorization and recognition checks",
+        polarity: "positive",
+        criteria: [
+          {
+            id: "AYRA-TRQP-AUTHZ-RECOGNITION",
+            standard: "Trust Registry Query Protocol",
+            role: "verifier",
+          },
+        ],
+        pendingReason:
+          "AYR-3 must finalize the exact TRQP conformance criteria before this case becomes a deterministic CI runner.",
+      },
+    ]);
   });
 });

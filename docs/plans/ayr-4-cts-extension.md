@@ -46,6 +46,7 @@ Excluded until AYR-3 is completed:
 - [x] (2026-05-09 23:35Z) Hardened the manifest validator so the contributor-guide-required identity fields and enum values are enforced before future CTS cases enter CI.
 - [x] (2026-05-19 16:10Z) Restored the deterministic `check-types:tests` script by adding a scoped test TypeScript config for the CTS manifest tests without changing protocol semantics.
 - [x] (2026-05-19) Hardened manifest traceability so future criteria cannot be added without at least one mapped test case and future test cases cannot omit a human-readable title.
+- [x] (2026-05-19) Add a deterministic CTS runner-planning slice that groups manifest test cases by standard and exposes runnable commands versus AYR-3-pending cases without invoking live agents by default.
 
 ## Surprises & Discoveries
 
@@ -71,9 +72,13 @@ Excluded until AYR-3 is completed:
   Rationale: CI and contributor checks must be deterministic and safe. Live interoperability flows remain necessary for full CTS, but the catalog validator should run anywhere.
   Date/Author: 2026-05-09 / Case (CTO)
 
+- Decision: Add runner planning before adding more live protocol execution.
+  Rationale: AYR-3 still has unfinished criteria, so the CTS should expose which standards have runnable commands and which remain pending without guessing protocol semantics or invoking live agents by default.
+  Date/Author: 2026-05-19 / Case (CTO)
+
 ## Outcomes & Retrospective
 
-The first AYR-4 implementation slice is now reviewable: CTS has a manifest/validator, HTTP manifest endpoints, a deterministic CI validation job, and a contributor guide for future criteria and tests. Full AYR-4 remains open for additional protocol cases and standard-specific runner coverage once AYR-3 finalizes the remaining conformance criteria.
+The first AYR-4 implementation slice is now reviewable: CTS has a manifest/validator, HTTP manifest endpoints, a deterministic CI validation job, and a contributor guide for future criteria and tests. The current branch now also includes a manifest-based runner planner that lists supported standards, exposes runnable commands by standard/role/polarity, and reports AYR-3-dependent pending cases separately. Full AYR-4 remains open for additional protocol cases and standard-specific runner coverage once AYR-3 finalizes the remaining conformance criteria.
 
 ## Context and Orientation
 
@@ -145,6 +150,12 @@ Initial validator tests:
 - Negative: a test case without a human-readable title fails with a message containing `title`.
 
 Future protocol tests will map to AYR-3 criteria once AYR-3 is done.
+
+Runner-planning tests added on 2026-05-19:
+
+- Positive: `listCtsStandards()` returns the criteria catalog standards in stable order.
+- Positive: `buildCtsRunnerPlan()` returns runnable W3C VCDM commands for the Ayra card context case.
+- Positive: `buildCtsRunnerPlan()` reports the TRQP case as pending with its AYR-3-dependent reason instead of inventing a runner command.
 
 ## Concrete Steps
 
@@ -277,6 +288,48 @@ Traceability hardening transcript from 2026-05-19:
     # exit status 0
 
     npx pnpm@9.1.0 exec prettier --check tests/ctsManifest.test.ts packages/cts/server/manifest/index.ts ../docs/plans/ayr-4-cts-extension.md
+    All matched files use Prettier code style!
+
+    git diff --check
+    # no output; exit status 0
+
+Runner-planning validation transcript from 2026-05-19:
+
+    cd conformance-stack
+    npx pnpm@9.1.0 exec jest tests/ctsManifest.test.ts --runInBand --config tests/jest.config.ts
+    FAIL @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Failing tests: listCtsStandards is not a function; buildCtsRunnerPlan is not a function
+
+    npx pnpm@9.1.0 exec jest tests/ctsManifest.test.ts --runInBand --config tests/jest.config.ts
+    PASS @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Test Suites: 1 passed, 1 total
+    Tests: 13 passed, 13 total
+
+    npx pnpm@9.1.0 run validate:cts-manifest
+    PASS @credo-ts/e2e-test tests/ctsManifestRoutes.test.ts
+    PASS @credo-ts/e2e-test tests/ctsManifest.test.ts
+    Test Suites: 2 passed, 2 total
+    Tests: 14 passed, 14 total
+
+    npx pnpm@9.1.0 run check-types:tests
+    # tsc -p tsconfig.test.json --noEmit
+    # exit status 0
+
+    npx pnpm@9.1.0 run list:cts-standards
+    Aries RFC 0454 Present Proof v2
+    Trust Registry Query Protocol
+    W3C Verifiable Credentials Data Model
+
+    npx pnpm@9.1.0 run plan:cts-runner -- --standard 'Trust Registry Query Protocol'
+    Runnable test cases: 0
+    Pending test cases: 1
+    CTS-TRQP-VERIFY-BOTH-MODE pending on AYR-3 final criteria
+
+    npx pnpm@9.1.0 run run:cts-standard -- --standard 'W3C Verifiable Credentials Data Model'
+    Running CTS-AYRA-CARD-CONTEXT-VALID
+    Context/Schema validation passed.
+
+    npx pnpm@9.1.0 exec prettier --check tests/ctsManifest.test.ts packages/cts/server/manifest/index.ts packages/cts/scripts/run-cts-manifest.ts packages/cts/tsconfig.scripts.json package.json ../docs/plans/ayr-4-cts-extension.md
     All matched files use Prettier code style!
 
     git diff --check

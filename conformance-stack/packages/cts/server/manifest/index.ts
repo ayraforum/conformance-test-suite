@@ -209,6 +209,123 @@ export const validateCtsManifest = (manifest: CtsManifest): string[] => {
   return errors;
 };
 
+export interface CtsRunnerPlanFilters {
+  standard?: string;
+  role?: CtsRole;
+  polarity?: TestPolarity;
+}
+
+export interface CtsRunnerCriterionSummary {
+  id: string;
+  standard: string;
+  role: CtsRole;
+}
+
+export interface CtsRunnableTestCase {
+  testCaseId: string;
+  title: string;
+  polarity: TestPolarity;
+  criteria: CtsRunnerCriterionSummary[];
+  commands: string[];
+}
+
+export interface CtsPendingTestCase {
+  testCaseId: string;
+  title: string;
+  polarity: TestPolarity;
+  criteria: CtsRunnerCriterionSummary[];
+  pendingReason: string;
+}
+
+export interface CtsRunnerPlan {
+  manifestVersion: string;
+  profileId: string;
+  profileVersion: string;
+  filters: CtsRunnerPlanFilters;
+  runnable: CtsRunnableTestCase[];
+  pending: CtsPendingTestCase[];
+}
+
+const criterionSummary = (
+  criterion: CtsCriterion
+): CtsRunnerCriterionSummary => ({
+  id: criterion.id,
+  standard: criterion.standard,
+  role: criterion.role,
+});
+
+export const listCtsStandards = (manifest: CtsManifest): string[] =>
+  Array.from(
+    new Set(manifest.criteria.map((criterion) => criterion.standard))
+  ).sort();
+
+export const buildCtsRunnerPlan = (
+  manifest: CtsManifest,
+  filters: CtsRunnerPlanFilters = {}
+): CtsRunnerPlan => {
+  const criteriaById = new Map(
+    manifest.criteria.map((criterion) => [criterion.id, criterion])
+  );
+
+  const plan: CtsRunnerPlan = {
+    manifestVersion: manifest.manifestVersion,
+    profileId: manifest.profileId,
+    profileVersion: manifest.profileVersion,
+    filters,
+    runnable: [],
+    pending: [],
+  };
+
+  manifest.testCases.forEach((testCase) => {
+    const criteria = testCase.criterionRefs
+      .map((criterionId) => criteriaById.get(criterionId))
+      .filter((criterion): criterion is CtsCriterion => Boolean(criterion));
+
+    if (
+      filters.standard &&
+      !criteria.some((criterion) => criterion.standard === filters.standard)
+    ) {
+      return;
+    }
+
+    if (
+      filters.role &&
+      !criteria.some((criterion) => criterion.role === filters.role)
+    ) {
+      return;
+    }
+
+    if (filters.polarity && testCase.polarity !== filters.polarity) {
+      return;
+    }
+
+    const criteriaSummary = criteria.map(criterionSummary);
+    const commands = testCase.runner.commands;
+    if (hasTextArray(commands)) {
+      plan.runnable.push({
+        testCaseId: testCase.id,
+        title: testCase.title,
+        polarity: testCase.polarity,
+        criteria: criteriaSummary,
+        commands,
+      });
+      return;
+    }
+
+    if (hasText(testCase.runner.pendingReason)) {
+      plan.pending.push({
+        testCaseId: testCase.id,
+        title: testCase.title,
+        polarity: testCase.polarity,
+        criteria: criteriaSummary,
+        pendingReason: testCase.runner.pendingReason,
+      });
+    }
+  });
+
+  return plan;
+};
+
 export const ctsManifest: CtsManifest = {
   manifestVersion: "0.1.0",
   profileId: "ayra-didcomm-w3c-ldp-trqp",
