@@ -44,6 +44,7 @@ Excluded until AYR-3 is completed:
 - [x] (2026-05-09 18:09Z) Re-ran focused validation commands and recorded outputs here.
 - [x] (2026-05-09 18:09Z) Opened pull request https://github.com/ayraforum/conformance-test-suite/pull/30 and verified the deterministic CTS manifest validation check passed.
 - [x] (2026-05-09 23:35Z) Hardened the manifest validator so the contributor-guide-required identity fields and enum values are enforced before future CTS cases enter CI.
+- [x] (2026-05-19 16:10Z) Restored the deterministic `check-types:tests` script by adding a scoped test TypeScript config for the CTS manifest tests without changing protocol semantics.
 
 ## Surprises & Discoveries
 
@@ -55,6 +56,9 @@ Excluded until AYR-3 is completed:
 
 - Observation: The root `check-types:tests` script currently references `tsconfig.test.json`, but that file is absent from `conformance-stack`.
   Evidence: `npx pnpm@9.1.0 run check-types:tests` failed with `error TS5058: The specified path does not exist: 'tsconfig.test.json'.`
+
+- Observation: A broad all-test TypeScript config is not currently clean because existing non-CTS-manifest tests and pipeline mocks have pre-existing type drift.
+  Evidence: broad test includes reported stale `AgentConfiguration` fixtures missing `endpoints`, custom Jest matcher typing gaps, and `MockTaskRunnerNode` missing the current `serialize` requirement. The AYR-4 config is therefore scoped to deterministic CTS manifest tests until those existing suites are remediated separately.
 
 ## Decision Log
 
@@ -230,6 +234,22 @@ Manifest hardening validation transcript from 2026-05-09:
 
     npx pnpm@9.1.0 run check-types:tests
     error TS5058: The specified path does not exist: 'tsconfig.test.json'.
+
+Focused TypeScript and manifest validation transcript from 2026-05-19:
+
+    cd conformance-stack
+    npx pnpm@9.1.0 run check-types:tests
+    # tsc -p tsconfig.test.json --noEmit
+    # exit status 0
+
+    npx pnpm@9.1.0 run validate:cts-manifest
+    PASS @credo-ts/e2e-test tests/ctsManifest.test.ts
+    PASS @credo-ts/e2e-test tests/ctsManifestRoutes.test.ts
+    Test Suites: 2 passed, 2 total
+    Tests: 9 passed, 9 total
+
+    git diff --check
+    # no output; exit status 0
 
 Pull request and CI evidence from 2026-05-09:
 

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "types": ["jest", "node"],
+    "paths": {
+      "@demo/*": ["packages/*/build"]
+    }
+  },
+  "include": [
+    "jest.config.base.ts",
+    "tests/jest.config.ts",
+    "tests/ctsManifest.test.ts",
+    "tests/ctsManifestRoutes.test.ts",
+    "packages/cts/server/manifest/**/*.ts"
+  ],
+  "exclude": ["node_modules", "**/build/**", "**/gen/**"]
+}
