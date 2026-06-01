@@ -1,499 +1,936 @@
-openapi: 3.1.0
-servers:
-  - description: SwaggerHub API Auto Mocking
-    url: https://virtserver.swaggerhub.com/darrellodonnell/ToIP.TrustRegistry/0.1.0
+openapi: 3.0.3
 info:
-  description: |
-    # Trust Registry capabilities
-    * Allow querying for critical items in a digital trust ecosystem:
-    Entities, Registries, and Resources that are required to operate
-    in the ecosysystem.
-    # Registry of Registries (RoR) capabilities.
-    RoR capabilities include:
-      * Listing Registries that are known (to the registry being queried).
-      * list the acknowledged trust registries that the RoR recognizes and what
-    that may mean in the context of a particular governance framework.
-  version: 2.0.0
-  title: ToIP Trust Registry (Query) Protocol v2 - Working Draft
-  contact:
-    email: darrell.odonnell@continuumloop.com
+  title: Ayra TRQP Profile API
+  version: 1.0.0
   license:
-    name: Apache 2.0
-    url: http://www.apache.org/licenses/LICENSE-2.0.html
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  description: |
+    Combined OpenAPI specification for the Ayra Trust Network TRQP implementation.
+    Endpoints are organized by tag:
+    - **trqp-core**: TRQP v2.0 compliant endpoints (`POST /authorization`, `POST /recognition`)
+    - **ayra-extension**: Ayra-specific extension endpoints for metadata, entity lookup, ecosystem discovery, and lookups
+
+    See the [Ayra TRQP Profile](https://ayraforum.github.io/ayra-trust-registry-resources/) for normative requirements.
+
+servers:
+  - url: https://example-trust-registry.com
+    description: Production server (example)
+  - url: https://sandbox-tr.ayra.technology
+    description: Sandbox server (Ayra)
+
 tags:
-  - name: registry
-    description: Queries about Entities, Registries, and Resources.
-  - name: lookups
-    description: Configuration and lookup operations.
-  - name: metadata
-    description: Metadata operations.
-  - name: offline
-    description: Offline operations (i.e. prepare to go offline).
+  - name: trqp-core
+    description: TRQP Compliant Queries
+  - name: ayra-extension
+    description: Ayra Extensions to TRQP
+  - name: lookup
+    description: Lookup endpoints for discovery of trust parameters
+
+security:
+  - {}
+  - bearerAuth: []
+
 paths:
-  /entitities/{entityid}:
-    get:
+  
+  /authorization:
+    post:
+      summary: Queries registry for Authorization, by an Ecosystem, of an Entity.
+      operationId: queryAuthorization
       tags:
-        - registry
-      summary: >-
-        Returns Registry Information about a particular entity that is
-        represented in the queried system.
+        - trqp-core
       parameters:
-        - in: path
-          name: entityid
+        - name: Content-Type
+          in: header
           required: true
           schema:
-            $ref: "#/components/schemas/Uri"
-          description: >
-            The URI-based identifier of a DID or X.509 Issuer. Allows reserved
-            characters per RFC3986.
-
-            Do **NOT** escape the URI.
-          allowReserved: true
-        - in: query
-          name: authorizationVID
+            type: string
+            enum:
+              - application/json
+          description: Content type must be application/json
+        - name: Authorization
+          in: header
           required: false
           schema:
-            $ref: "#/components/schemas/Uri"
-          description: >
-            The identifier of the Authorization that is being queried for this
-            Entity.
-          allowReserved: true
-      responses:
-        "200":
-          description: search results matching criteria
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EntityType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /entities/{entityVID}/authorization:
-    get:
-      tags:
-        - registry
-      summary: Determine whether an Entity has a particular Authorization.
-      parameters:
-        - in: path
-          name: entityVID
-          required: true
-          schema:
-            $ref: "#/components/schemas/VID"
-          description: >
-            The VID-based identifier of a VID/DID/AID or X.509 Issuer. Allows
-            reserved characters per RFC3986.
-
-            Do **NOT** escape the URI.
-          allowReserved: true
-        - in: query
-          name: authorizationVID
+            type: string
+          description: Bearer token for authentication (conditional based on registry policy)
+        - name: X-Request-ID
+          in: header
           required: false
           schema:
-            $ref: "#/components/schemas/Uri"
-          description: >
-            The identifier of the Authorization that is being queried for this
-            Entity.
-          allowReserved: true
+            type: string
+            format: uuid
+          description: Optional UUID for request tracing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrqpAuthorizationQuery'
       responses:
-        "200":
-          description: search results matching criteria
+        200:
+          description: Authorization query successful
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthorizationResponseListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /entities/{entityVID}/authorizations:
-    get:
+                $ref: '#/components/schemas/TrqpAuthorizationResponse'
+        400:
+          description: Bad request - invalid JSON or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        401:
+          description: Unauthorized request - invalid or missing bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Entity, authority, action, or resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /recognition:
+    post:
+      summary: Queries registry for recognition, by an ecosystem, of another ecosystem.
+      operationId: queryRecognition
       tags:
-        - registry
-      summary: Determine whether an Entity has a particular Authorization.
+        - trqp-core
       parameters:
-        - in: path
-          name: entityVID
+        - name: Content-Type
+          in: header
           required: true
           schema:
-            $ref: "#/components/schemas/VID"
-          description: >
-            The VID-based identifier of a VID/DID/AID or X.509 Issuer. Allows
-            reserved characters per RFC3986.
-
-            Do **NOT** escape the URI.
-          allowReserved: true
-      responses:
-        "200":
-          description: search results matching criteria
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthorizationResponseListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /registries/recognized-registries:
-    get:
-      tags:
-        - registry
-      summary: >
-        Query this Trust Registry about its recognition of another Trust
-        Registry.
-      parameters:
-        - in: query
-          name: namespace-VID
+            type: string
+            enum:
+              - application/json
+          description: Content type must be application/json
+        - name: Authorization
+          in: header
           required: false
           schema:
-            $ref: "#/components/schemas/VID"
-          description: >
-            Filter in only the namespace requested - show all registries
-            otherwise. The URI-based Verifiable Identifier (VID) (e.g. DID or
-            X.509 VID). Allows reserved characters per RFC3986.
-
-            Do **NOT** escape the URI.
-          allowReserved: true
-        - in: query
-          name: EGF-VID
+            type: string
+          description: Bearer token for authentication (conditional based on registry policy)
+        - name: X-Request-ID
+          in: header
           required: false
           schema:
-            $ref: "#/components/schemas/VID"
-          description: >
-            Filter in only the registries under the specified EGF (by EGF DID).
-            Defaults to be limited to the EGFURI that is being queried at the
-            root.
-
-            The URI-based Verifiable Identifier (VID) (e.g. DID or X.509 VID).
-            Allows reserved characters per RFC3986.
-
-            Do **NOT** escape the URI.
+            type: string
+            format: uuid
+          description: Optional UUID for request tracing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrqpRecognitionQuery'
       responses:
-        "200":
-          description: search results matching criteria
+        200:
+          description: Recognition query successful
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RegistryListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /registries/{registryVID}/recognized-registries/:
-    get:
-      tags:
-        - registry
-      summary: >
-        Query this Trust Registry about its recognition of a specific Trust
-        Registry.
-
-        TODO: determine RoR (registry of registry) impacts here.
-      parameters:
-        - in: path
-          name: registryVID
-          required: true
-          schema:
-            $ref: "#/components/schemas/VID"
-          description: >
-            The URI-based identifier of a DID or X.509 Issuer. Allows reserved
-            characters per RFC3986.
-
-            Do **NOT** escape the URI.
-          allowReserved: true
-      responses:
-        "200":
-          description: search results matching criteria
+                $ref: '#/components/schemas/TrqpRecognitionResponse'
+        400:
+          description: Bad request - invalid JSON or missing required fields
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RegistryListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /registries/{registryVID}/:
-    get:
-      tags:
-        - registry
-      summary: Get resource data indicated by DID.
-      parameters:
-        - in: path
-          name: registryVID
-          required: true
-          schema:
-            $ref: "#/components/schemas/VID"
-          description: >
-            The URI-based identifier of a DID or X.509 Issuer. Allows reserved
-            characters per RFC3986.
+                $ref: '#/components/schemas/ProblemDetails'
+        401:
+          description: Unauthorized request - invalid or missing bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        404:
+          description: Entity, authority, action, or resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
 
-            Do **NOT** escape the URI.
-          allowReserved: true
-      responses:
-        "200":
-          description: search results matching criteria
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/ResourceReferencedType"
-                  - $ref: "#/components/schemas/ResourceDirectType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /lookup/authorizations:
-    get:
-      tags:
-        - lookups
-      summary: Get a list of Rights that are used in this Trust Registry.
-      parameters:
-        - in: query
-          name: egfURI
-          required: true
-          schema:
-            $ref: "#/components/schemas/Uri"
-          description: >
-            The URI-based identifier of a DID or X.509 Issuer. Allows reserved
-            characters per RFC3986.
-
-            Do **NOT** escape the URI.
-          allowReserved: true
-      responses:
-        "200":
-          description: search results matching criteria
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthorizationListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /lookup/namespaces:
-    get:
-      tags:
-        - lookups
-      summary: Get the namespaces that are supported in this trust Registry.
-      parameters: []
-      responses:
-        "200":
-          description: search results matching criteria
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NamespaceListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /lookup/vidmethods:
-    get:
-      tags:
-        - lookups
-      summary: >-
-        Get a list of DID Methods that are supported by a particular Governance
-        Framework.
-      parameters:
-        - in: query
-          name: egfURI
-          required: true
-          schema:
-            $ref: "#/components/schemas/VIDMethodListType"
-          description: >
-            Provides a list of DID-methods that are supported by this trust
-            registry. MAY include Maximum Assurance Level
-
-            that a DID Method is set at under the EGF.
-          allowReserved: true
-      responses:
-        "200":
-          description: search results matching criteria
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VIDMethodListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /lookup/assurancelevels:
-    get:
-      tags:
-        - lookups
-      summary: >-
-        Get a list of the assurance levels that are in use by this Trust
-        Registry (and its governing EGF).
-      parameters:
-        - in: query
-          name: egfURI
-          required: true
-          schema:
-            $ref: "#/components/schemas/Uri"
-          description: >
-            The URI-based identifier of the Ecosystem Governance Framework that
-            the assurance levels apply to. Allows reserved characters per
-            RFC3986.
-
-            Do **NOT** escape the URI.
-          allowReserved: true
-      responses:
-        "200":
-          description: search results matching criteria
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AssuranceLevelListType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
   /metadata:
     get:
+      summary: Retrieve Trust Registry Metadata
       tags:
-        - metadata
-      summary: Provides metadata object.
-      description: Metadata object.
+        - ayra-extension
+      description: |
+        Returns Trust Registry Metadata as a JSON object.
+      operationId: getTrustRegistryMetadata
+      parameters:
+        - name: egf_did
+          in: query
+          required: false
+          description: An optional identifier specifying which ecosystem's metadata should be retrieved.
+          schema:
+            type: string
       responses:
         "200":
-          description: search results matching criteria
+          description: Successfully retrieved Trust Registry Metadata.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RegistryMetadataType"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+                $ref: "#/components/schemas/TrustRegistryMetadata"
         "404":
-          $ref: "#/components/responses/NotFound"
-  /offline/exportfile:
-    get:
-      tags:
-        - offline
-      summary: Access a full data file that can be used offline.
-      operationId: getOfflineFile
-      description: >
-        Allows querying to determine the status of an Issuer, as identified by
-        their Identifier (unique),
-
-        credential type, and EGF that they are operating under.
-      responses:
-        "200":
-          description: JSON file array of offline list of Issuers
+          description: Metadata not found.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExportFile"
-  /offline/trustestablishmentdocument:
-    get:
-      tags:
-        - offline
-      summary: Access a full data file that can be used offline.
-      operationId: getTED
-      description: >
-        Allows querying to determine the status of an Issuer, as identified by
-        their Identifier (unique),
-
-        credential type, and EGF that they are operating under.
-      responses:
-        "200":
-          description: JSON file array of offline list of Issuers
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TrustEstablishmentDocument"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+                $ref: "#/components/schemas/ProblemDetails"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /entities/{entity_id}:
+    get:
+      summary: Retrieve Entity Information
+      tags:
+        - ayra-extension
+      description: |
+        Retrieves information about a specific entity.
+      operationId: getEntityInformation
+      parameters:
+        - in: path
+          name: entity_id
+          required: true
+          description: A unique identifier for the entity.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entity information successfully retrieved.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: A JSON object containing entity information.
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Entity not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /entities/{entity_did}/authorizations:
+    get:
+      summary: List Authorizations that this Entity has
+      tags:
+        - ayra-extension
+      description: |
+        Retrieves a collection of authorizations that this entity has, according to the ecosystem queried.
+      operationId: listEntityAuthorizations
+      parameters:
+        - name: entity_did
+          in: path
+          required: true
+          description: Unique identifier of the entity being queried.
+          schema:
+            type: string
+        
+        - name: time
+          in: query
+          required: false
+          description: RFC3339 timestamp indicating when recognition is checked.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Entity authorizations retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrqpAuthorizationResponse"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: Ecosystem not recognized or not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /entities:
+    get:
+      summary: List Entities (Ayra extension)
+      tags:
+        - ayra-extension
+      description: |
+        Returns a paginated list of entities known to the Trust Registry,
+        optionally filtered by ecosystem and/or by a specific authorization
+        (action + resource pair from `/lookups/authorizations`).
+
+        This endpoint is OPTIONAL. Registries that do not implement it MUST
+        return HTTP 501.
+      operationId: listEntities
+      parameters:
+        - name: ecosystem_did
+          in: query
+          required: false
+          description: Restrict the listing to entities recognized within this ecosystem.
+          schema:
+            type: string
+        - name: action
+          in: query
+          required: false
+          description: |
+            Filter entities to those holding an authorization for this action.
+            If provided, `resource` MUST also be provided. Values SHOULD come
+            from `GET /lookups/authorizations`.
+          schema:
+            type: string
+        - name: resource
+          in: query
+          required: false
+          description: |
+            Filter entities to those holding an authorization for this resource.
+            If provided, `action` MUST also be provided.
+          schema:
+            type: string
+        - name: time
+          in: query
+          required: false
+          description: RFC3339 timestamp; entities authorized as of this time.
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of entities to return. Default 100, max 1000.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          required: false
+          description: Zero-based offset into the result set.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Entity list retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityListResponse"
+        "400":
+          description: Invalid query parameters (e.g., `action` without `resource`, or out-of-range pagination).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: Ecosystem not found (when `ecosystem_did` filter is unknown).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /ecosystems/{ecosystem_did}:
+    get:
+      summary: Retrieve Ecosystem Information
+      tags:
+        - ayra-extension
+      description: |
+        Retrieves information about a specific ecosystem, including its metadata, recognition status, and other details.
+      operationId: getEcosystemInformation
+      parameters:
+        - name: ecosystem_did
+          in: path
+          required: true
+          description: Unique identifier (DID) of the ecosystem being queried.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ecosystem information successfully retrieved.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: A JSON object containing ecosystem information.
+        "404":
+          description: Ecosystem not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /ecosystems/{ecosystem_did}/recognitions:
+    get:
+      summary: List Recognized Ecosystems
+      tags:
+        - ayra-extension
+      description: |
+        Retrieves a collection of recognized ecosystems for a specified governance framework.
+      operationId: listEcosystemRecognitions
+      parameters:
+        - name: ecosystem_did
+          in: path
+          required: true
+          description: Unique identifier of the ecosystem being queried.
+          schema:
+            type: string
+        - name: time
+          in: query
+          required: false
+          description: RFC3339 timestamp indicating when recognition is checked.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Ecosystem recognitions retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrqpRecognitionResponse"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: Ecosystem not recognized or not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+  
+  /lookups/assuranceLevels:
+    get:
+      summary: Lookup Supported Assurance Levels
+      tags:
+        - ayra-extension
+        - lookup
+      description: |
+        Retrieves the supported assurance levels for the specified ecosystem.
+      operationId: lookupSupportedAssuranceLevels
+      parameters:
+        - name: ecosystem_did
+          in: query
+          required: false
+          description: Unique identifier of the ecosystem being queried.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Supported assurance levels retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssuranceLevelResponse"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /lookups/authorizations:
+    get:
+      summary: Lookup Authorizations
+      tags:
+        - ayra-extension
+        - lookup
+      description: |
+        Performs an authorization lookup based on the provided ecosystem identifier. The returned action+resource pairs can be used in TRQP authorization queries for this ecosystem.
+      operationId: lookupAuthorizations
+      parameters:
+        - name: ecosystem_did
+          in: query
+          required: false
+          description: Ecosystem identifier.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A list of authorization responses.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Authorization"
+        "404":
+          description: Entity not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /lookups/didMethods:
+    get:
+      summary: Lookup Supported DID Methods
+      tags:
+        - ayra-extension
+        - lookup
+      description: |
+        Retrieves the supported DID Methods. AYRA is opinionated here.
+      operationId: lookupSupportedDIDMethods
+      parameters:
+        - name: ecosystem_did
+          in: query
+          required: false
+          description: Unique identifier of the ecosystem being queried.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Supported DID Methods retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DIDMethodListType"
+        "401":
+          description: Unauthorized request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: Ecosystem not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "501":
+          description: Method not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-  responses:
-    BadRequest:
-      description: Bad Request
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    Unauthorized:
-      description: Unauthorized
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    Forbidden:
-      description: Forbidden
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    NotFound:
-      description: Not Found
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    NotAcceptable:
-      description: Not Acceptable
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    Conflict:
-      description: Conflict
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    InternalServerError:
-      description: Internal Server Error
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    ServiceUnavailable:
-      description: Service Unavailable
-      content:
-        application/problem+json:
-          schema:
-            $ref: "#/components/schemas/ProblemDetails"
-    default:
-      description: Generic Error
+      description: Bearer token authentication. Registries MAY require this scheme according to their access policy; public endpoints MAY allow unauthenticated requests.
   schemas:
-    Uri:
-      type: string
-      format: uri
-      description: string providing an URI formatted according to IETF RFC 3986.
-    VID:
-      type: string
-      format: uri
-      description: string providing an URI formatted according to IETF RFC 3986.
+    
+
+
+    ProblemDetails:
+      type: object
+      description: |
+        A Problem Details object as defined in [RFC 7807](https://datatracker.ietf.org/doc/html/rfc7807).
+      properties:
+        type:
+          type: string
+          format: uri
+          description: A URI reference that identifies the problem type.
+        title:
+          type: string
+          description: A short, human-readable summary of the problem.
+        status:
+          type: integer
+          description: The HTTP status code (e.g., 404 for "Not Found").
+        detail:
+          type: string
+          description: A human-readable explanation specific to this occurrence of the problem.
+        instance:
+          type: string
+          format: uri
+          description: A URI reference that identifies the specific occurrence of the problem.
+      additionalProperties: true
+
+
+    TrqpRecognitionQuery:
+      type: object
+      description: |
+        A query request to a Trust Registry that supports TRQP 2.0. 
+        Conforms with the schemas defined in TRQP 2.0. and matches the schema objects:
+        - trqp_recognition_request.jsonschema
+        Used by the following TRQP POST queries:
+        - POST /recognition
+      properties:
+        entity_id:
+          type: string
+          format: URI
+          description: |
+            Unique identifier of the TRUST REGISTRY (identified by DID) that is the subject of the query. 
+            This is the "other trust registry" in the "Does your ecosystem recognized this **other trust registry** as assertion_id?". 
+        authority_id:
+          type: string
+          format: URI
+          description: |
+            Unique identifier of the ECOSYSTEM (identified by DID) that is being queried. 
+            This is the "your ecosystem" in the "Does **your ecosystem** recognize this other trust registry as assertion_id?".
+        action: 
+          type: string
+          description: The action that the query is checking Recognition for.
+        resource: 
+          type: string
+          description: The resource that the query is is checking Recognition for.
+        context:
+          type: object
+          properties:
+            time:
+              type: string
+              format: date-time
+              description: |
+                RFC3339 timestamp indicating when recognition is checked. 
+                Defaults to "now" on system being queried if omitted.
+          additionalProperties:
+            type: string
+          description: |
+            A flexible context object that can hold arbitrary key-value pairs. 
+            - NOTE: `time` is codified as it is a standard context to be considered.
+      required:
+        - entity_id 
+        - authority_id
+        - action
+        - resource
+
+    TrqpAuthorizationQuery:
+      type: object
+      description: |
+        A query request to a Trust Registry that supports TRQP 2.0. 
+        Conforms with the schemas defined in TRQP 2.0. and matches the schema objects:
+        - trqp_authorization_request.jsonschema
+        Used by the following TRQP POST queries:
+        - POST /authorization 
+      properties:
+        entity_id:
+          type: string
+          description: |
+            Unique identifier of the TRUST REGISTRY (identified by DID) that is the subject of the query. 
+            This is the 'EntityX` in the "Does **EntityX** have AuthorityY in EcosystemZ?". 
+        authority_id:
+          type: string
+          description: |
+            Unique identifier of the ECOSYSTEM (identified by DID) that is being queried. 
+            This is the "EcosystemZ" in the "Does EntityX have AuthorityY in **EcosystemZ**?". 
+        action: 
+          type: string
+          description: The action that the query is checking Authorization for.
+        resource: 
+          type: string
+          description: The resource that the query is is checking Authorization for.
+        context:
+          type: object
+          properties:
+            time:
+              type: string
+              format: date-time
+              description: |
+                RFC3339 timestamp indicating when recognition is checked. 
+                Defaults to "now" on system being queried if omitted.
+          additionalProperties:
+            type: string
+          description: |
+            A flexible context object that can hold arbitrary key-value pairs. 
+            - NOTE: `time` is codified as it is a standard context to be considered.
+      required:
+        - entity_id 
+        - authority_id
+        - action
+        - resource
+
+    TrqpRecognitionResponse:
+      type: object
+      description: |
+        A recognition response conforming to TRQP 2.0 specification and the
+        trqp_recognition_response.jsonschema requirements.
+      properties:
+        entity_id:
+          type: string
+          description: The identifier of the subject of the recognition query.
+        authority_id:
+          type: string
+          description: The id of the Authority entity.
+        action: 
+          type: string
+          description: The action that the query is checking Recognition for.
+        resource: 
+          type: string
+          description: The resource that the query is is checking Recognition for.
+        recognized:
+          type: boolean
+          description: True if the assertion has been verified, false otherwise.
+        time_requested:
+          type: string
+          format: date-time
+          description: The server time that was used in the query.
+        time_evaluated:
+          type: string
+          format: date-time
+          description: The server time that was used in the query.
+        message:
+          type: string
+          description: Additional details attached to the response about the assertion.
+        context:
+          type: object
+          description: The context object that was supplied for the query that was evaluated.
+          properties:
+            time:
+              type: string
+              format: date-time
+              description: Time for query to use. If blank, uses current server time. RFC3339 required, using only Z (+00:00) offset.
+          additionalProperties:
+            type: string
+      required:
+        - entity_id 
+        - authority_id
+        - action
+        - resource
+        - time_evaluated
+        - recognized
+
+    TrqpAuthorizationResponse:
+      type: object
+      description: |
+        An authorization response conforming to TRQP 2.0 specification and the
+        trqp_authorization_response.jsonschema requirements.
+      properties:
+        entity_id:
+          type: string
+          description: The identifier of the subject of the authorization.
+        authority_id:
+          type: string
+          description: The id of the Authority entity.
+        action: 
+          type: string
+          description: The action that the query is checking Authorization for.
+        resource: 
+          type: string
+          description: The resource that the query is is checking Authorization for.
+        authorized:
+          type: boolean
+          description: True if the entity is authorized, false otherwise.
+        time_requested:
+          type: string
+          format: date-time
+          description: The server time that was requested (may be blank).
+        time_evaluated:
+          type: string
+          format: date-time
+          description: The server time that was used in the query.
+        message:
+          type: string
+          description: Additional details attached to the response about the assertion.
+        context:
+          type: object
+          description: The context object that was supplied for the query that was evaluated.
+          properties:
+            time:
+              type: string
+              format: date-time
+              description: Time for query to use. If blank, uses current server time. RFC3339 required, using only Z (+00:00) offset.
+          additionalProperties:
+            type: string
+      required:
+        - entity_id 
+        - authority_id
+        - action
+        - resource
+        - time_evaluated
+        - authorized
+
+
+    TrustRegistryMetadata:
+      type: object
+      required:
+        - ecosystem_did
+        - description
+      properties:
+        ecosystem_did:
+          type: string
+          description: Unique identifier of the Ecosystem that the Trust Registry is associated with. This is used in TRQP queries as the `ecosytem_id` value.
+        trustregistry_did:
+          type: string
+          description: Unique identifier, as DID, of the Trust Registry. 
+        egf_did:
+          type: string
+          description: The Primary EGF, identified by DID, for the ecosystem.
+        
+        description:
+          type: string
+          maxLength: 4096
+          description: A description of the Trust Registry.
+        name:
+          type: string
+          description: Human-readable name of the Trust Registry.
+        controllers:
+          type: array
+          description: List of unique identifiers representing the controllers of the Trust Registry.
+          items:
+            type: string
+          minItems: 1
+        additionalProperties:
+            type: string
+
+    Authorization:
+      type: object
+      properties:
+        action:
+          type: string
+        resource:
+          type: string
+        description: 
+          type: string
+          description: |
+            Non-normative information about the action+resource pair.
+      required:
+        - action
+        - resource
+
+    AssuranceLevelResponse:
+      type: object
+      properties:
+        egf_did:
+          type: string
+          description: EGF DID this assurance level applies to.
+        assurance_level:
+          type: string
+          description: The assurance level.
+        description:
+          type: string
+          description: Details about the assurance level.
+
+      required:
+        - assurance_level
+        - description
+
+    DIDMethodType:
+      type: object
+      required:
+        - identifier
+      description: |
+        DID Method supported by the trust registry. May include the maximum assurance level that this DID Method can support
+      properties:
+        identifier:
+          type: string
+          description: |
+            as "maintained" at [W3C](https://w3c.github.io/did-spec-registries/#did-methods) 
+        egf_did:
+          type: string
+          description: EGF DID this DID Method applies to.
+        maximumAssuranceLevel:
+          description: |
+            A DID Method may, due to technical or human trust considerations be limited in the assurance level that it can provide.
+          allOf:
+            - $ref: "#/components/schemas/AssuranceLevelType"
+    
+    
+    
+    
+    DIDMethodListType:
+      type: array
+      items:
+        $ref: "#/components/schemas/DIDMethodType"
+    
+    
+    
     AssuranceLevelType:
       type: object
       description: >
@@ -509,486 +946,63 @@ components:
         identifier:
           type: string
           format: URI
-          examples:
-            - did:example:123
+          example: did:example:123
         name:
           type: string
-          examples:
-            - LOA2
+          example: LOA2
         description:
           type: string
-          examples:
-            - "Level of Assurance 2 - see EGF for definition, terms, obligations,liabilities, and indemnity"
-    AuthorizationType:
+          example: "Level of Assurance 2 - see EGF for definition, terms, obligations, liabilities, and indemnity"
+
+    EntitySummary:
       type: object
-      required:
-        - identifier
-        - simplename
-        - description
-      properties:
-        identifier:
-          type: string
-          format: uri
-          examples:
-            - "did:example:123"
-        simplename:
-          type: string
-        description:
-          type: string
-        assuranceLevel:
-          description: >-
-            The Assurance Level for the Authorization. Defined in the EGF.
-            [OPTIONAL]
-          allOf:
-            - $ref: "#/components/schemas/AssuranceLevelType"
-    AuthorizationResponseType:
-      type: object
-      required:
-        - entityID
-        - authorizationUniqueString
-        - description
-      properties:
-        entityID:
-          type: string
-          format: uri
-          examples:
-            - did:example:123
-          description: >
-            The VID that identifies the Entity that may (i.e. it may be expired,
-            revoked, terminated)  hold the particular Authorization.
-        authorizationUniqueString:
-          type: string
-          description: The unique string that identifies the Authorization.
-        authorizationID:
-          type: string
-          format: uri
-          examples:
-            - "did:example:123"
-          description: the VID that identifies the particular Authorization.
-        description:
-          type: string
-        assuranceLevel:
-          description: >-
-            The Assurance Level for the Authorization. Defined in the EGF.
-            [OPTIONAL]
-          allOf:
-            - $ref: "#/components/schemas/AssuranceLevelType"
-        authorizationStatus:
-          $ref: "#/components/schemas/StatusType"
-        authorizationValidity:
-          description: The Validity dates related to this particular authorization.
-          allOf:
-            - $ref: "#/components/schemas/ValidityDatesType"
-    EntityType:
-      type: object
-      required:
-        - identifier
-        - governanceFrameworkVID
-        - status
-        - validFromDT
-      properties:
-        entityVID:
-          type: string
-          format: uri
-          examples:
-            - "did:example:123"
-          description: The primary identifier for the Entity (i.e. the primary key)
-        governanceFrameworkVID:
-          type: string
-          format: uri
-          examples:
-            - "did:example:456"
-        primaryTrustRegistryVID:
-          type: string
-          format: uri
-          examples:
-            - "did:example:123"
-          description: A VID identifying the registered entity's Primary Trust Registry
-        authorizations:
-          $ref: "#/components/schemas/AuthorizationListType"
-          description: List of the Authorizations that the Entity has.
-        secondaryTrustRegistries:
-          type: array
-          items:
-            type: string
-            format: uri
-            examples: ["did:example:456", "did:example:789"]
-            description: >-
-              A VID identifying a secondary trust registry that this Entity is
-              registered in.
-        participatingNamepaces:
-          $ref: "#/components/schemas/NamespaceListType"
-        entityDataValidity:
-          $ref: "#/components/schemas/ValidityDatesType"
-        registrationStatus:
-          $ref: "#/components/schemas/StatusType"
-    VIDMethodType:
-      type: object
-      required:
-        - identifier
       description: |
-        DID Method supported by the trust registry. May include the maximum
-      properties:
-        identifier:
-          type: string
-          description: >
-            as "maintained" at
-            https://w3c.github.io/did-spec-registries/#did-methods TODO: do
-            better...
-        maximumAssuranceLevel:
-          description: >
-            A DID Method may, due to technical or human trust considerations be
-            limited in the assurance
-
-            level that it can provide.
-          allOf:
-            - $ref: "#/components/schemas/AssuranceLevelType"
-    IntegrityType:
-      type: object
-      description: Integrity object
+        Minimal summary of an entity in a Trust Registry, used in list responses.
+        Callers can retrieve the full record via `GET /entities/{entity_id}`.
       required:
-        - hash
-        - hashtype
+        - entity_id
       properties:
-        hashtype:
+        entity_id:
           type: string
-          examples:
-            - "sha2-256"
-          description: |
-            Hashing algorithm well-known-name. TODO: Reference to some list?
-        hash:
-          type: string
-          description: the hash of the data.
-          examples:
-            - "64ee532ac8a4871e21ccf0397ac8154efb747ec37a2a116c35fc8b810cbf24bd"
-    ResourceReferencedType:
-      type: object
-      description: Resource that is provided by reference to a different source.
-      required:
-        - identifier
-        - lastupdated
-        - datatype
-        - resourceURI
-      properties:
-        identifier:
-          type: string
-          format: uri
-          examples:
-            - did:example:123
-        lastupdated:
-          type: string
-          format: date-time
-        datatype:
-          description: >
-            TODO: DECIDE about mimeType vs. dataType as property name
-
-            The `kind` of resource (e.g. credential-definition,
-            schema-definition, revocation-registry). intended
-
-            to be used by recipient for processing of the data payload.
-          type: string
-        resourceURI:
-          $ref: "#/components/schemas/Uri"
-        integrity:
-          $ref: "#/components/schemas/IntegrityType"
-    ResourceDirectType:
-      type: object
-      description: Resource that is served directly by this trust registry.
-      required:
-        - identifier
-        - lastupdated
-        - datatype
-      properties:
-        identifier:
-          type: string
-          format: uri
-          examples:
-            - "did:example:123"
-        lastupdated:
-          type: string
-          format: date-time
-        datatype:
-          description: >
-            TODO: DECIDE about mimeType vs. dataType as property name
-
-            The `kind` of resource (e.g. credential-definition,
-            schema-definition, revocation-registry). intended
-
-            to be used by recipient for processing of the data payload.
-          type: string
-        resourceURI:
-          description: Resource URI for direct reference (to this Trust Registry).
-          $ref: "#/components/schemas/Uri"
-        payloadJSON:
-          type: object
-          description: JSON object
-    NamespaceType:
-      type: object
-      description: >
-        Namespace object - formal name, EGF that governs namespace,
-        VC/DIDAuth/etc.
-      required:
-        - identifier
-        - canonicalString
-      properties:
-        identifier:
-          type: string
-          format: uri
-          examples:
-            - "did:example:123"
-        canonicalString:
-          type: string
-          examples:
-            - "ca.issuer.driverlicense"
-            - "mining.tsm"
-        egfURI:
-          type: string
-          examples:
-            - "did:example:GlobalDriverLicenseDID"
-          description: URI of the EGF that defines the namespace.
-        description:
-          type: string
-    RegistryMetadataType:
-      type: object
-      required:
-        - lastupdated
-      properties:
-        lastupdated:
-          type: string
-          format: date-time
-        primaryEGFURI:
-          type: string
-          example:
-            - "did:example:GlobalDriverLicenseDID"
-          description: URI of the EGF that governs the Trust Registry.
-        additionalEGFURIs:
-          type: array
-          description: "List of URIs of Ecosystem Governance Frameworks that this Trust Registry operates under, in addition to the .primaryEGFURI"
-          items:
-            $ref: "#/components/schemas/Uri"
-        participatingNamepaces:
-          $ref: "#/components/schemas/NamespaceListType"
-        languages:
-          type: array
-          description: >-
-            language codes (RFC 4646 -
-            https://datatracker.ietf.org/doc/html/rfc4646)
-          items:
-            type: string
-          examples:
-            - "en"
-            - "en-CA"
-            - "fr-CA"
-    RegistryType:
-      type: object
-      description: >
-        Data structure for basic Trust Registry indication of what the queried
-        TR will state about another TR.
-      required:
-        - identifier
-        - name
-      properties:
-        identifier:
-          type: string
-          format: uri
-          examples:
-            - "did:example:123"
+          format: URI
+          description: Unique identifier (typically a DID) for the entity.
         name:
           type: string
-          examples:
-            - "Professional Engineers Ontario"
-        description:
-          type: string
-          examples:
-            - "Established on June 14, 1922, Professional Engineers Ontario (PEO) is the licensing and regulating body for professional engineering in the province."
-        primaryEGFURI:
-          type: string
-          example:
-            - "did:example:GlobalDriverLicenseDID"
-          description: URI of the EGF that governs the Trust Registry.
-        additionalEGFURIs:
-          type: array
-          description: "List of URIs of Ecosystem Governance Frameworks that this Trust Registry operates under, in addition to the .primaryEGFURI"
-          items:
-            $ref: "#/components/schemas/Uri"
-        participatingNamepaces:
-          $ref: "#/components/schemas/NamespaceListType"
-        peerType:
-          type: string
-          enum:
-            - peer
-            - superior
-            - subordinate
-            - metaregistry
-          description: >
-            Relationship types - how does the TR that is being queried consider
-            the other TR.
-              * peer - registy is recognized as a peer under another jurisdiction or governance mechanism.
-              * superior - registry is above this TR in a hierarchy.
-              * subordinate - registry is subordinate to this TR in a hierarchy.
-              * metaregistry - registry being queried is considered (by this TR) to be a metaregistry (aka registry of registries)
-    StatusType:
-      type: object
-      description: >-
-        Status and textual description for Entity Registration Status, and
-        Entity Authorization Status
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          enum:
-            - current
-            - expired
-            - terminated
-            - revoked
-          description: |
-            Provides a current status for entity at time of the query.
-            - current - status is current in the system of record.
-            - expired - status has expired in the system of record.
-            - terminated - entity has voluntarily terminated its status.
-            - revoked -  status was revoked by the governing authority.
-        detail:
-          type: string
-          description: Optional free text that expands on the status parameter.
-    AssuranceLevelListType:
-      type: array
-      items:
-        $ref: "#/components/schemas/AssuranceLevelType"
-    AuthorizationListType:
-      type: array
-      items:
-        $ref: "#/components/schemas/AuthorizationType"
-      examples:
-        - identifier: did:example:abc
-          simplename: country:role
-        - identifier: did:example:abcd
-          simplename: canada:professional:engineer
-    AuthorizationResponseListType:
-      type: array
-      items:
-        $ref: "#/components/schemas/AuthorizationResponseType"
-      examples:
-        - identifier: did:example:abc
-          simplename: country:role
-        - identifier: did:example:abcd
-          simplename: canada:professional:engineer
-    NamespaceListType:
-      type: array
-      items:
-        $ref: "#/components/schemas/NamespaceType"
-    RegistryListType:
-      type: array
-      description: Array of RegistryQueryType
-      items:
-        $ref: "#/components/schemas/RegistryType"
-    EntityListType:
-      type: array
-      items:
-        $ref: "#/components/schemas/EntityType"
-    VIDMethodListType:
-      type: array
-      items:
-        $ref: "#/components/schemas/VIDMethodType"
-
-    ExportLookups:
-      type: object
-      properties:
-        VIDMethods:
-          $ref: "#/components/schemas/VIDMethodListType"
-        AssuranceLevels:
-          $ref: "#/components/schemas/AssuranceLevelListType"
-        Authorizations:
-          $ref: "#/components/schemas/AuthorizationListType"
-        Namespaces:
-          $ref: "#/components/schemas/NamespaceListType"
-    ValidityDatesType:
-      type: object
-      description: Date and Time of validity.
-      properties:
-        validFromDT:
-          type: string
-          format: date-time
-          description: >-
-            Indicates that the Identifier status applies at the indicated time.
-            A time in the past indicates when the last status change was
-            recorded in the Trust Registry.
-        validUntilDT:
-          type: string
-          format: date-time
-          description: >-
-            Indicates the validity ends/ended at this date and time. A time in
-            the past may indicate that the data have expired. A blank response
-            indicates that the validity does not have an end value (i.e. does
-            not or has not expired yet).
-    ExportFile:
-      type: object
-      required:
-        - extractdatetime
-      properties:
-        extractdatetime:
-          type: string
-          format: date-time
-          description: The time of the data extraction.
-        version:
-          type: string
-          description: Version string [OPTIONAL]
-        validity:
-          $ref: "#/components/schemas/ValidityDatesType"
-        lookups:
-          $ref: "#/components/schemas/ExportLookups"
-        registries:
-          $ref: "#/components/schemas/RegistryListType"
-        entities:
-          $ref: "#/components/schemas/EntityListType"
-        resources:
-          $ref: "#/components/schemas/RegistryListType"
-    TrustEstablishmentDocument:
-      type: object
-      required:
-        - TBD
-      description: >-
-        Trust Establishment Document per
-        https://identity.foundation/trust-establishment/
-      properties:
-        TBD:
-          type: string
-    ProblemDetails:
-      description: A Problem Details object (RFC 7807)
-      type: object
-      properties:
+          description: Optional human-readable name for the entity.
         type:
           type: string
-          format: uri
-          description: An absolute URI that identifies the problem type
-          default: about:blank
-        title:
+          description: Optional implementation-specific entity type or category.
+        ecosystem_did:
           type: string
-          description: >-
-            A short summary of the problem type. Written in English and readable
-            for engineers (usually not suited for non technical stakeholders and
-            not localized).
-          examples:
-            - "Service Unavailable"
-        status:
-          type: integer
-          format: int32
-          description: >-
-            The HTTP status code generated by the origin server for this
-            occurrence of the problem.
-          minimum: 400
-          maximum: 600
-        detail:
-          type: string
-          description: >-
-            A human-readable explanation specific to this occurrence of the
-            problem
-        instance:
-          type: string
-          format: uri
-          description: >-
-            An absolute URI reference that identifies the specific occurrence of
-            the problem. It may or may not yield further information if
-            dereferenced.
-security:
-  - bearerAuth: []
+          description: Optional identifier of the ecosystem this entity is associated with.
+
+    EntityListResponse:
+      type: object
+      description: A paginated list of entity summaries returned by `GET /entities`.
+      required:
+        - items
+        - pagination
+      properties:
+        items:
+          type: array
+          description: The page of entity summaries.
+          items:
+            $ref: "#/components/schemas/EntitySummary"
+        pagination:
+          type: object
+          description: Pagination metadata for this response.
+          required:
+            - limit
+            - offset
+            - total
+          properties:
+            limit:
+              type: integer
+              description: The `limit` value applied to this response.
+            offset:
+              type: integer
+              description: The `offset` value applied to this response.
+            total:
+              type: integer
+              description: Total number of entities matching the filter, across all pages.
+

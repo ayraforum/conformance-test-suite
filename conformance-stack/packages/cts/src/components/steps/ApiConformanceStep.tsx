@@ -82,7 +82,7 @@ export function ApiConformanceStep({ context, controller, isActive }: ApiConform
             {isLoading ? (
                 <div className="text-center py-4">
                     <div className="inline-block animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500 mr-2"></div>
-                    <span className="text-gray-600">Running API conformance tests...</span>
+                    <span className="text-gray-600">Running Ayra extension API tests...</span>
                 </div>
             ) : context.apiTestReport ? (
                 <div className="w-full">
@@ -145,7 +145,7 @@ export function ApiConformanceStep({ context, controller, isActive }: ApiConform
             ) : (
                 <div className="text-center py-4">
                     <p className="text-gray-500 italic">
-                        Ready to run API conformance tests against: {context.apiBaseUrl}
+                        Ready to run Ayra extension API tests against: {context.apiBaseUrl}
                     </p>
                     
                     <button

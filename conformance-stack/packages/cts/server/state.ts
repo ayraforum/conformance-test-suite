@@ -34,6 +34,7 @@ export type State = {
   agent?: BaseAgent;
   credoController?: AgentController;
   controller?: AgentController;
+  acapyHolderController?: AgentController;
   issuerController?: AgentController;
   issuerAgentType?: "credo" | "acapy";
   credentialFormat?: "anoncreds" | "w3c";
@@ -71,6 +72,9 @@ export const setAgent = (agent: BaseAgent) => {
 
 export const setController = (controller: AgentController) => {
   _state.controller = controller;
+};
+export const setAcaPyHolderController = (controller?: AgentController) => {
+  _state.acapyHolderController = controller;
 };
 export const setCredoController = (controller?: AgentController) => {
   _state.credoController = controller;

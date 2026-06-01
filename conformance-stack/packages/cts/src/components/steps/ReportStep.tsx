@@ -100,7 +100,7 @@ export function ReportStep({ context, controller, isActive, onRestart }: ReportS
         const apiMessages = [
             context.apiBaseUrl ? `TRQP base URL: ${context.apiBaseUrl}` : null,
             context.apiTestReport
-                ? `Passed ${apiPassedCount} of ${apiTotalCount} API conformance checks.`
+                ? `Passed ${apiPassedCount} of ${apiTotalCount} Ayra extension API checks.`
                 : null,
             ...(context.apiTestReport?.testResults
                 .filter((result) => result.status === "passed")

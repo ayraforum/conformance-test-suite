@@ -92,7 +92,7 @@ export default function ConformanceReport({
                 
                 <div className="border rounded-md overflow-hidden">
                     <div className="bg-gray-50 px-4 py-3 border-b">
-                        <h3 className="font-semibold">API Conformance Tests</h3>
+                        <h3 className="font-semibold">Ayra Extension API Tests</h3>
                     </div>
                     <div className="p-4">
                         {apiReport ? (
@@ -105,8 +105,8 @@ export default function ConformanceReport({
                                     </div>
                                     <span>
                                         {apiTestsPassed 
-                                            ? "All API conformance tests passed" 
-                                            : "Some API conformance tests failed"}
+                                            ? "All Ayra extension API tests passed" 
+                                            : "Some Ayra extension API tests failed"}
                                     </span>
                                 </div>
                                 <div className="mt-2 text-sm">
@@ -114,7 +114,7 @@ export default function ConformanceReport({
                                 </div>
                             </div>
                         ) : (
-                            <p className="text-gray-500 italic">API conformance tests not run</p>
+                            <p className="text-gray-500 italic">Ayra extension API tests not run</p>
                         )}
                     </div>
                 </div>

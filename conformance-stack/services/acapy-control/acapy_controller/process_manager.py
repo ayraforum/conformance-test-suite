@@ -276,19 +276,17 @@ class AcaPyProcessManager:
   async def wait_for_connection(self, connection_id: str, timeout_ms: int = 240000) -> dict:
     deadline = time.monotonic() + timeout_ms / 1000
     while time.monotonic() < deadline:
-      if connection_id in self._active_connections:
-        record = await self.get_connection(connection_id)
-        if record:
-          return record
-        # Webhook told us it's active but record lookup failed; return a minimal record.
-        return {"connection_id": connection_id, "state": "active"}
       record = await self.get_connection(connection_id)
       if not record:
+        if connection_id in self._active_connections:
+          # Webhook told us it is active but ACA-Py has not exposed the record yet.
+          return {"connection_id": connection_id, "state": "active"}
         await asyncio.sleep(1)
         continue
-      state = record.get("state") or record.get("rfc23_state")
-      LOGGER.info("Connection %s state=%s", connection_id, state)
-      if state in {"active", "completed"}:
+      state = record.get("state")
+      rfc23_state = record.get("rfc23_state")
+      LOGGER.info("Connection %s state=%s rfc23_state=%s", connection_id, state, rfc23_state)
+      if state in {"active", "completed"} or rfc23_state == "completed":
         return record
       await asyncio.sleep(1)
     raise RuntimeError(f"Connection {connection_id} did not become active in time")

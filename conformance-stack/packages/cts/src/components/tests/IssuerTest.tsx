@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { TestRunner, TestStep, TestStepStatus } from "@/components/TestRunner";
 import { useSocket } from "@/providers/SocketProvider";
+import { summarizeIssuerDag } from "./issuerRunSummary";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5005";
 
@@ -235,46 +236,63 @@ function CredentialStep({
 function ReportStep({ 
   context, 
   isActive, 
-  onRestart 
+  onRestart,
+  dagData,
 }: { 
   context: any; 
   isActive: boolean; 
   onRestart: () => void;
+  dagData: DAGData | null;
 }) {
   if (!isActive) return null;
+  const summary = summarizeIssuerDag(dagData);
+  const panelClass = summary.success
+    ? "bg-green-50 border border-green-200"
+    : "bg-red-50 border border-red-200";
+  const headingClass = summary.success ? "text-green-900" : "text-red-900";
+  const textClass = summary.success ? "text-green-800" : "text-red-800";
+  const dotClass = (status: TestStepStatus) =>
+    status === "passed" ? "bg-green-500" : status === "failed" ? "bg-red-500" : "bg-gray-400";
 
   return (
     <div className="space-y-4">
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-        <h4 className="font-semibold text-green-900 mb-2">Test Complete!</h4>
-        <p className="text-green-800 text-sm">
-          Your issuer has successfully completed the conformance test.
-        </p>
+      <div className={`${panelClass} rounded-lg p-4`}>
+        <h4 className={`font-semibold ${headingClass} mb-2`}>{summary.title}</h4>
+        <p className={`${textClass} text-sm`}>{summary.message}</p>
+        {summary.error && (
+          <p className="mt-2 text-sm text-red-700">Details: {summary.error}</p>
+        )}
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <div className={`w-3 h-3 ${dotClass(summary.connectionStatus)} rounded-full`}></div>
             <span className="font-medium">Connection</span>
           </div>
-          <p className="text-sm text-gray-600">Successfully established</p>
+          <p className="text-sm text-gray-600">
+            {summary.connectionStatus === "passed" ? "Successfully established" : "Not completed"}
+          </p>
         </div>
         
         <div className="bg-white border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <div className={`w-3 h-3 ${dotClass(summary.issuanceStatus)} rounded-full`}></div>
             <span className="font-medium">Issuance</span>
           </div>
-          <p className="text-sm text-gray-600">Credential issued</p>
+          <p className="text-sm text-gray-600">
+            {summary.issuanceStatus === "passed" ? "Credential issued" : "Credential not issued"}
+          </p>
         </div>
         
         <div className="bg-white border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <div className={`w-3 h-3 ${dotClass(summary.reportStatus)} rounded-full`}></div>
             <span className="font-medium">Compliance</span>
           </div>
-          <p className="text-sm text-gray-600">Protocol compliant</p>
+          <p className="text-sm text-gray-600">
+            {summary.success ? "Protocol compliant" : "Not confirmed"}
+          </p>
         </div>
       </div>
 
@@ -443,6 +461,7 @@ export function IssuerTest() {
             context={{}}
             isActive={currentStep === 2}
             onRestart={handleRestart}
+            dagData={dagData}
           />
         ),
         isActive: currentStep === 2
