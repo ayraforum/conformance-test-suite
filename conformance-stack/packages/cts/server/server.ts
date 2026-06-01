@@ -20,6 +20,7 @@ import {
   setConfig,
   setAgent,
   setController,
+  setAcaPyHolderController,
   setCredoController,
   setIssuerController,
   setVerifierController,
@@ -330,7 +331,7 @@ const initCredoAgent = async () => {
   }
 };
 
-const initAcaPyController = async () => {
+const initAcaPyController = async (setAsPrimaryController = true) => {
   const baseUrl =
     process.env.ACAPY_HOLDER_CONTROL_URL ||
     process.env.ACAPY_CONTROL_URL ||
@@ -342,7 +343,10 @@ const initAcaPyController = async () => {
   console.log(`[ACAPY] Connecting to control service at ${baseUrl} (profile: ${profile})`);
   acapyAdapter = await AcaPyAgentAdapter.create({ baseUrl, profile });
   const controller = new AgentController(acapyAdapter);
-  setController(controller);
+  setAcaPyHolderController(controller);
+  if (setAsPrimaryController) {
+    setController(controller);
+  }
   console.log("[ACAPY] Controller initialized");
 };
 
@@ -414,24 +418,19 @@ const configureIssuerController = async () => {
   }
 
   if (effective === "acapy") {
-    if (acapyIssuerAdapter) {
-      const issuerController = new AgentController(acapyIssuerAdapter);
-      setIssuerController(issuerController);
-      if (override === "acapy") {
-        console.log("[Issuer Override] Issuer controller set to ACA-Py (dedicated issuer adapter)");
-      }
-      return;
-    }
     if (!acapyAdapter) {
-      await initAcaPyController();
+      await initAcaPyController(referenceAgent === "acapy");
     }
-    if (!acapyAdapter) {
-      throw new Error("[Issuer Override] ACA-Py adapter not initialized");
+    if (!acapyIssuerAdapter) {
+      await initAcaPyIssuerController();
     }
-    const issuerController = new AgentController(acapyAdapter);
+    if (!acapyIssuerAdapter) {
+      throw new Error("[Issuer Override] ACA-Py issuer adapter not initialized");
+    }
+    const issuerController = new AgentController(acapyIssuerAdapter);
     setIssuerController(issuerController);
     if (override === "acapy") {
-      console.log("[Issuer Override] Issuer controller set to ACA-Py (shared adapter)");
+      console.log("[Issuer Override] Issuer controller set to ACA-Py (dedicated issuer adapter)");
     }
     return;
   }

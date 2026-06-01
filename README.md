@@ -51,6 +51,8 @@ conformance-test-suite/
 
 ### Quick Start (Conformance Stack)
 
+For the full local ACA-Py demo/test setup with internal issuer, holder, verifier, TRQP, and the `did:web` ngrok tunnel, see [DEMO_TEST_MODE.md](./DEMO_TEST_MODE.md).
+
 1) Clone and configure env
 ```bash
 git clone <repository-url>

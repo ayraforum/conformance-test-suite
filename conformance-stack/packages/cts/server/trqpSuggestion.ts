@@ -34,6 +34,11 @@ const configuredTrqpEndpoint = (): string =>
   normalizeEnvValue(process.env.NEXT_PUBLIC_TRQP_KNOWN_ENDPOINT) ||
   normalizeEnvValue(process.env.NEXT_PUBLIC_TRQP_LOCAL_URL);
 
+const ayraLookupEndpoints = {
+  authorizations: "/lookups/authorizations",
+  recognitions: (ecosystemDid: string) => `/ecosystems/${encodeURIComponent(ecosystemDid)}/recognitions`,
+} as const;
+
 const defaultResolverUrl = "https://dev.uniresolver.io/1.0/identifiers";
 
 async function fetchJson(url: string): Promise<any> {
@@ -240,27 +245,7 @@ export async function buildTrqpPolicySuggestion(input: TrqpSuggestInput = {}): P
 
   let authorization = defaultAuthorization;
   try {
-    const lookupUrls = [
-      `${trqpEndpoint}/lookups/authorizations?ecosystem_did=${encodeURIComponent(ecosystemDid)}`,
-      `${trqpEndpoint}/ecosystems/${encodeURIComponent(ecosystemDid)}/lookups/authorizations`,
-    ];
-    let authPayload: any;
-    let lastLookupError: unknown;
-    for (const lookupUrl of lookupUrls) {
-      try {
-        authPayload = await fetchJson(lookupUrl);
-        lastLookupError = undefined;
-        break;
-      } catch (error) {
-        lastLookupError = error;
-        if (!isHttpNotFound(error)) {
-          throw error;
-        }
-      }
-    }
-    if (typeof authPayload === "undefined" && typeof lastLookupError !== "undefined") {
-      throw lastLookupError;
-    }
+    const authPayload = await fetchJson(`${trqpEndpoint}${ayraLookupEndpoints.authorizations}`);
     const candidates = parseAuthorizationCandidates(authPayload);
     authorization = pickAuthorizationCandidate(candidates, defaultAuthorization);
     authSupported = true;
@@ -274,9 +259,7 @@ export async function buildTrqpPolicySuggestion(input: TrqpSuggestInput = {}): P
 
   let recognition = defaultRecognition;
   try {
-    const recPayload = await fetchJson(
-      `${trqpEndpoint}/ecosystems/${encodeURIComponent(ecosystemDid)}/recognitions`
-    );
+    const recPayload = await fetchJson(`${trqpEndpoint}${ayraLookupEndpoints.recognitions(ecosystemDid)}`);
     const candidates = parseRecognitionCandidates(recPayload);
     recognition = pickRecognitionCandidate(candidates, trustNetworkDid, defaultRecognition);
     recognitionSupported = true;

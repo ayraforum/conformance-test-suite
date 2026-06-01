@@ -8,6 +8,7 @@ services:
       - ./:/workspaces/conformance-test-suite:cached
       - pnpm-store:/pnpm
       - node-modules:/workspaces/conformance-test-suite/node_modules
+      - conformance-stack-node-modules:/workspaces/conformance-test-suite/conformance-stack/node_modules
     working_dir: /workspaces/conformance-test-suite/conformance-stack
     #command: bash -lc "corepack enable && pnpm install && pnpm run dev"
     command: "sleep infinity"
@@ -59,6 +60,7 @@ services:
       - ./:/workspaces/conformance-test-suite:cached
       - pnpm-store:/pnpm
       - node-modules:/workspaces/conformance-test-suite/node_modules
+      - conformance-stack-node-modules:/workspaces/conformance-test-suite/conformance-stack/node_modules
     working_dir: /workspaces/conformance-test-suite/conformance-stack
     command: >
       bash -lc '
@@ -85,7 +87,7 @@ services:
         fi
         pnpm --filter cts-3 dev &
         CLIENT_PID=$!
-        trap "kill $SERVER_PID $CLIENT_PID" EXIT
+        trap "kill $$SERVER_PID $$CLIENT_PID" EXIT
         wait
       '
     environment:
@@ -292,3 +294,4 @@ services:
 volumes:
   pnpm-store:
   node-modules:
+  conformance-stack-node-modules:

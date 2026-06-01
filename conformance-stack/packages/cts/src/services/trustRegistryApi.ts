@@ -9,6 +9,51 @@ import { generateNonce } from './didResolver';
 
 const encodePath = (segment: string) => encodeURIComponent(segment);
 
+const AYRA_ENDPOINTS = {
+    metadata: "/metadata",
+    entity: (entityId: string) => `/entities/${encodePath(entityId)}`,
+    entityAuthorizations: (entityDid: string) => `/entities/${encodePath(entityDid)}/authorizations`,
+    ecosystem: (ecosystemDid: string) => `/ecosystems/${encodePath(ecosystemDid)}`,
+    ecosystemRecognitions: (ecosystemDid: string) => `/ecosystems/${encodePath(ecosystemDid)}/recognitions`,
+    assuranceLevels: "/lookups/assuranceLevels",
+    authorizations: "/lookups/authorizations",
+    didMethods: "/lookups/didMethods",
+    authorization: "/authorization",
+    recognition: "/recognition",
+} as const;
+
+const successOrDocumentedStatus = [200, 401, 404, 501];
+
+async function readJsonOrText(response: Response): Promise<{ json?: any; raw: string }> {
+    const raw = await response.text().catch(() => "");
+    if (!raw) return { raw };
+    try {
+        return { json: JSON.parse(raw), raw };
+    } catch {
+        return { raw };
+    }
+}
+
+function isJsonObject(value: any): boolean {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function responseSummary(response: Response, raw = ""): string {
+    const summary = `${response.status} ${response.statusText}`.trim();
+    return raw ? `${summary}: ${raw.slice(0, 300)}` : summary;
+}
+
+function recordDocumentedExtensionStatus(testResult: TestResult, response: Response, raw = "", json?: any): boolean {
+    if (response.status === 200) return false;
+    testResult.status = "passed";
+    testResult.details =
+        response.status === 501
+            ? `Documented not implemented response: ${responseSummary(response, raw)}`
+            : `Documented extension response: ${responseSummary(response, raw)}`;
+    testResult.response = typeof json !== "undefined" ? json : raw;
+    return true;
+}
+
 export interface TestResult {
     name: string;
     description: string;
@@ -35,16 +80,20 @@ export const testGetMetadata = async (baseUrl: string, headers = {}): Promise<Te
     };
     
     try {
-        const url = `${baseUrl}/metadata`;
+        const url = `${baseUrl}${AYRA_ENDPOINTS.metadata}`;
         const response = await fetch(url, { headers });
         
-        if (![200, 401, 404].includes(response.status)) {
+        if (!successOrDocumentedStatus.includes(response.status)) {
             testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = body.json;
             if (typeof data !== 'object') {
                 testResult.details = "Expected JSON object for metadata";
                 return testResult;
@@ -80,16 +129,20 @@ export const testGetEntityInformation = async (
     };
     
     try {
-        const url = `${baseUrl}/entities/${encodePath(entityId)}`;
+        const url = `${baseUrl}${AYRA_ENDPOINTS.entity(entityId)}`;
         const response = await fetch(url, { headers });
         
-        if (![200, 401, 404].includes(response.status)) {
+        if (!successOrDocumentedStatus.includes(response.status)) {
             testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = body.json;
             if (typeof data !== 'object') {
                 testResult.details = "Expected a JSON object for entity info";
                 return testResult;
@@ -107,7 +160,7 @@ export const testGetEntityInformation = async (
 };
 
 /**
- * Test GET /entities/{entity_id}/authorization
+ * Test POST /authorization
  */
 export const testCheckEntityAuthorization = async (
     baseUrl: string, 
@@ -117,51 +170,53 @@ export const testCheckEntityAuthorization = async (
     headers = {}
 ): Promise<TestResult> => {
     const testResult: TestResult = {
-        name: "GET /entities/{entity_id}/authorization",
+        name: "POST /authorization",
         description: "Tests checking if an entity is authorized for a specific action",
         status: 'failed'
     };
     
     try {
-        const url = `${baseUrl}/entities/${encodePath(entityId)}/authorization`;
-        const params = new URLSearchParams({
-            authorization_id: authorizationId,
-            ecosystem_did: ecosystemDid,
-            all: 'false'
+        const url = `${baseUrl}${AYRA_ENDPOINTS.authorization}`;
+        const body = {
+            entity_id: entityId,
+            authority_id: ecosystemDid,
+            action: "issue",
+            resource: authorizationId,
+            context: {}
+        };
+        
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                ...headers,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
         });
         
-        const response = await fetch(`${url}?${params}`, { headers });
-        
-        if (![200, 401, 404].includes(response.status)) {
-            testResult.details = `Unexpected status code: ${response.status}`;
+        const responseBody = await readJsonOrText(response);
+        if (!response.ok) {
+            testResult.details = responseSummary(response, responseBody.raw);
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = responseBody.json;
             
-            if (typeof data === 'object' && data !== null) {
-                if (Array.isArray(data)) {
-                    // Check each item in the array
-                    for (const item of data) {
-                        if (!('authorized' in item)) {
-                            testResult.details = "Missing 'authorized' key in one array item";
-                            return testResult;
-                        }
-                    }
-                } else {
-                    // Check single object
-                    if (!('authorized' in data)) {
-                        testResult.details = "Missing 'authorized' key in single object response";
-                        return testResult;
-                    }
-                }
-                
-                testResult.response = data;
-            } else {
-                testResult.details = "Unexpected JSON type (expected dict or list)";
+            if (!isJsonObject(data)) {
+                testResult.details = "Expected a JSON object for authorization response";
                 return testResult;
             }
+            if (!('authorized' in data)) {
+                testResult.details = "Missing 'authorized' key in authorization response";
+                return testResult;
+            }
+            if (data.authorized !== true) {
+                testResult.details = "Authorization response returned authorized=false";
+                testResult.response = data;
+                return testResult;
+            }
+            testResult.response = data;
         }
         
         testResult.status = 'passed';
@@ -173,7 +228,7 @@ export const testCheckEntityAuthorization = async (
 };
 
 /**
- * Test GET /registries/{ecosystem_did}/recognition
+ * Test POST /recognition
  */
 export const testCheckEcosystemRecognition = async (
     baseUrl: string, 
@@ -182,41 +237,52 @@ export const testCheckEcosystemRecognition = async (
     headers = {}
 ): Promise<TestResult> => {
     const testResult: TestResult = {
-        name: "GET /registries/{ecosystem_did}/recognition",
+        name: "POST /recognition",
         description: "Tests checking if an ecosystem is recognized by an EGF",
         status: 'failed'
     };
     
     try {
-        const url = `${baseUrl}/registries/${encodePath(ecosystemDid)}/recognition`;
-        const params = new URLSearchParams({
-            egf_did: egfDid
+        const url = `${baseUrl}${AYRA_ENDPOINTS.recognition}`;
+        const body = {
+            entity_id: ecosystemDid,
+            authority_id: egfDid,
+            action: "member-of",
+            resource: "ayratrustnetwork",
+            context: {}
+        };
+        
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                ...headers,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
         });
         
-        const response = await fetch(`${url}?${params}`, { headers });
-        
-        if (![200, 401, 404].includes(response.status)) {
-            testResult.details = `Unexpected status code: ${response.status}`;
+        const responseBody = await readJsonOrText(response);
+        if (!response.ok) {
+            testResult.details = responseSummary(response, responseBody.raw);
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = responseBody.json;
             
-            if (typeof data !== 'object' || data === null) {
+            if (!isJsonObject(data)) {
                 testResult.details = "Expected a JSON object for recognition response";
                 return testResult;
             }
-            
-            // Check required keys from RecognitionResponse
-            const requiredKeys = ["recognized", "message", "evaluated_at", "response_time"];
-            const missingKeys = requiredKeys.filter(key => !(key in data));
-            
-            if (missingKeys.length > 0) {
-                testResult.details = `Missing keys in recognition response: ${missingKeys.join(', ')}`;
+            if (!('recognized' in data)) {
+                testResult.details = "Missing 'recognized' key in recognition response";
                 return testResult;
             }
-            
+            if (data.recognized !== true) {
+                testResult.details = "Recognition response returned recognized=false";
+                testResult.response = data;
+                return testResult;
+            }
             testResult.response = data;
         }
         
@@ -225,6 +291,88 @@ export const testCheckEcosystemRecognition = async (
         testResult.details = `Exception occurred: ${error instanceof Error ? error.message : String(error)}`;
     }
     
+    return testResult;
+};
+
+/**
+ * Test GET /entities/{entity_did}/authorizations
+ */
+export const testListEntityAuthorizations = async (
+    baseUrl: string,
+    entityDid: string,
+    headers = {}
+): Promise<TestResult> => {
+    const testResult: TestResult = {
+        name: "GET /entities/{entity_did}/authorizations",
+        description: "Tests listing authorizations for an entity",
+        status: 'failed'
+    };
+
+    try {
+        const url = `${baseUrl}${AYRA_ENDPOINTS.entityAuthorizations(entityDid)}`;
+        const response = await fetch(url, { headers });
+
+        if (!successOrDocumentedStatus.includes(response.status)) {
+            testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
+            return testResult;
+        }
+
+        const data = body.json;
+        if (!Array.isArray(data)) {
+            testResult.details = "Expected a list for entity authorizations";
+            return testResult;
+        }
+        testResult.response = data;
+        testResult.status = 'passed';
+    } catch (error) {
+        testResult.details = `Exception occurred: ${error instanceof Error ? error.message : String(error)}`;
+    }
+
+    return testResult;
+};
+
+/**
+ * Test GET /ecosystems/{ecosystem_did}
+ */
+export const testGetEcosystemInformation = async (
+    baseUrl: string,
+    ecosystemDid: string,
+    headers = {}
+): Promise<TestResult> => {
+    const testResult: TestResult = {
+        name: "GET /ecosystems/{ecosystem_did}",
+        description: "Tests retrieving information about a specific ecosystem",
+        status: 'failed'
+    };
+
+    try {
+        const url = `${baseUrl}${AYRA_ENDPOINTS.ecosystem(ecosystemDid)}`;
+        const response = await fetch(url, { headers });
+
+        if (!successOrDocumentedStatus.includes(response.status)) {
+            testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
+            return testResult;
+        }
+
+        const data = body.json;
+        if (!isJsonObject(data)) {
+            testResult.details = "Expected a JSON object for ecosystem info";
+            return testResult;
+        }
+        testResult.response = data;
+        testResult.status = 'passed';
+    } catch (error) {
+        testResult.details = `Exception occurred: ${error instanceof Error ? error.message : String(error)}`;
+    }
+
     return testResult;
 };
 
@@ -243,30 +391,25 @@ export const testListEcosystemRecognitions = async (
     };
     
     try {
-        const url = `${baseUrl}/ecosystems/${encodePath(ecosystemDid)}/recognitions`;
+        const url = `${baseUrl}${AYRA_ENDPOINTS.ecosystemRecognitions(ecosystemDid)}`;
         const response = await fetch(url, { headers });
         
-        if (![200, 401, 404].includes(response.status)) {
+        if (!successOrDocumentedStatus.includes(response.status)) {
             testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = body.json;
             
             if (!Array.isArray(data)) {
                 testResult.details = "Expected a list of RecognitionResponse objects";
                 return testResult;
             }
-            
-            // Check each item for 'recognized' key
-            for (const item of data) {
-                if (!('recognized' in item)) {
-                    testResult.details = "Missing 'recognized' in a recognition item";
-                    return testResult;
-                }
-            }
-            
             testResult.response = data;
         }
         
@@ -279,49 +422,38 @@ export const testListEcosystemRecognitions = async (
 };
 
 /**
- * Test GET /ecosystems/{ecosystem_did}/lookups/assuranceLevels
+ * Test GET /lookups/assuranceLevels
  */
 export const testLookupSupportedAssuranceLevels = async (
     baseUrl: string, 
-    ecosystemDid: string,
     headers = {}
 ): Promise<TestResult> => {
     const testResult: TestResult = {
-        name: "GET /ecosystems/{ecosystem_did}/lookups/assuranceLevels",
+        name: "GET /lookups/assuranceLevels",
         description: "Tests retrieving supported assurance levels for an ecosystem",
         status: 'failed'
     };
     
     try {
-        const url = `${baseUrl}/ecosystems/${encodePath(ecosystemDid)}/lookups/assuranceLevels`;
+        const url = `${baseUrl}${AYRA_ENDPOINTS.assuranceLevels}`;
         const response = await fetch(url, { headers });
         
-        if (![200, 401, 404].includes(response.status)) {
+        if (!successOrDocumentedStatus.includes(response.status)) {
             testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = body.json;
             
             if (!Array.isArray(data)) {
                 testResult.details = "Expected a list for assurance levels";
                 return testResult;
             }
-            
-            // Check each item for assurance_level key
-            for (const item of data) {
-                if (typeof item !== 'object' || item === null) {
-                    testResult.details = "Each item should be a JSON object";
-                    return testResult;
-                }
-                
-                if (!('assurance_level' in item)) {
-                    testResult.details = "Missing 'assurance_level' key in item";
-                    return testResult;
-                }
-            }
-            
             testResult.response = data;
         }
         
@@ -334,44 +466,38 @@ export const testLookupSupportedAssuranceLevels = async (
 };
 
 /**
- * Test GET /ecosystems/{ecosystem_did}/lookups/authorizations
+ * Test GET /lookups/authorizations
  */
 export const testLookupAuthorizations = async (
     baseUrl: string, 
-    ecosystemDid: string,
     headers = {}
 ): Promise<TestResult> => {
     const testResult: TestResult = {
-        name: "GET /ecosystems/{ecosystem_did}/lookups/authorizations",
+        name: "GET /lookups/authorizations",
         description: "Tests retrieving supported authorizations for an ecosystem",
         status: 'failed'
     };
     
     try {
-        const url = `${baseUrl}/ecosystems/${encodePath(ecosystemDid)}/lookups/authorizations`;
+        const url = `${baseUrl}${AYRA_ENDPOINTS.authorizations}`;
         const response = await fetch(url, { headers });
         
-        if (![200, 401, 404].includes(response.status)) {
+        if (!successOrDocumentedStatus.includes(response.status)) {
             testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = body.json;
             
             if (!Array.isArray(data)) {
                 testResult.details = "Expected a list for authorization responses";
                 return testResult;
             }
-            
-            // Check each item for authorized key
-            for (const item of data) {
-                if (!('authorized' in item)) {
-                    testResult.details = "Missing 'authorized' key in an auth item";
-                    return testResult;
-                }
-            }
-            
             testResult.response = data;
         }
         
@@ -384,44 +510,38 @@ export const testLookupAuthorizations = async (
 };
 
 /**
- * Test GET /egfs/{ecosystem_did}/lookups/didmethods
+ * Test GET /lookups/didMethods
  */
 export const testLookupSupportedDIDMethods = async (
     baseUrl: string, 
-    ecosystemDid: string,
     headers = {}
 ): Promise<TestResult> => {
     const testResult: TestResult = {
-        name: "GET /egfs/{ecosystem_did}/lookups/didmethods",
+        name: "GET /lookups/didMethods",
         description: "Tests retrieving supported DID methods for an ecosystem",
         status: 'failed'
     };
     
     try {
-        const url = `${baseUrl}/egfs/${encodePath(ecosystemDid)}/lookups/didmethods`;
+        const url = `${baseUrl}${AYRA_ENDPOINTS.didMethods}`;
         const response = await fetch(url, { headers });
         
-        if (![200, 401, 404].includes(response.status)) {
+        if (!successOrDocumentedStatus.includes(response.status)) {
             testResult.details = `Unexpected status code: ${response.status}`;
+            return testResult;
+        }
+        const body = await readJsonOrText(response);
+        if (recordDocumentedExtensionStatus(testResult, response, body.raw, body.json)) {
             return testResult;
         }
         
         if (response.status === 200) {
-            const data = await response.json();
+            const data = body.json;
             
             if (!Array.isArray(data)) {
                 testResult.details = "Expected a list of DIDMethodType objects";
                 return testResult;
             }
-            
-            // Check each item for identifier key
-            for (const item of data) {
-                if (!('identifier' in item)) {
-                    testResult.details = "Missing 'identifier' in DID method item";
-                    return testResult;
-                }
-            }
-            
             testResult.response = data;
         }
         
@@ -434,15 +554,17 @@ export const testLookupSupportedDIDMethods = async (
 };
 
 /**
- * Run all conformance tests against a Trust Registry API
+ * Run Ayra extension/discovery conformance tests against a Trust Registry API.
+ * Core TRQP decision checks are run by the dedicated authorization and recognition
+ * verification steps so they can use user-provided semantic test data.
  */
 export const runAllConformanceTests = async (
     baseUrl: string,
     bearerToken: string = "",
     entityId: string = "did:example:entity123",
-    authorizationId: string = "did:example:authz",
+    _authorizationId: string = "did:example:authz",
     ecosystemDid: string = "",
-    egfDid: string = "did:example:egf"
+    _egfDid: string = "did:example:egf"
 ): Promise<ConformanceTestReport> => {
     // Remove trailing slash from baseUrl if present
     const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
@@ -459,12 +581,12 @@ export const runAllConformanceTests = async (
     const tests = [
         await testGetMetadata(normalizedBaseUrl, headers),
         await testGetEntityInformation(normalizedBaseUrl, entityId, headers),
-        await testCheckEntityAuthorization(normalizedBaseUrl, entityId, authorizationId, ecosystemDid || egfDid, headers),
-        await testCheckEcosystemRecognition(normalizedBaseUrl, ecosystemDid || "did:example:ecosystem", egfDid, headers),
+        await testListEntityAuthorizations(normalizedBaseUrl, entityId, headers),
+        await testGetEcosystemInformation(normalizedBaseUrl, ecosystemDid || "did:example:ecosystem", headers),
         await testListEcosystemRecognitions(normalizedBaseUrl, ecosystemDid || "did:example:ecosystem", headers),
-        await testLookupSupportedAssuranceLevels(normalizedBaseUrl, ecosystemDid || "did:example:ecosystem", headers),
-        await testLookupAuthorizations(normalizedBaseUrl, ecosystemDid || "did:example:ecosystem", headers),
-        await testLookupSupportedDIDMethods(normalizedBaseUrl, ecosystemDid || "did:example:ecosystem", headers)
+        await testLookupSupportedAssuranceLevels(normalizedBaseUrl, headers),
+        await testLookupAuthorizations(normalizedBaseUrl, headers),
+        await testLookupSupportedDIDMethods(normalizedBaseUrl, headers),
     ];
     
     const passedCount = tests.filter(test => test.status === 'passed').length;

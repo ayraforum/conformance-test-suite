@@ -314,7 +314,7 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
   }
 
   private getHolderAdminUrl(): string | null {
-    const holderController = serverState.controller;
+    const holderController = serverState.acapyHolderController ?? serverState.controller;
     if (!holderController) return null;
     const adapter = holderController.getAdapter?.();
     if (!adapter) return null;
@@ -327,7 +327,7 @@ export class IssueAyraW3CTask extends BaseRunnableTask {
     if (serverState.holderPresentationDid) {
       return serverState.holderPresentationDid;
     }
-    const holderController = serverState.controller;
+    const holderController = serverState.acapyHolderController ?? serverState.controller;
     if (!holderController) {
       throw new Error("Holder controller not available to create did:key");
     }

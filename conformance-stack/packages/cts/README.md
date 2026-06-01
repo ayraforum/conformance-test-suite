@@ -152,7 +152,7 @@ npm run test-all
 
 ### **Trust Registry (TRQP) Conformance**
 
-- **Core checks**: Uses TRQP `POST /authorization` and `POST /recognition` (entity_id, authority_id, action, resource, optional context). Ayra extension API tests (metadata/lookups) run separately.
+- **Core checks**: Dedicated Authorization Verification and Recognition Verification steps use TRQP `POST /authorization` and `POST /recognition` with user-provided entity_id, authority_id, action, resource, and optional context. Ayra extension API tests (metadata/lookups/listing endpoints) run separately and do not assert semantic authorization or recognition decisions.
 - **Policy modes**: `authorization`, `recognition`, or `both`. Holder and Verifier flows execute only the selected checks when TRQP is enabled.
 - **Optional policy fields (UI labels)**:
   - Authorization Action / Authorization Resource
@@ -235,9 +235,9 @@ Credential issuance testing interface:
 
 #### **Registry Test** (`/registry`)
 Trust registry interaction testing:
-- Schema publication
-- Credential definition registration
-- Registry query operations
+- Current Ayra extension checks: `GET /metadata`, `GET /entities/{entity_id}`, `GET /entities/{entity_did}/authorizations`, `GET /ecosystems/{ecosystem_did}`, `GET /ecosystems/{ecosystem_did}/recognitions`, and root-level lookup endpoints
+- Current TRQP core query checks: `POST /authorization` and `POST /recognition` run in the dedicated verification steps using the supplied test payloads
+- `501 Not Implemented` on Ayra extension endpoints is reported as documented not-implemented evidence; failed core TRQP verification responses remain verification failures
 
 ### **Real-time Monitoring**
 

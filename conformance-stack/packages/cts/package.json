@@ -15,6 +15,7 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "next lint",
+    "test": "jest",
     "test-holder": "ts-node --project tsconfig.scripts.json scripts/test-holder.ts",
     "test-verifier": "ts-node --project tsconfig.scripts.json scripts/test-verifier.ts",
     "test-integration": "ts-node --project tsconfig.scripts.json scripts/test-integration.ts",
